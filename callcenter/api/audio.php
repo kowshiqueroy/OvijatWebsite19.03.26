@@ -9,7 +9,7 @@ $download = isset($_GET['dl']) && $_GET['dl'] == '1';
 if (!$callId) { http_response_code(400); exit('Missing call id'); }
 
 $call = $conn->query(
-    "SELECT cl.recordingfile, cl.src, cl.dst, cl.calldate, cl.call_direction,
+    "SELECT cl.recordingfile, cl.src, cl.dst, cl.calldate, cl.call_direction, cl.local_recording,
             c.phone AS contact_phone, c.name AS contact_name,
             ps.recording_base_url, ps.recording_base_path, ps.db_username, ps.db_password
      FROM call_logs cl
@@ -23,51 +23,47 @@ if (!$call || !$call['recordingfile']) {
     http_response_code(404); exit('No recording for this call');
 }
 
-logActivity('recording_played', 'call_logs', $callId,
-    ($download ? 'Downloaded' : 'Played') . ' recording: ' . $call['recordingfile']);
-
-$file = $call['recordingfile'];
-$urlPath = parse_url($file, PHP_URL_PATH) ?: $file;
-$ext  = strtolower(pathinfo($urlPath, PATHINFO_EXTENSION)) ?: 'wav';
-$audioExts = ['wav','mp3','ogg','opus','aac','gsm'];
-// If URL points to a PHP script (e.g. download.php?id=...), use wav as default
-if (!in_array($ext, $audioExts)) { $ext = 'wav'; }
-$mimes = ['wav'=>'audio/wav','mp3'=>'audio/mpeg','ogg'=>'audio/ogg',
-          'opus'=>'audio/opus','aac'=>'audio/aac','gsm'=>'audio/x-gsm'];
-$mime = $mimes[$ext] ?? 'audio/wav';
-
-// Build clean filename: rec-{number}-{name}-{calldate}.ext
 $number = $call['contact_phone']
     ?: ($call['call_direction'] === 'inbound' ? $call['src'] : $call['dst'])
     ?: 'unknown';
 $cname  = $call['contact_name'] ?: '';
 $cdate  = $call['calldate'] ? date('Ymd-His', strtotime($call['calldate'])) : date('Ymd');
-// sanitize for filename
 $sanitize = fn($s) => preg_replace('/[^A-Za-z0-9_\-]/', '', str_replace(' ', '_', $s));
-$parts = array_filter(['rec', $sanitize($number), $sanitize($cname), $cdate]);
-$basename = implode('-', $parts) . '.' . $ext;
+$basename = 'rec-' . $sanitize($cname ?: $number) . '-' . $cdate . '.gsm';
 
-// Fallback: if URL is a plain audio file, use its original name
-$rawBase = basename($urlPath);
-if (in_array(strtolower(pathinfo($rawBase, PATHINFO_EXTENSION)), $audioExts) && !$call['contact_name'] && !$call['contact_phone']) {
-    $basename = $rawBase;
+logActivity('recording_played', 'call_logs', $callId,
+    ($download ? 'Downloaded' : 'Played') . ' recording: ' . $call['recordingfile']);
+
+// ── Case 0: Local file already fetched from PBX ─────────────────────────────────
+if (!empty($call['local_recording'])) {
+    $localPath = $call['local_recording'];
+    // Try as absolute path first, then relative to app root
+    if (!file_exists($localPath)) {
+        $localPath = dirname(__DIR__) . '/' . ltrim($localPath, '/');
+    }
+    if (file_exists($localPath)) {
+        if ($download) {
+            header('Content-Disposition: attachment; filename="' . $basename . '"');
+        } else {
+            header('Content-Disposition: inline; filename="' . $basename . '"');
+        }
+        header('Content-Type: audio/x-gsm');
+        header('Content-Length: ' . filesize($localPath));
+        readfile($localPath);
+        exit;
+    }
 }
-if ($download) {
-    header('Content-Disposition: attachment; filename="' . $basename . '"');
-} else {
-    header('Content-Disposition: inline; filename="' . $basename . '"');
-}
-header('Content-Type: ' . $mime);
-header('Accept-Ranges: bytes');
+
+$file = $call['recordingfile'];
+$ext  = 'gsm';
+$mime = 'audio/x-gsm';
 
 // ── Case 1: full URL stored (web-scraped fetch) ───────────────────────────────
 if (str_starts_with($file, 'http://') || str_starts_with($file, 'https://')) {
-    // Reuse cached cookie from last fetch session, or login fresh
     $username   = getSetting('pbx_username');
     $password   = getSetting('pbx_password');
     $cookieFile = sys_get_temp_dir() . '/pbx_cc_' . md5($username) . '.txt';
 
-    // If no cookie cached, login first
     if (!file_exists($cookieFile) || (time() - filemtime($cookieFile)) > 3600) {
         $ch = curl_init('https://ovijatgroup.pbx.com.bd/core/user_settings/user_dashboard.php');
         curl_setopt_array($ch, [
@@ -85,7 +81,13 @@ if (str_starts_with($file, 'http://') || str_starts_with($file, 'https://')) {
         curl_close($ch);
     }
 
-    // Stream recording with session cookie
+    if ($download) {
+        header('Content-Disposition: attachment; filename="' . $basename . '"');
+    } else {
+        header('Content-Disposition: inline; filename="' . $basename . '"');
+    }
+    header('Content-Type: ' . $mime);
+
     $ch = curl_init($file);
     curl_setopt_array($ch, [
         CURLOPT_RETURNTRANSFER => false,
@@ -99,7 +101,6 @@ if (str_starts_with($file, 'http://') || str_starts_with($file, 'https://')) {
     curl_exec($ch);
     $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     curl_close($ch);
-
     if ($code !== 200) {
         http_response_code(502);
         exit('Could not retrieve recording from PBX (HTTP ' . $code . ')');
@@ -112,6 +113,12 @@ $localBase = $call['recording_base_path'] ?? '';
 $localPath = $localBase ? rtrim($localBase, '/') . '/' . ltrim($file, '/') : $file;
 
 if ($localBase && file_exists($localPath)) {
+    if ($download) {
+        header('Content-Disposition: attachment; filename="' . $basename . '"');
+    } else {
+        header('Content-Disposition: inline; filename="' . $basename . '"');
+    }
+    header('Content-Type: ' . $mime);
     header('Content-Length: ' . filesize($localPath));
     readfile($localPath);
     exit;
@@ -120,6 +127,12 @@ if ($localBase && file_exists($localPath)) {
 // ── Case 3: remote base URL + file (HTTP Basic Auth) ─────────────────────────
 if ($call['recording_base_url']) {
     $remoteUrl = rtrim($call['recording_base_url'], '/') . '/' . ltrim($file, '/');
+    if ($download) {
+        header('Content-Disposition: attachment; filename="' . $basename . '"');
+    } else {
+        header('Content-Disposition: inline; filename="' . $basename . '"');
+    }
+    header('Content-Type: ' . $mime);
     $ch = curl_init($remoteUrl);
     curl_setopt_array($ch, [
         CURLOPT_RETURNTRANSFER => false,

@@ -2,6 +2,9 @@
 </main><!-- /.main-content -->
 </div><!-- /.app-wrap -->
 
+<?php $agentNum = agentOfficialNumber($conn, $aid); ?>
+<input type="hidden" id="qcAgentNum" value="<?= e($agentNum) ?>">
+
 <!-- ── Global quick-add call modal ──────────────────────────────────────────── -->
 <div class="modal fade" id="quickCallModal" tabindex="-1">
     <div class="modal-dialog modal-lg modal-dialog-centered">
@@ -13,23 +16,24 @@
             <div class="modal-body">
                 <form id="quickCallForm">
                     <div class="row g-3">
-                        <div class="col-sm-6">
-                            <label class="form-label">Phone Number <span class="text-danger">*</span></label>
+                        <div class="col-sm-3">
+                            <label class="form-label">Direction <span class="text-danger">*</span></label>
+                            <select name="call_direction" id="qcDirection" class="form-select" required onchange="qcSwapFields()">
+                                <option value="">— Direction —</option>
+                                <option value="outbound">Outbound</option>
+                                <option value="inbound">Inbound</option>
+                                <option value="internal">Internal</option>
+                            </select>
+                        </div>
+                        <div class="col-sm-5">
+                            <label class="form-label" id="qcPhoneLabel">Phone Number <span class="text-danger">*</span></label>
                             <input type="text" name="src" id="qcPhone" class="form-control" placeholder="01XXXXXXXXX"
                                    oninput="contactAutofill(this.value)" required>
                             <div id="qcContactHint" class="contact-hint mt-1"></div>
                         </div>
-                        <div class="col-sm-6">
-                            <label class="form-label">Direction <span class="text-danger">*</span></label>
-                            <select name="call_direction" class="form-select" required>
-                                <option value="inbound">Inbound</option>
-                                <option value="outbound">Outbound</option>
-                                <option value="internal">Internal</option>
-                            </select>
-                        </div>
-                        <div class="col-sm-6">
-                            <label class="form-label">Destination</label>
-                            <input type="text" name="dst" class="form-control" placeholder="Extension or number">
+                        <div class="col-sm-4">
+                            <label class="form-label" id="qcDstLabel">Destination</label>
+                            <input type="text" name="dst" id="qcDst" class="form-control" placeholder="Extension or number">
                         </div>
                         <div class="col-sm-3">
                             <label class="form-label">Status</label>
@@ -77,11 +81,31 @@
     </div>
 </div>
 
-<!-- ── Floating action button (mobile) ──────────────────────────────────────── -->
-<button class="fab d-lg-none" data-bs-toggle="modal" data-bs-target="#quickCallModal"
-        title="Log a call">
-    <i class="fas fa-phone-plus"></i>
-</button>
+<!-- ── Mobile search overlay ─────────────────────────────────────────────────── -->
+<div class="mobile-search-overlay" id="mobileSearchOverlay">
+    <div class="mobile-search-head">
+        <input type="text" id="mobileSearchInput" placeholder="Search name, phone…" autocomplete="off">
+        <button class="btn-close-white" onclick="closeMobileSearch()">
+            <i class="fas fa-times"></i>
+        </button>
+    </div>
+    <div class="mobile-search-results" id="mobileSearchResults">
+        <div class="text-center text-muted py-5">
+            <i class="fas fa-search fa-2x mb-2 d-block"></i>
+            Type a name or phone number
+        </div>
+    </div>
+</div>
+
+<!-- ── Floating action buttons (mobile) ──────────────────────────────────────── -->
+<div class="fab-group d-lg-none">
+    <button class="fab" onclick="openMobileSearch()" title="Search">
+        <i class="fas fa-search"></i>
+    </button>
+    <button class="fab" data-bs-toggle="modal" data-bs-target="#quickCallModal" title="Log a call">
+        <i class="fas fa-phone"></i>
+    </button>
+</div>
 
 <!-- ── Toast container ──────────────────────────────────────────────────────── -->
 <div class="toast-container position-fixed bottom-0 end-0 p-3" id="toastContainer"></div>

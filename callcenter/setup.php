@@ -198,6 +198,7 @@ try {
         uniqueid        VARCHAR(50)  DEFAULT NULL COMMENT 'FreePBX unique call ID — dedup key',
         userfield       VARCHAR(255) DEFAULT NULL,
         recordingfile   VARCHAR(500) DEFAULT NULL COMMENT 'Recording file path/name from PBX',
+        local_recording VARCHAR(500) DEFAULT NULL COMMENT 'Local path after fetching from PBX',
         cnum            VARCHAR(80)  DEFAULT NULL COMMENT 'Caller number (cleaned)',
         cnam            VARCHAR(80)  DEFAULT NULL COMMENT 'Caller name',
         outbound_cnum   VARCHAR(80)  DEFAULT NULL,
@@ -207,7 +208,7 @@ try {
         sequence        INT          DEFAULT NULL COMMENT 'CDR sequence number',
 
         -- ── Our operational fields ───────────────────────────────────
-        call_direction  ENUM('inbound','outbound','internal','unknown') DEFAULT 'unknown',
+        call_direction  ENUM('inbound','outbound','internal','unknown','conflict') DEFAULT 'unknown',
         contact_id      INT          DEFAULT NULL COMMENT 'Matched contact from contacts table',
         agent_id        INT          DEFAULT NULL COMMENT 'Handling agent',
         fetch_batch_id  INT          DEFAULT NULL COMMENT 'Which fetch brought this in',
@@ -481,10 +482,10 @@ try {
 
     // -- Sample agents
     $sampleAgents = [
-        ['rahim',  'Rahim Ahmed',   'Sales',   'rahim@2026'],
-        ['karim',  'Karim Hussain', 'Support', 'karim@2026'],
-        ['nadia',  'Nadia Islam',   'Support', 'nadia@2026'],
-        ['sakib',  'Sakib Hasan',   'Sales',   'sakib@2026'],
+        ['jarin',  'Jarin',   'Executive',   'jarin@2026'],
+        ['atoshi',  'Atoshi', 'Executive', 'atoshi@2026'],
+        ['bristi',  'Bristi',   'Executive', 'bristi@2026'],
+        ['nodi',  'Nodi',   'Executive',   'nodi@2026'],
     ];
     $agentIds = [$adminId];
     $stmt = $conn->prepare("INSERT INTO agents (username, password, full_name, department, status, created_by)
@@ -500,14 +501,14 @@ try {
     // -- Agent numbers (extensions + official numbers)
     $agentNumbers = [
         // [agent_id_index, type, number, label, is_primary]
-        [1, 'extension',   '201',         'Main Ext',       1],
+        [1, 'extension',   '102',         'Main Ext',       1],
         [1, 'mobile',      '01712000001', 'Admin Mobile',   0],
-        [2, 'extension',   '101',         'Sales Ext',      1],
+        [2, 'extension',   '104',         'Sales Ext',      1],
         [2, 'official',    '01712000101', 'Sales Direct',   0],
         [3, 'extension',   '102',         'Support Ext',    1],
         [3, 'official',    '01712000102', 'Support Direct', 0],
         [4, 'extension',   '103',         'Support Ext 2',  1],
-        [5, 'extension',   '201',         'Sales Ext 2',    1],
+        [5, 'extension',   '103',         'Sales Ext 2',    1],
     ];
     $stmt = $conn->prepare("INSERT INTO agent_numbers (agent_id, number_type, number, label, is_primary, created_by) VALUES (?, ?, ?, ?, ?, ?)");
     foreach ($agentNumbers as $n) {
@@ -520,10 +521,10 @@ try {
     // -- Contact groups
     $conn->query("INSERT INTO contact_groups (name, color, description, created_by) VALUES
         ('VIP',             '#f59e0b', 'High value clients',              $adminId),
-        ('Hot Leads',       '#ef4444', 'Prospects requiring quick action', $adminId),
-        ('Support Queue',   '#6366f1', 'Customers needing support',       $adminId),
-        ('Sales Followup',  '#10b981', 'Pending sales follow-ups',        $adminId),
-        ('Internal Staff',  '#8b5cf6', 'Internal company numbers',        $adminId),
+        ('Sales',       '#ef4444', 'Prospects requiring quick action', $adminId),
+        ('Staff',   '#6366f1', 'Customers needing support',       $adminId),
+        ('Followup',  '#10b981', 'Pending sales follow-ups',        $adminId),
+        ('Dhaka Staff',  '#8b5cf6', 'Internal company numbers',        $adminId),
         ('Vendors',         '#14b8a6', 'Suppliers and vendors',           $adminId),
         ('Resolved',        '#6b7280', 'Closed / resolved contacts',      $adminId)");
     $messages[] = ['info', 'Created contact groups'];

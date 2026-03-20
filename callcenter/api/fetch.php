@@ -10,6 +10,10 @@ $aid    = agentId();
 
 define('PBX_BASE', 'https://ovijatgroup.pbx.com.bd');
 
+/* ── MIGRATION: add local_recording column if missing ──────────────── */
+$colExists = $conn->query("SELECT 1 FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='call_logs' AND column_name='local_recording'")->fetch_row();
+if (!$colExists) @$conn->query("ALTER TABLE call_logs ADD COLUMN local_recording VARCHAR(500) DEFAULT NULL AFTER recordingfile");
+
 /* ── helpers ─────────────────────────────────────────────────────────────── */
 
 function pbxRequest(string $url, ?array $post = null, string $cookieFile = ''): array {
@@ -325,3 +329,163 @@ if ($action === 'redetect') {
 }
 
 echo json_encode(['ok' => false, 'error' => 'Unknown action']);
+
+/* ── FETCH RECORDING ─────────────────────────────────────────────── */
+/* Fetch a single recording from PBX and save it locally as GSM      */
+
+if ($action === 'fetch_recording') {
+    $callId = (int)($data['call_id'] ?? 0);
+    if (!$callId) { echo json_encode(['ok'=>false, 'error'=>'Missing call_id']); exit; }
+
+    $call = $conn->query("SELECT id, recordingfile, uniqueid, local_recording FROM call_logs WHERE id=$callId LIMIT 1")->fetch_assoc();
+    if (!$call) { echo json_encode(['ok'=>false, 'error'=>'Call not found']); exit; }
+
+    // Already fetched?
+    if (!empty($call['local_recording']) && file_exists($call['local_recording'])) {
+        echo json_encode(['ok'=>true, 'local'=>$call['local_recording'], 'size'=>filesize($call['local_recording']), 'already'=>true]);
+        exit;
+    }
+
+    $pbxUrl = $call['recordingfile'] ?? '';
+    if (empty($pbxUrl) || (!str_starts_with($pbxUrl, 'http://') && !str_starts_with($pbxUrl, 'https://'))) {
+        echo json_encode(['ok'=>false, 'error'=>'No PBX recording URL for this call']);
+        exit;
+    }
+
+    // Build local save path: recordings/YYYY-MM/{id}_{uniqueid_hash}.gsm
+    $callRow = $conn->query("SELECT calldate FROM call_logs WHERE id=$callId")->fetch_assoc();
+    $ym = date('Y-m', strtotime($callRow['calldate'] ?? 'now'));
+    $recDir = dirname(__DIR__) . '/recordings/' . $ym;
+    if (!is_dir($recDir)) mkdir($recDir, 0755, true);
+
+    $hash = substr(md5($call['uniqueid']), 0, 8);
+    $localFile = $recDir . '/rec_' . $callId . '_' . $hash . '.gsm';
+
+    // Fetch from PBX
+    $username = getSetting('pbx_username');
+    $password = getSetting('pbx_password');
+    $cookieFile = sys_get_temp_dir() . '/pbx_cc_' . md5($username) . '.txt';
+
+    if (!file_exists($cookieFile) || (time() - filemtime($cookieFile)) > 3600) {
+        $ch = curl_init(PBX_BASE . '/core/user_settings/user_dashboard.php');
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER=>true, CURLOPT_FOLLOWLOCATION=>true,
+            CURLOPT_SSL_VERIFYPEER=>false, CURLOPT_TIMEOUT=>30,
+            CURLOPT_POST=>true, CURLOPT_POSTFIELDS=>http_build_query(['username'=>$username,'password'=>$password]),
+            CURLOPT_COOKIEJAR=>$cookieFile, CURLOPT_COOKIEFILE=>$cookieFile,
+            CURLOPT_USERAGENT=>'Mozilla/5.0',
+        ]);
+        curl_exec($ch);
+        curl_close($ch);
+        touch($cookieFile);
+    }
+
+    $ch = curl_init($pbxUrl);
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER=>true,
+        CURLOPT_FOLLOWLOCATION=>true,
+        CURLOPT_SSL_VERIFYPEER=>false,
+        CURLOPT_TIMEOUT=>120,
+        CURLOPT_COOKIEFILE=>$cookieFile,
+        CURLOPT_USERAGENT=>'Mozilla/5.0',
+    ]);
+    $body = curl_exec($ch);
+    $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+
+    if ($code !== 200 || strlen($body) < 8) {
+        echo json_encode(['ok'=>false, 'error'=>'PBX returned HTTP ' . $code . ' or empty body']);
+        exit;
+    }
+
+    $written = file_put_contents($localFile, $body);
+    if ($written === false) {
+        echo json_encode(['ok'=>false, 'error'=>'Failed to write file']);
+        exit;
+    }
+
+    // Save local path in DB
+    $localE = $conn->real_escape_string($localFile);
+    $conn->query("UPDATE call_logs SET local_recording='$localE' WHERE id=$callId");
+
+    logActivity('recording_fetched', 'call_logs', $callId, "Saved to: $localFile ($written bytes)");
+
+    echo json_encode([
+        'ok'=>true, 'local'=>$localFile, 'size'=>$written, 'already'=>false,
+        'url'=> APP_URL . '/recordings/' . $ym . '/rec_' . $callId . '_' . $hash . '.gsm',
+    ]);
+    exit;
+}
+
+/* ── FETCH RECORDING BATCH ────────────────────────────────────────── */
+
+if ($action === 'fetch_recordings_batch') {
+    $ids = $data['call_ids'] ?? [];
+    if (!$ids) { echo json_encode(['ok'=>false, 'error'=>'No call_ids provided']); exit; }
+
+    $results = [];
+    foreach ($ids as $cid) {
+        $cid = (int)$cid;
+        $call = $conn->query("SELECT id, recordingfile, uniqueid, local_recording, calldate FROM call_logs WHERE id=$cid AND recordingfile IS NOT NULL AND recordingfile!='' LIMIT 1")->fetch_assoc();
+        if (!$call) { $results[$cid] = ['ok'=>false, 'error'=>'Not found or no recording']; continue; }
+
+        if (!empty($call['local_recording']) && file_exists($call['local_recording'])) {
+            $results[$cid] = ['ok'=>true, 'local'=>$call['local_recording'], 'size'=>filesize($call['local_recording']), 'already'=>true];
+            continue;
+        }
+
+        $pbxUrl = $call['recordingfile'];
+        $ym = date('Y-m', strtotime($call['calldate'] ?? 'now'));
+        $recDir = dirname(__DIR__) . '/recordings/' . $ym;
+        if (!is_dir($recDir)) mkdir($recDir, 0755, true);
+
+        $hash = substr(md5($call['uniqueid']), 0, 8);
+        $localFile = $recDir . '/rec_' . $cid . '_' . $hash . '.gsm';
+
+        $username = getSetting('pbx_username');
+        $password = getSetting('pbx_password');
+        $cookieFile = sys_get_temp_dir() . '/pbx_cc_' . md5($username) . '.txt';
+
+        if (!file_exists($cookieFile) || (time() - filemtime($cookieFile)) > 3600) {
+            $ch = curl_init(PBX_BASE . '/core/user_settings/user_dashboard.php');
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER=>true, CURLOPT_FOLLOWLOCATION=>true,
+                CURLOPT_SSL_VERIFYPEER=>false, CURLOPT_TIMEOUT=>30,
+                CURLOPT_POST=>true, CURLOPT_POSTFIELDS=>http_build_query(['username'=>$username,'password'=>$password]),
+                CURLOPT_COOKIEJAR=>$cookieFile, CURLOPT_COOKIEFILE=>$cookieFile, CURLOPT_USERAGENT=>'Mozilla/5.0',
+            ]);
+            curl_exec($ch);
+            curl_close($ch);
+            touch($cookieFile);
+        }
+
+        $ch = curl_init($pbxUrl);
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER=>true, CURLOPT_FOLLOWLOCATION=>true,
+            CURLOPT_SSL_VERIFYPEER=>false, CURLOPT_TIMEOUT=>120,
+            CURLOPT_COOKIEFILE=>$cookieFile, CURLOPT_USERAGENT=>'Mozilla/5.0',
+        ]);
+        $body = curl_exec($ch);
+        $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        if ($code !== 200 || strlen($body) < 8) {
+            $results[$cid] = ['ok'=>false, 'error'=>'PBX HTTP ' . $code];
+            continue;
+        }
+
+        $written = file_put_contents($localFile, $body);
+        if ($written === false) {
+            $results[$cid] = ['ok'=>false, 'error'=>'Write failed'];
+            continue;
+        }
+
+        $localE = $conn->real_escape_string($localFile);
+        $conn->query("UPDATE call_logs SET local_recording='$localE' WHERE id=$cid");
+        $results[$cid] = ['ok'=>true, 'local'=>$localFile, 'size'=>$written, 'already'=>false];
+    }
+
+    $success = count(array_filter($results, fn($r)=>($r['ok']??false)));
+    echo json_encode(['ok'=>true, 'results'=>$results, 'success'=>$success, 'total'=>count($results)]);
+    exit;
+}

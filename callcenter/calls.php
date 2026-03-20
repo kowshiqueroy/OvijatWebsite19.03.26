@@ -64,10 +64,12 @@ $totalPages = max(1, ceil($total / $perPage));
 
 // ── Main query ────────────────────────────────────────────────────────────────
 $sql = "SELECT cl.*,
-               c.name  AS contact_name, c.company, c.scope AS contact_scope, c.is_favorite,
+               c.name AS contact_name, c.phone AS contact_phone, c.company, c.scope AS contact_scope, c.is_favorite,
                a.full_name AS agent_name,
                (SELECT COUNT(*) FROM call_notes cn WHERE cn.call_id=cl.id) AS note_count,
-               (SELECT COUNT(*) FROM todos t WHERE t.call_id=cl.id AND t.status NOT IN ('done','cancelled')) AS task_count
+               (SELECT COUNT(*) FROM todos t WHERE t.call_id=cl.id AND t.status NOT IN ('done','cancelled')) AS task_count,
+               (SELECT GROUP_CONCAT(CONCAT(t.name,'|',t.color) ORDER BY t.name SEPARATOR ',')
+                FROM call_tags ct JOIN tags t ON t.id=ct.tag_id WHERE ct.call_id=cl.id) AS call_tags_data
         FROM call_logs cl
         LEFT JOIN contacts c ON c.id = cl.contact_id
         LEFT JOIN agents a   ON a.id = cl.agent_id
@@ -145,7 +147,7 @@ require_once 'includes/layout.php';
                     <label class="form-label">Direction</label>
                     <select name="direction" class="form-select form-select-sm">
                         <option value="">All</option>
-                        <?php foreach (['inbound','outbound','internal','unknown'] as $d): ?>
+                        <?php foreach (['inbound','outbound','internal','unknown','conflict'] as $d): ?>
                         <option value="<?= $d ?>" <?= $f_dir===$d?'selected':'' ?>><?= ucfirst($d) ?></option>
                         <?php endforeach; ?>
                     </select>
@@ -193,9 +195,27 @@ require_once 'includes/layout.php';
                     <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#quickCallModal">
                         <i class="fas fa-phone-plus me-1"></i>Log Call
                     </button>
+                    <button class="btn btn-sm" id="fetchNowBtn"
+                            style="background:rgba(99,102,241,.15);border:1px solid rgba(99,102,241,.4);color:#a5b4fc"
+                            onclick="fetchNow(this)" title="Pull latest calls from PBX">
+                        <i class="fas fa-sync me-1" id="fetchNowIcon"></i>Fetch Now
+                    </button>
                 </div>
             </div>
         </form>
+    </div>
+</div>
+
+<!-- Fetch loading modal -->
+<div class="modal fade" id="fetchModal" tabindex="-1" data-bs-backdrop="static">
+    <div class="modal-dialog modal-dialog-centered" style="max-width:340px">
+        <div class="modal-content cc-modal">
+            <div class="modal-body text-center py-4">
+                <i class="fas fa-sync fa-spin fa-2x mb-3" style="color:var(--accent)"></i>
+                <div class="fw-semibold mb-1">Fetching from PBX…</div>
+                <div class="text-muted small">Last 7 days — may take up to a minute</div>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -245,12 +265,13 @@ require_once 'includes/layout.php';
                     <th>Mark</th>
                     <th>Notes</th>
                     <th>Rec</th>
+                    <th>Tags</th>
                     <th>Actions</th>
                 </tr>
             </thead>
             <tbody>
             <?php if ($calls->num_rows === 0): ?>
-                <tr><td colspan="13" class="text-center py-5 text-muted">
+                <tr><td colspan="14" class="text-center py-5 text-muted">
                     <i class="fas fa-phone-slash fa-2x mb-2 d-block"></i>No calls found for this filter
                 </td></tr>
             <?php endif; ?>
@@ -258,6 +279,7 @@ require_once 'includes/layout.php';
                 $dispClass = dispositionClass($c['disposition'] ?? '');
                 $dispIcon  = dispositionIcon($c['disposition'] ?? '');
                 $dirIcon   = directionIcon($c['call_direction'] ?? 'unknown');
+                $dirColor  = directionColor($c['call_direction'] ?? 'unknown');
                 $markCls   = markClass($c['call_mark'] ?? 'normal');
             ?>
             <tr class="call-row <?= $c['disposition']==='NO ANSWER'?'row-missed':'' ?>"
@@ -278,15 +300,16 @@ require_once 'includes/layout.php';
                     <?php endif; ?>
                 </td>
                 <td>
-                    <div class="fw-medium"><?= e($c['src'] ?: '—') ?></div>
-                    <?php if ($c['cnam']): ?><div class="text-muted small"><?= e($c['cnam']) ?></div><?php endif; ?>
+                    <div class="fw-medium"><?= phoneLink($c['src'] ?? '') ?></div>
+                    <?php if ($c['cnam']): ?><div class="text-muted small"><?= phoneLink($c['src'] ?? '', $c['cnam']) ?></div><?php endif; ?>
                 </td>
                 <td>
-                    <div class="fw-medium"><?= e($c['dst'] ?: '—') ?></div>
-                    <?php if ($c['dst_cnam']): ?><div class="text-muted small"><?= e($c['dst_cnam']) ?></div><?php endif; ?>
+                    <div class="fw-medium"><?= phoneLink($c['dst'] ?? '') ?></div>
+                    <?php if ($c['dst_cnam']): ?><div class="text-muted small"><?= phoneLink($c['dst'] ?? '', $c['dst_cnam']) ?></div><?php endif; ?>
                 </td>
                 <td class="text-center">
-                    <i class="fas <?= $dirIcon ?> text-<?= $dispClass ?>" title="<?= e($c['call_direction']) ?>"></i>
+                    <i class="fas <?= $dirIcon ?>" title="<?= e($c['call_direction']) ?>"></i>
+                    <span class="small text-<?= $dirColor ?>"><?= directionLabel($c['call_direction'] ?? '') ?></span>
                 </td>
                 <td>
                     <span class="badge bg-<?= $dispClass ?>">
@@ -300,15 +323,30 @@ require_once 'includes/layout.php';
                 </td>
                 <td>
                     <?php if ($c['contact_id']): ?>
-                    <a href="<?= APP_URL ?>/contact_detail.php?id=<?= $c['contact_id'] ?>" class="contact-link">
-                        <?php if ($c['is_favorite']): ?><i class="fas fa-star text-warning me-1"></i><?php endif; ?>
-                        <?= e($c['contact_name'] ?: $c['src']) ?>
-                    </a>
+                    <div class="d-flex align-items-center gap-1">
+                        <a href="<?= APP_URL ?>/contact_detail.php?id=<?= $c['contact_id'] ?>" class="contact-link">
+                            <?php if ($c['is_favorite']): ?><i class="fas fa-star text-warning me-1"></i><?php endif; ?>
+                            <?= e($c['contact_name'] ?: $c['src']) ?>
+                        </a>
+                        <?php if ($c['contact_phone']): ?>
+                        <button class="btn-sm-icon text-success" title="Outbound"
+                                onclick="quickCall('<?= e($c['contact_phone']) ?>', 'outbound')">
+                            <i class="fas fa-paper-plane"></i>
+                        </button>
+                        <button class="btn-sm-icon text-info" title="Inbound"
+                                onclick="quickCall('<?= e($c['contact_phone']) ?>', 'inbound')">
+                            <i class="fas fa-phone-flip"></i>
+                        </button>
+                        <?php endif; ?>
+                    </div>
                     <?php if ($c['company']): ?><div class="text-muted small"><?= e($c['company']) ?></div><?php endif; ?>
                     <?php else: ?>
-                    <button class="btn-link text-muted small" onclick="quickCreateContact('<?= e($c['src']) ?>',<?= $c['id'] ?>)">
-                        <i class="fas fa-user-plus"></i> Add contact
-                    </button>
+                    <div class="d-flex align-items-center gap-2">
+                        <span class="font-monospace small"><?= phoneLink($c['src'] ?? '') ?></span>
+                        <button class="btn-link text-muted small" onclick="quickCreateContact('<?= e($c['src']) ?>',<?= $c['id'] ?>)">
+                            <i class="fas fa-user-plus"></i> Link
+                        </button>
+                    </div>
                     <?php endif; ?>
                 </td>
                 <td><?= $c['agent_name'] ? e($c['agent_name']) : '<span class="text-muted">—</span>' ?></td>
@@ -329,16 +367,31 @@ require_once 'includes/layout.php';
                 </td>
                 <td class="text-center">
                     <?php if ($c['recordingfile']): ?>
-                    <button class="btn-sm-icon text-success" title="Play recording"
-                            onclick="playRecording(<?= $c['id'] ?>, '<?= e($c['recordingfile']) ?>')">
-                        <i class="fas fa-play-circle"></i>
+                    <?php
+                        $hasLocal = !empty($c['local_recording']) && file_exists($c['local_recording']);
+                        $btnCls = $hasLocal ? 'text-success' : 'text-warning';
+                        $btnIcon = $hasLocal ? 'fa-download' : 'fa-cloud-download-alt';
+                    ?>
+                    <button class="btn-sm-icon <?= $btnCls ?>" title="Download recording"
+                            onclick="downloadRecording(<?= $c['id'] ?>)">
+                        <i class="fas <?= $btnIcon ?>"></i>
                     </button>
-                    <a href="<?= APP_URL ?>/api/audio.php?id=<?= $c['id'] ?>&dl=1" class="btn-sm-icon" title="Download">
-                        <i class="fas fa-download"></i>
-                    </a>
                     <?php else: ?>
                     <span class="text-muted small">—</span>
                     <?php endif; ?>
+                </td>
+                <td class="text-nowrap" style="min-width:80px">
+                    <?php
+                    $tagParts = $c['call_tags_data'] ? explode(',', $c['call_tags_data']) : [];
+                    foreach ($tagParts as $tp):
+                        [$tagName, $tagColor] = array_pad(explode('|', $tp), 2, '#6366f1');
+                    ?>
+                    <span class="badge badge-xs" style="background:<?= e($tagColor) ?>20;color:<?= e($tagColor) ?>;border:1px solid <?= e($tagColor) ?>40;margin-bottom:2px;display:inline-block;max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.6rem" title="<?= e($tagName) ?>"><?= e($tagName) ?></span>
+                    <?php endforeach; ?>
+                    <button class="btn-sm-icon text-muted" title="Manage tags" onclick="openCallTagModal(<?= $c['id'] ?>, this)"
+                            style="font-size:.7rem">
+                        <i class="fas fa-tag"></i>
+                    </button>
                 </td>
                 <td class="text-nowrap">
                     <a href="<?= APP_URL ?>/call_detail.php?id=<?= $c['id'] ?>" class="btn-sm-icon" title="View detail">
@@ -356,15 +409,6 @@ require_once 'includes/layout.php';
             </tbody>
         </table>
     </div>
-</div>
-
-<!-- ── Audio player bar ───────────────────────────────────────────────────────── -->
-<div class="audio-bar" id="audioBar" style="display:none">
-    <div class="audio-info" id="audioInfo">Loading…</div>
-    <audio id="audioPlayer" controls style="flex:1;min-width:0">
-        Your browser does not support audio.
-    </audio>
-    <button class="btn-icon" onclick="closeAudio()"><i class="fas fa-times"></i></button>
 </div>
 
 <!-- ── Mark menu (floating) ──────────────────────────────────────────────────── -->
@@ -472,6 +516,34 @@ require_once 'includes/layout.php';
     </div>
 </div>
 
+<!-- ── Call Tag Modal ─────────────────────────────────────────────────────────── -->
+<div class="modal fade" id="callTagModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content cc-modal">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="fas fa-tag me-2"></i>Manage Call Tags</h5>
+                <button class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="tagModalCallId">
+                <div class="mb-3">
+                    <label class="form-label small text-muted">Tags on this call</label>
+                    <div id="tagModalActive" class="d-flex flex-wrap gap-2" style="min-height:32px">
+                        <span class="text-muted small">Loading…</span>
+                    </div>
+                </div>
+                <div>
+                    <label class="form-label small text-muted">Add a tag</label>
+                    <div id="tagModalAllList" class="d-flex flex-wrap gap-2"></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" data-bs-dismiss="modal">Done</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script>
 const APP_URL = '<?= APP_URL ?>';
 let currentMarkCallId = null;
@@ -569,22 +641,6 @@ function quickCreateContact(phone, callId) {
     });
 }
 
-// Audio playback
-function playRecording(id, file) {
-    const bar    = document.getElementById('audioBar');
-    const player = document.getElementById('audioPlayer');
-    const info   = document.getElementById('audioInfo');
-    info.textContent = file;
-    player.src  = APP_URL + '/api/audio.php?id=' + id;
-    bar.style.display = 'flex';
-    player.play().catch(()=>{});
-}
-function closeAudio() {
-    const player = document.getElementById('audioPlayer');
-    player.pause();
-    document.getElementById('audioBar').style.display = 'none';
-}
-
 // Export / copy
 function exportCalls() {
     const qs = new URLSearchParams(window.location.search);
@@ -600,6 +656,119 @@ function copyTable() {
 // Select all
 function toggleSelectAll(cb) {
     document.querySelectorAll('.row-check').forEach(c => c.checked = cb.checked);
+}
+
+// Call tag modal
+let tagModalCallId = null;
+let tagModalBadgeEls = [];
+
+function openCallTagModal(callId, btn) {
+    tagModalCallId = callId;
+    document.getElementById('tagModalCallId').value = callId;
+
+    fetch(APP_URL + '/api/tags.php?action=list_for_call&call_id=' + callId)
+        .then(r=>r.json()).then(d=>{
+            const active = document.getElementById('tagModalActive');
+            active.innerHTML = '';
+            if (d.tags && d.tags.length) {
+                d.tags.forEach(t => {
+                    const span = document.createElement('span');
+                    span.className = 'tag-chip';
+                    span.id = 'tmtag-' + t.id;
+                    span.style.cssText = 'background:' + t.color + '20;color:' + t.color + ';border:1px solid ' + t.color + '40';
+                    span.innerHTML = t.name + ' <button class="btn-sm-icon ms-1" style="color:' + t.color + ';padding:0;line-height:1" onclick="removeCallTag(' + t.id + ')"><i class="fas fa-times"></i></button>';
+                    active.appendChild(span);
+                });
+            } else {
+                active.innerHTML = '<span class="text-muted small">No tags on this call</span>';
+            }
+        });
+
+    fetch(APP_URL + '/api/tags.php?action=list')
+        .then(r=>r.json()).then(d=>{
+            const list = document.getElementById('tagModalAllList');
+            list.innerHTML = '';
+            if (d.tags && d.tags.length) {
+                d.tags.forEach(t => {
+                    const btn2 = document.createElement('button');
+                    btn2.className = 'btn btn-sm';
+                    btn2.style.cssText = 'background:' + t.color + '20;color:' + t.color + ';border:1px solid ' + t.color + '40';
+                    btn2.innerHTML = '<i class="fas fa-plus me-1"></i>' + t.name;
+                    btn2.onclick = () => addCallTag(t.id, t.name, t.color);
+                    list.appendChild(btn2);
+                });
+            } else {
+                list.innerHTML = '<div class="text-muted small">No tags defined. <a href="tags.php">Create tags</a></div>';
+            }
+        });
+
+    new bootstrap.Modal(document.getElementById('callTagModal')).show();
+}
+
+function addCallTag(tagId, tagName, tagColor) {
+    if (!tagModalCallId) return;
+    fetch(APP_URL + '/api/tags.php', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({action:'add', call_id:tagModalCallId, tag_id:tagId})
+    }).then(r=>r.json()).then(d=>{
+        if (d.ok) {
+            showToast('Tag added: ' + tagName, 'success');
+            const active = document.getElementById('tagModalActive');
+            const empty = active.querySelector('.text-muted');
+            if (empty) empty.remove();
+            const span = document.createElement('span');
+            span.className = 'tag-chip';
+            span.id = 'tmtag-' + tagId;
+            span.style.cssText = 'background:' + tagColor + '20;color:' + tagColor + ';border:1px solid ' + tagColor + '40';
+            span.innerHTML = tagName + ' <button class="btn-sm-icon ms-1" style="color:' + tagColor + ';padding:0;line-height:1" onclick="removeCallTag(' + tagId + ')"><i class="fas fa-times"></i></button>';
+            active.appendChild(span);
+        }
+    }).catch(() => showToast('Network error', 'danger'));
+}
+
+// Fetch Now
+function fetchNow(btn) {
+    const modal = new bootstrap.Modal(document.getElementById('fetchModal'));
+    modal.show();
+    btn.disabled = true;
+    document.getElementById('fetchNowIcon').className = 'fas fa-spin fa-spinner me-1';
+    const dateFrom = new Date(); dateFrom.setDate(dateFrom.getDate() - 7);
+    const fmt = d => d.toISOString().slice(0,10);
+    fetch(APP_URL + '/api/fetch.php', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({action:'run', date_from: fmt(dateFrom), date_to: fmt(new Date())})
+    }).then(r => r.json()).then(d => {
+        modal.hide();
+        btn.disabled = false;
+        document.getElementById('fetchNowIcon').className = 'fas fa-sync me-1';
+        if (d.ok || d.new_records !== undefined) {
+            showToast(`Fetched ${d.total_fetched ?? 0} records — ${d.new_records ?? 0} new`, 'success');
+            setTimeout(() => location.reload(), 1200);
+        } else {
+            showToast(d.error || 'Fetch failed', 'danger');
+        }
+    }).catch(() => {
+        modal.hide();
+        btn.disabled = false;
+        document.getElementById('fetchNowIcon').className = 'fas fa-sync me-1';
+        showToast('Network error', 'danger');
+    });
+}
+
+function removeCallTag(tagId) {
+    if (!tagModalCallId) return;
+    fetch(APP_URL + '/api/tags.php', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({action:'remove', call_id:tagModalCallId, tag_id:tagId})
+    }).then(r=>r.json()).then(d=>{
+        if (d.ok) {
+            showToast('Tag removed', 'info');
+            const el = document.getElementById('tmtag-' + tagId);
+            if (el) el.remove();
+            const active = document.getElementById('tagModalActive');
+            if (!active.children.length) active.innerHTML = '<span class="text-muted small">No tags on this call</span>';
+        }
+    }).catch(() => showToast('Network error', 'danger'));
 }
 </script>
 

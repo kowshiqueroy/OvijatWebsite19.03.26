@@ -30,6 +30,12 @@ $notifs = $conn->query(
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
     <link href="<?= APP_URL ?>/assets/css/style.css" rel="stylesheet">
+<script>
+window.AGENT_ID    = <?= json_encode($agent['id'] ?? 0) ?>;
+window.AGENT_NAME  = <?= json_encode($agent['full_name'] ?? '') ?>;
+window.AGENT_OFFICIAL_NUM = <?= json_encode(agentOfficialNumber($conn, $agent['id'] ?? 0)) ?>;
+window.APP_URL     = <?= json_encode(APP_URL) ?>;
+</script>
 </head>
 <body>
 
@@ -72,19 +78,26 @@ $notifs = $conn->query(
 
     <nav class="sidebar-nav">
         <?php
+        $isPrivileged = in_array(strtolower(trim($agent['dept'] ?? '')), ['it', 'management']);
         $nav = [
-            ['dashboard',     'fa-chart-pie',        'Dashboard',  'dashboard.php'],
-            ['calls',         'fa-phone-volume',     'Call Logs',  'calls.php'],
-            ['marks',         'fa-tag',              'Work Queue', 'marks.php'],
-            ['contacts',      'fa-address-book',     'Contacts',   'contacts.php'],
-            ['todos',         'fa-list-check',       'Tasks',      'todos.php'],
-            ['fetch',         'fa-cloud-arrow-down', 'Fetch PBX',  'fetch.php'],
-            ['reports',       'fa-chart-bar',        'Reports',    'reports.php'],
-            ['faqs',          'fa-circle-question',  'Knowledge',  'faqs.php'],
-            ['agents',        'fa-users',            'Agents',     'agents.php'],
-            ['settings',      'fa-gear',             'Settings',   'settings.php'],
+            ['dashboard',     'fa-chart-pie',        'Dashboard',       'dashboard.php',      false],
+            ['calls',         'fa-phone-volume',     'Call Logs',       'calls.php',          false],
+            ['marks',         'fa-tag',              'Work Queue',      'marks.php',          false],
+            ['contacts',      'fa-address-book',     'Contacts',        'contacts.php',       false],
+            ['todos',         'fa-list-check',       'Tasks',           'todos.php',          false],
+            ['fetch',         'fa-cloud-arrow-down', 'Fetch PBX',       'fetch.php',          true],
+            ['recordings',    'fa-headphones',       'Recordings',      'recordings.php',     false],
+            ['fixdir',        'fa-arrows-left-right','Fix Directions',  'fix-directions.php', true],
+            ['reports',       'fa-chart-bar',        'Reports',         'reports.php',        false],
+            ['faqs',          'fa-circle-question',  'Knowledge',       'faqs.php',           false],
+            ['tags',          'fa-tags',             'Tags',            'tags.php',           false],
+            ['types',         'fa-layer-group',      'Types',           'types.php',          false],
+            ['groups',        'fa-object-group',     'Groups',          'groups.php',         false],
+            ['agents',        'fa-users',            'Agents',          'agents.php',         false],
+            ['settings',      'fa-gear',             'Settings',        'settings.php',       true],
         ];
-        foreach ($nav as [$key, $icon, $label, $href]):
+        foreach ($nav as [$key, $icon, $label, $href, $privileged]):
+            if ($privileged && !$isPrivileged) continue;
             $active = ($activePage ?? '') === $key ? 'active' : '';
             $badge  = '';
             if ($key === 'todos' && $taskCount)   $badge = "<span class='nav-badge'>$taskCount</span>";
@@ -122,9 +135,13 @@ $notifs = $conn->query(
             <!-- Global search -->
             <div class="global-search" id="globalSearchWrap">
                 <i class="fas fa-search"></i>
-                <input type="text" id="globalSearch" placeholder="Search calls, contacts, notes…" autocomplete="off">
+                <input type="text" id="globalSearch" placeholder="Search or enter number + Enter…" autocomplete="off">
                 <div class="search-results" id="searchResults"></div>
             </div>
+            <button class="btn btn-sm btn-outline-primary d-none d-xl-flex align-items-center gap-1" data-bs-toggle="modal" data-bs-target="#quickCallModal" title="Log a manual call">
+                <i class="fas fa-phone"></i>
+                <span class="d-none d-xxl-inline">Log Call</span>
+            </button>
 
             <!-- Task count pill -->
             <?php if ($taskCount): ?>
@@ -142,9 +159,12 @@ $notifs = $conn->query(
                 <div class="notif-dropdown" id="notifDropdown">
                     <div class="notif-head">
                         Notifications
-                        <?php if ($notifCount): ?>
-                        <button class="btn-link small" onclick="markAllRead()">Mark all read</button>
-                        <?php endif; ?>
+                        <div class="d-flex gap-2">
+                            <?php if ($notifCount): ?>
+                            <button class="btn-link small" onclick="markAllRead()">Mark all read</button>
+                            <?php endif; ?>
+                            <a href="<?= APP_URL ?>/notifications.php" class="btn-link small">View all</a>
+                        </div>
                     </div>
                     <?php if ($notifs && $notifs->num_rows): ?>
                         <?php while ($n = $notifs->fetch_assoc()): ?>

@@ -28,8 +28,9 @@ $pageTitle   = 'Call: ' . ($call['contact_name'] ?: $call['src'] ?: '#' . $id);
 $pageSubtitle = formatDt($call['calldate']);
 $activePage  = 'calls';
 
-// ── Fetch threaded notes (recursive PHP build) ────────────────────────────────
-function fetchNotes(mysqli $conn, int $callId, ?int $parentId = null): array {
+// ── Fetch threaded notes (recursive PHP build, depth-limited) ─────────────────
+function fetchNotes(mysqli $conn, int $callId, ?int $parentId = null, int $depth = 0): array {
+    if ($depth > 4) return [];
     $pid = $parentId === null ? 'IS NULL' : "= $parentId";
     $r = $conn->query(
         "SELECT cn.*, a.full_name, a.username, a.department
@@ -39,7 +40,7 @@ function fetchNotes(mysqli $conn, int $callId, ?int $parentId = null): array {
     );
     $nodes = [];
     while ($n = $r->fetch_assoc()) {
-        $n['replies'] = fetchNotes($conn, $callId, $n['id']);
+        $n['replies'] = fetchNotes($conn, $callId, $n['id'], $depth + 1);
         $nodes[] = $n;
     }
     return $nodes;
@@ -62,6 +63,16 @@ $history = $conn->query(
     "SELECT eh.*, a.full_name FROM edit_history eh JOIN agents a ON a.id = eh.edited_by
      WHERE eh.entity_type='call_logs' AND eh.entity_id=$id ORDER BY eh.edited_at DESC LIMIT 30"
 );
+
+// ── Tags for this call ─────────────────────────────────────────────────────────
+$callTags = [];
+$tr = $conn->query(
+    "SELECT t.* FROM tags t JOIN call_tags ct ON ct.tag_id=t.id WHERE ct.call_id=$id ORDER BY t.name"
+);
+while ($t = $tr->fetch_assoc()) $callTags[] = $t;
+
+// All available tags for the selector
+$allTags = $conn->query("SELECT * FROM tags ORDER BY name");
 
 // ── Contact call history (other calls from same contact) ──────────────────────
 $contactHistory = null;
@@ -170,12 +181,15 @@ function renderNote(array $n, int $depth = 0): void {
     </a>
     <div class="d-flex gap-2 flex-wrap">
         <?php if ($call['recordingfile']): ?>
-        <button class="btn btn-sm btn-success" onclick="playRecording(<?= $id ?>, <?= j($call['recordingfile'] ?? '') ?>)">
-            <i class="fas fa-play me-1"></i>Play Recording
+        <?php
+            $hasLocal = !empty($call['local_recording']) && file_exists($call['local_recording']);
+            $btnCls = $hasLocal ? 'btn-success' : 'btn-warning';
+            $btnIcon = $hasLocal ? 'fa-download' : 'fa-cloud-download-alt';
+            $btnLabel = $hasLocal ? 'Download Recording' : 'Download from PBX';
+        ?>
+        <button class="btn btn-sm <?= $btnCls ?>" onclick="downloadRecording(<?= $id ?>)">
+            <i class="fas <?= $btnIcon ?> me-1"></i><?= $btnLabel ?>
         </button>
-        <a href="<?= APP_URL ?>/api/audio.php?id=<?= $id ?>&dl=1" class="btn btn-sm btn-outline-success">
-            <i class="fas fa-download me-1"></i>Download
-        </a>
         <?php endif; ?>
         <button class="btn btn-sm btn-primary" onclick="focusNote()">
             <i class="fas fa-comment-plus me-1"></i>Add Note
@@ -219,20 +233,20 @@ function renderNote(array $n, int $depth = 0): void {
                 <div class="detail-item">
                     <div class="detail-label">From (src)</div>
                     <div class="detail-value fw-bold">
-                        <?= e($call['src'] ?: '—') ?>
-                        <?php if ($call['cnam']): ?><span class="text-muted small ms-1">(<?= e($call['cnam']) ?>)</span><?php endif; ?>
+                        <?= phoneLink($call['src'] ?? '') ?>
+                        <?php if ($call['cnam']): ?><span class="text-muted small ms-1">(<?= phoneLink($call['src'] ?? '', $call['cnam']) ?>)</span><?php endif; ?>
                     </div>
                 </div>
                 <div class="detail-item">
                     <div class="detail-label">To (dst)</div>
                     <div class="detail-value fw-bold">
-                        <?= e($call['dst'] ?: '—') ?>
-                        <?php if ($call['dst_cnam']): ?><span class="text-muted small ms-1">(<?= e($call['dst_cnam']) ?>)</span><?php endif; ?>
+                        <?= phoneLink($call['dst'] ?? '') ?>
+                        <?php if ($call['dst_cnam']): ?><span class="text-muted small ms-1">(<?= phoneLink($call['dst'] ?? '', $call['dst_cnam']) ?>)</span><?php endif; ?>
                     </div>
                 </div>
                 <div class="detail-item">
                     <div class="detail-label">Caller ID</div>
-                    <div class="detail-value"><?= e($call['clid'] ?: '—') ?></div>
+                    <div class="detail-value"><?= phoneLink($call['clid'] ?? '') ?></div>
                 </div>
                 <div class="detail-item">
                     <div class="detail-label">Direction</div>
@@ -317,6 +331,38 @@ function renderNote(array $n, int $depth = 0): void {
                     </select>
                     <button class="btn btn-sm btn-outline-primary" type="submit">Assign</button>
                 </form>
+            </div>
+
+            <!-- Tags row -->
+            <div class="detail-controls mt-3 pt-3 border-top" id="callTagsRow">
+                <div class="d-flex align-items-center gap-2 flex-wrap">
+                    <label class="small text-muted"><i class="fas fa-tag me-1"></i>Tags:</label>
+                    <div id="callTagsDisplay">
+                        <?php if ($callTags): foreach ($callTags as $t): ?>
+                        <span class="tag-chip" style="background:<?= e($t['color']) ?>20;color:<?= e($t['color']) ?>;border:1px solid <?= e($t['color']) ?>40">
+                            <?= e($t['name']) ?>
+                            <button class="btn-sm-icon ms-1" style="color:<?= e($t['color']) ?>;padding:0;line-height:1" onclick="removeCallTag(<?= $id ?>,<?= $t['id'] ?>)" title="Remove tag"><i class="fas fa-times"></i></button>
+                        </span>
+                        <?php endforeach; else: ?>
+                        <span class="text-muted small">No tags</span>
+                        <?php endif; ?>
+                    </div>
+                    <div class="dropdown">
+                        <button class="btn btn-xs btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" type="button">
+                            <i class="fas fa-plus"></i> Add Tag
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end" style="max-height:240px;overflow-y:auto">
+                            <?php while ($t = $allTags->fetch_assoc()): ?>
+                            <li>
+                                <a class="dropdown-item" href="#" onclick="addCallTag(<?= $id ?>,<?= $t['id'] ?>,'<?= e(addslashes($t['name'])) ?>','<?= e($t['color']) ?>');return false">
+                                    <span class="tag-swatch" style="background:<?= e($t['color']) ?>;display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px"></span>
+                                    <?= e($t['name']) ?>
+                                </a>
+                            </li>
+                            <?php endwhile; ?>
+                        </ul>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -441,14 +487,14 @@ function renderNote(array $n, int $depth = 0): void {
                         <?= e($call['contact_name'] ?: $call['src']) ?>
                     </div>
                     <?php if ($call['company']): ?><div class="text-muted small"><?= e($call['company']) ?></div><?php endif; ?>
-                    <div class="text-muted small"><?= e($call['contact_phone'] ?: $call['src']) ?></div>
+                    <div class="text-muted small"><?= phoneLink($call['contact_phone'] ?: $call['src'] ?? '') ?></div>
                     <span class="badge bg-secondary small"><?= ucfirst($call['contact_scope'] ?: 'unknown') ?></span>
                 </div>
             </div>
             <?php else: ?>
             <div class="text-center py-3">
                 <div class="text-muted mb-2"><i class="fas fa-user-slash fa-2x"></i></div>
-                <div class="text-muted small mb-2">No contact linked for <?= e($call['src']) ?></div>
+                <div class="text-muted small mb-2">No contact linked for <?= phoneLink($call['src'] ?? '') ?></div>
                 <button class="btn btn-sm btn-primary" onclick="quickCreateContact('<?= e($call['src']) ?>',<?= $id ?>)">
                     <i class="fas fa-user-plus me-1"></i>Create Contact
                 </button>
@@ -549,13 +595,6 @@ function renderNote(array $n, int $depth = 0): void {
 
 </div>
 </div><!-- /.row -->
-
-<!-- ── Audio bar ──────────────────────────────────────────────────────────────── -->
-<div class="audio-bar" id="audioBar" style="display:none">
-    <div class="audio-info" id="audioInfo">Recording</div>
-    <audio id="audioPlayer" controls style="flex:1;min-width:0"></audio>
-    <button class="btn-icon" onclick="closeAudio()"><i class="fas fa-times"></i></button>
-</div>
 
 <!-- ── Task modal ────────────────────────────────────────────────────────────── -->
 <div class="modal fade" id="taskModal" tabindex="-1">
@@ -726,19 +765,33 @@ function quickCreateContact(phone, callId) {
     });
 }
 
-// Audio
-function playRecording(id, file) {
-    const bar    = document.getElementById('audioBar');
-    const player = document.getElementById('audioPlayer');
-    document.getElementById('audioInfo').textContent = 'Call #' + id;
-    player.src = APP_URL + '/api/audio.php?id=' + id;
-    player.load();
-    bar.style.display = 'flex';
-    player.play().catch(() => {});
+// Tags
+function addCallTag(callId, tagId, tagName, tagColor) {
+    fetch(APP_URL + '/api/tags.php', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({action:'add', call_id:callId, tag_id:tagId})
+    }).then(r=>r.json()).then(d=>{
+        if (d.ok) {
+            showToast('Tag added: ' + tagName, 'success');
+            const container = document.getElementById('callTagsDisplay');
+            const emptyMsg = container.querySelector('.text-muted');
+            if (emptyMsg) emptyMsg.remove();
+            const span = document.createElement('span');
+            span.className = 'tag-chip';
+            span.style.cssText = 'background:' + tagColor + '20;color:' + tagColor + ';border:1px solid ' + tagColor + '40';
+            span.innerHTML = tagName + ' <button class="btn-sm-icon ms-1" style="color:' + tagColor + ';padding:0;line-height:1" onclick="removeCallTag(' + callId + ',' + tagId + ')" title="Remove tag"><i class="fas fa-times"></i></button>';
+            container.appendChild(span);
+        }
+    }).catch(() => showToast('Network error', 'danger'));
 }
-function closeAudio() {
-    document.getElementById('audioPlayer').pause();
-    document.getElementById('audioBar').style.display = 'none';
+
+function removeCallTag(callId, tagId) {
+    fetch(APP_URL + '/api/tags.php', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({action:'remove', call_id:callId, tag_id:tagId})
+    }).then(r=>r.json()).then(d=>{
+        if (d.ok) showToast('Tag removed', 'info');
+    }).catch(() => showToast('Network error', 'danger'));
 }
 
 // Copy full call info for messaging

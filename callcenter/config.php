@@ -35,6 +35,12 @@ function isLoggedIn(): bool {
 
 function requireLogin(): void {
     if (!isLoggedIn()) {
+        $isApi = str_starts_with($_SERVER['REQUEST_URI'] ?? '', APP_URL . '/api/');
+        if ($isApi) {
+            http_response_code(401);
+            header('Content-Type: application/json');
+            exit(json_encode(['ok'=>false, 'error'=>'Unauthorized']));
+        }
         header('Location: ' . APP_URL . '/login.php?next=' . urlencode($_SERVER['REQUEST_URI']));
         exit;
     }
@@ -51,6 +57,15 @@ function currentAgent(): array {
 
 function agentId(): int {
     return (int)($_SESSION['agent_id'] ?? 0);
+}
+
+function agentOfficialNumber(mysqli $conn, int $aid): string {
+    $r = $conn->query(
+        "SELECT number FROM agent_numbers
+         WHERE agent_id=$aid AND number_type IN ('mobile','official')
+         ORDER BY FIELD(number_type,'mobile','official') LIMIT 1"
+    );
+    return $r && $r->num_rows ? ($r->fetch_assoc()['number'] ?? '') : '';
 }
 
 // ── Audit / Activity ──────────────────────────────────────────────────────────
@@ -146,6 +161,38 @@ function normalizePhone(string $phone): string {
     return substr($p, 0, 30);
 }
 
+function phoneLink(string $phone, ?string $display = null): string {
+    global $conn;
+    static $cache = [];
+    if (!$phone) return '';
+    $digits = preg_replace('/[^0-9]/', '', $phone);
+    if (!$digits) return e($display ?? $phone);
+    $key = substr($digits, -12);
+    if (!isset($cache[$key])) {
+        $e = $conn->real_escape_string($key);
+        $r = $conn->query("SELECT id FROM contacts WHERE phone LIKE '%$e%' LIMIT 1");
+        $cache[$key] = $r && $r->num_rows ? (int)$r->fetch_assoc()['id'] : 0;
+    }
+    $text = e($display ?? $phone);
+    if ($cache[$key]) {
+        return '<a href="' . APP_URL . '/contact_detail.php?id=' . $cache[$key] . '" class="phone-link font-monospace">' . $text . '</a>';
+    }
+    return $text;
+}
+
+function contactLabel(?string $name, ?string $phone): string {
+    if ($name) return e($name);
+    return e($phone ?? '');
+}
+
+function contactLabelLink(?string $name, ?string $phone): string {
+    if ($phone) {
+        $link = phoneLink($phone, $name ?: $phone);
+        if (strpos($link, 'href=') !== false) return $link;
+    }
+    return contactLabel($name, $phone);
+}
+
 function formatDuration(int $seconds): string {
     if ($seconds <= 0) return '0s';
     $h = intdiv($seconds, 3600);
@@ -175,7 +222,7 @@ function dispositionClass(string $d): string {
         'ANSWERED'  => 'success',
         'NO ANSWER' => 'warning',
         'BUSY'      => 'info',
-        'FAILED',
+        'FAILED'    => 'danger',
         'CONGESTION'=> 'danger',
         default     => 'secondary',
     };
@@ -194,10 +241,31 @@ function dispositionIcon(string $d): string {
 
 function directionIcon(string $d): string {
     return match($d) {
-        'inbound'  => 'fa-phone-arrow-down-left',
-        'outbound' => 'fa-phone-arrow-up-right',
-        'internal' => 'fa-arrows-left-right',
-        default    => 'fa-phone',
+        'inbound'  => 'fa-arrow-right-to-bracket text-info',
+        'outbound' => 'fa-paper-plane text-primary',
+        'internal' => 'fa-arrows-spin text-secondary',
+        'conflict' => 'fa-triangle-exclamation text-warning',
+        default    => 'fa-question text-muted',
+    };
+}
+
+function directionColor(string $d): string {
+    return match($d) {
+        'inbound'  => 'info',
+        'outbound' => 'primary',
+        'internal' => 'secondary',
+        'conflict' => 'warning',
+        default    => 'muted',
+    };
+}
+
+function directionLabel(string $d): string {
+    return match($d) {
+        'inbound'  => 'IN',
+        'outbound' => 'OUT',
+        'internal' => 'INT',
+        'conflict' => 'CONFLICT',
+        default    => '?',
     };
 }
 

@@ -98,18 +98,32 @@ switch ($action) {
     // ── Manual call entry ─────────────────────────────────────────────────────
     case 'manual': {
         $src         = $conn->real_escape_string(normalizePhone($in['src'] ?? ''));
-        $dst         = $conn->real_escape_string($in['dst'] ?? '');
+        $dst         = $conn->real_escape_string(normalizePhone($in['dst'] ?? ''));
         $direction   = in_array($in['call_direction']??'',['inbound','outbound','internal']) ? $in['call_direction'] : 'outbound';
         $disposition = in_array($in['disposition']??'',['ANSWERED','NO ANSWER','BUSY','FAILED']) ? $in['disposition'] : 'ANSWERED';
         $duration    = (int)($in['duration'] ?? 0);
         $calldate    = $in['calldate'] ? $conn->real_escape_string($in['calldate']) : date('Y-m-d H:i:s');
         $mark        = $in['call_mark'] ?? 'normal';
         $notes       = $conn->real_escape_string($in['manual_notes'] ?? '');
+        $autoCreate  = !empty($in['auto_create_contact']);
 
         if (!$src) jsonOut(false, ['error' => 'Source number required']);
 
-        // Find or create contact
-        $contactId = findOrCreateContact($src, '', $aid);
+        // Determine the "searched phone" — whichever party is NOT the logged-in agent's number
+        $agentNums = [];
+        $anr = $conn->query("SELECT number FROM agent_numbers WHERE agent_id=$aid");
+        while ($anr && $an = $anr->fetch_assoc()) $agentNums[] = $an['number'];
+        $isAgentSrc  = in_array($src, $agentNums);
+        $isAgentDst  = in_array($dst, $agentNums);
+
+        // The contact is the non-agent party
+        if (!$isAgentSrc) {
+            $contactId = findOrCreateContact($src, '', $aid);
+        } elseif (!$isAgentDst && $dst) {
+            $contactId = findOrCreateContact($dst, '', $aid);
+        } else {
+            $contactId = 0;
+        }
 
         $uid = 'MAN-' . $aid . '-' . time() . '-' . rand(100,999);
         $conn->query(
@@ -123,7 +137,7 @@ switch ($action) {
 
         logActivity('manual_call_entry', 'call_logs', $callId,
                     "Manual call: $src → $dst | $disposition | $duration s");
-        jsonOut(true, ['id' => $callId]);
+        jsonOut(true, ['id' => $callId, 'contact_id' => $contactId]);
     }
 
     // ── Link a contact to a call ──────────────────────────────────────────────

@@ -8,6 +8,16 @@ $aid        = agentId();
 
 // ── Handle save ───────────────────────────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (($_POST['action'] ?? '') === 'delete') {
+        $delId = (int)($_POST['id'] ?? 0);
+        if ($delId) {
+            $conn->query("DELETE FROM faqs WHERE id=$delId");
+            logActivity('faq_deleted', 'faqs', $delId, "Deleted FAQ #$delId");
+        }
+        header('Location: faqs.php?deleted=1');
+        exit;
+    }
+
     $editId   = (int)($_POST['faq_id'] ?? 0);
     $question = $conn->real_escape_string(trim($_POST['question'] ?? ''));
     $answer   = $conn->real_escape_string(trim($_POST['answer'] ?? ''));
@@ -89,6 +99,13 @@ require_once 'includes/layout.php';
                             <button class="btn btn-sm btn-outline-primary" onclick="editFaq(<?= j($f) ?>)">
                                 <i class="fas fa-pen me-1"></i>Edit
                             </button>
+                            <form method="POST" class="d-inline" onsubmit="return confirm('Delete this FAQ?')">
+                                <input type="hidden" name="action" value="delete">
+                                <input type="hidden" name="id" value="<?= $f['id'] ?>">
+                                <button type="submit" class="btn btn-sm btn-outline-danger">
+                                    <i class="fas fa-trash me-1"></i>Delete
+                                </button>
+                            </form>
                         </div>
                     </div>
                 </div>

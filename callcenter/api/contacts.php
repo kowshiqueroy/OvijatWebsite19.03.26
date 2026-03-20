@@ -153,6 +153,20 @@ switch ($action) {
         jsonOut(true);
     }
 
+    // ── Delete contact ───────────────────────────────────────────────────────
+    case 'delete': {
+        $id = (int)($in['id'] ?? 0);
+        if (!$id) jsonOut(false, ['error' => 'Missing id']);
+        $old = $conn->query("SELECT phone FROM contacts WHERE id=$id LIMIT 1")->fetch_assoc();
+        if (!$old) jsonOut(false, ['error' => 'Contact not found']);
+        $conn->query("UPDATE call_logs SET contact_id=NULL WHERE contact_id=$id");
+        $conn->query("DELETE FROM contact_notes WHERE contact_id=$id");
+        $conn->query("DELETE FROM todos WHERE contact_id=$id");
+        $conn->query("DELETE FROM contacts WHERE id=$id");
+        logActivity('contact_deleted', 'contacts', $id, "Deleted contact: " . ($old['phone'] ?? ''));
+        jsonOut(true);
+    }
+
     // ── Toggle favorite ───────────────────────────────────────────────────────
     case 'favorite': {
         $id  = (int)($in['id'] ?? 0);
@@ -165,15 +179,16 @@ switch ($action) {
 
     // ── Lookup by phone (used during calls for autofill) ─────────────────────
     case 'lookup': {
-        $phone = normalizePhone($_GET['phone'] ?? '');
-        if (!$phone) jsonOut(false, ['error' => 'Phone required']);
-        $ep = $conn->real_escape_string($phone);
+        $raw = preg_replace('/[^0-9]/', '', $_GET['phone'] ?? '');
+        if (!$raw) jsonOut(false, ['error' => 'Phone required']);
+        $er = $conn->real_escape_string($raw);
         $r  = $conn->query(
             "SELECT c.*, ct.name AS type_name, cg.name AS group_name
              FROM contacts c
              LEFT JOIN contact_types  ct ON ct.id = c.type_id
              LEFT JOIN contact_groups cg ON cg.id = c.group_id
-             WHERE c.phone='$ep' LIMIT 1"
+             WHERE c.phone REGEXP '$er'
+             LIMIT 1"
         );
         if (!$r->num_rows) jsonOut(false, ['error' => 'Not found']);
         jsonOut(true, ['contact' => $r->fetch_assoc()]);

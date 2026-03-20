@@ -5,8 +5,10 @@ requireLogin();
 $pageTitle  = 'Settings';
 $activePage = 'settings';
 $aid        = agentId();
+$canEdit    = in_array(strtolower(trim($_SESSION['department'] ?? '')), ['it', 'management']);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_settings'])) {
+    if (!$canEdit) { header('Location: settings.php?error=unauthorized'); exit; }
     $keys = ['company_name','company_phone','timezone','calls_per_page','missed_alert_enabled','auto_create_contact','recording_proxy'];
     foreach ($keys as $k) {
         $v    = $conn->real_escape_string(trim($_POST[$k] ?? ''));
@@ -28,6 +30,14 @@ require_once 'includes/layout.php';
 
 <?php if (isset($_GET['saved'])): ?>
 <div class="alert alert-success py-2 mb-3"><i class="fas fa-check-circle me-2"></i>Settings saved.</div>
+<?php elseif (isset($_GET['error'])): ?>
+<div class="alert alert-danger py-2 mb-3"><i class="fas fa-lock me-2"></i>Only IT and Management can change settings.</div>
+<?php endif; ?>
+
+<?php if (!$canEdit): ?>
+<div class="alert mb-3" style="background:var(--card2);border:1px solid var(--border);color:var(--muted)">
+    <i class="fas fa-lock me-2"></i>View-only — only IT and Management can modify settings.
+</div>
 <?php endif; ?>
 
 <div class="row g-4">
@@ -40,15 +50,15 @@ require_once 'includes/layout.php';
                 <div class="row g-3">
                     <div class="col-sm-6">
                         <label class="form-label">Company Name</label>
-                        <input type="text" name="company_name" class="form-control" value="<?= e($s['company_name'] ?? '') ?>">
+                        <input type="text" name="company_name" class="form-control" value="<?= e($s['company_name'] ?? '') ?>" <?= $canEdit?'':'disabled' ?>>
                     </div>
                     <div class="col-sm-6">
                         <label class="form-label">Company Phone</label>
-                        <input type="text" name="company_phone" class="form-control" value="<?= e($s['company_phone'] ?? '') ?>">
+                        <input type="text" name="company_phone" class="form-control" value="<?= e($s['company_phone'] ?? '') ?>" <?= $canEdit?'':'disabled' ?>>
                     </div>
                     <div class="col-sm-6">
                         <label class="form-label">Timezone</label>
-                        <select name="timezone" class="form-select">
+                        <select name="timezone" class="form-select" <?= $canEdit?'':'disabled' ?>>
                             <?php foreach (['Asia/Dhaka','Asia/Kolkata','UTC','Asia/Dubai','Asia/Singapore'] as $tz): ?>
                             <option value="<?= $tz ?>" <?= ($s['timezone']??'')===$tz?'selected':'' ?>><?= $tz ?></option>
                             <?php endforeach; ?>
@@ -56,7 +66,7 @@ require_once 'includes/layout.php';
                     </div>
                     <div class="col-sm-6">
                         <label class="form-label">Calls per Page</label>
-                        <select name="calls_per_page" class="form-select">
+                        <select name="calls_per_page" class="form-select" <?= $canEdit?'':'disabled' ?>>
                             <?php foreach ([25,50,100,200] as $n): ?>
                             <option value="<?= $n ?>" <?= ($s['calls_per_page']??50)==$n?'selected':'' ?>><?= $n ?></option>
                             <?php endforeach; ?>
@@ -64,33 +74,35 @@ require_once 'includes/layout.php';
                     </div>
                     <div class="col-sm-4">
                         <label class="form-label">Missed Call Alert</label>
-                        <select name="missed_alert_enabled" class="form-select">
+                        <select name="missed_alert_enabled" class="form-select" <?= $canEdit?'':'disabled' ?>>
                             <option value="1" <?= ($s['missed_alert_enabled']??'1')==='1'?'selected':'' ?>>Enabled</option>
                             <option value="0" <?= ($s['missed_alert_enabled']??'1')==='0'?'selected':'' ?>>Disabled</option>
                         </select>
                     </div>
                     <div class="col-sm-4">
                         <label class="form-label">Auto-create Contacts</label>
-                        <select name="auto_create_contact" class="form-select">
+                        <select name="auto_create_contact" class="form-select" <?= $canEdit?'':'disabled' ?>>
                             <option value="1" <?= ($s['auto_create_contact']??'1')==='1'?'selected':'' ?>>Yes</option>
                             <option value="0" <?= ($s['auto_create_contact']??'1')==='0'?'selected':'' ?>>No</option>
                         </select>
                     </div>
                     <div class="col-sm-4">
                         <label class="form-label">Proxy Recordings</label>
-                        <select name="recording_proxy" class="form-select">
+                        <select name="recording_proxy" class="form-select" <?= $canEdit?'':'disabled' ?>>
                             <option value="1" <?= ($s['recording_proxy']??'1')==='1'?'selected':'' ?>>Yes (through app)</option>
                             <option value="0" <?= ($s['recording_proxy']??'1')==='0'?'selected':'' ?>>No (direct URL)</option>
                         </select>
                     </div>
                 </div>
             </div>
+            <?php if ($canEdit): ?>
             <div class="cc-card-foot">
                 <button type="submit" class="btn btn-primary">
                     <i class="fas fa-save me-1"></i>Save Settings
                     <span class="text-muted small ms-1">(by <?= e(currentAgent()['full_name']) ?>)</span>
                 </button>
             </div>
+            <?php endif; ?>
         </form>
     </div>
 </div>

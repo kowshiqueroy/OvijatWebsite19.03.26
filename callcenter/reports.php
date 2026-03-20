@@ -8,7 +8,6 @@ $aid        = agentId();
 
 $from = $_GET['from'] ?? date('Y-m-d', strtotime('-30 days'));
 $to   = $_GET['to']   ?? date('Y-m-d');
-$type = $_GET['type'] ?? 'calls';
 
 // ── Calls summary ─────────────────────────────────────────────────────────────
 $callSummary = $conn->query(
@@ -91,6 +90,11 @@ require_once 'includes/layout.php';
                 <button type="button" class="btn btn-outline-secondary btn-sm" onclick="window.print()">
                     <i class="fas fa-print me-1"></i>Print
                 </button>
+                <a href="<?= APP_URL ?>/custom_report.php?from=<?= urlencode($from) ?>&to=<?= urlencode($to) ?>"
+                   target="_blank"
+                   class="btn btn-sm" style="background:rgba(99,102,241,.15);border:1px solid rgba(99,102,241,.4);color:#a5b4fc">
+                    <i class="fas fa-file-lines me-1"></i>Custom Report
+                </a>
                 <button type="button" class="btn btn-outline-success btn-sm" onclick="exportCSV()">
                     <i class="fas fa-file-csv me-1"></i>Export Calls CSV
                 </button>
@@ -237,7 +241,7 @@ require_once 'includes/layout.php';
                 <tr>
                     <td class="text-muted"><?= $i++ ?></td>
                     <td><?= e($c['name'] ?: '—') ?></td>
-                    <td class="font-monospace small"><?= e($c['phone']) ?></td>
+                    <td class="font-monospace small"><?= phoneLink($c['phone'] ?? '') ?></td>
                     <td><?= $c['calls'] ?></td>
                     <td><?= $c['answered'] ?></td>
                     <td><?= formatDuration((int)$c['talk_sec']) ?></td>

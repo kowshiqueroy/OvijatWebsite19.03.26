@@ -77,7 +77,7 @@ require_once 'includes/layout.php';
 
 <style>
 .mark-stat { display:flex;align-items:center;gap:.5rem;padding:.5rem .75rem;border-radius:8px;cursor:pointer;border:2px solid transparent;transition:.15s;text-decoration:none;color:inherit }
-.mark-stat:hover,.mark-stat.active { border-color:var(--primary);background:rgba(99,102,241,.06) }
+.mark-stat:hover,.mark-stat.active { border-color:var(--accent);background:rgba(99,102,241,.06) }
 .mark-stat-count { font-size:1.4rem;font-weight:700;line-height:1 }
 .mark-stat-label { font-size:.72rem;color:var(--muted) }
 .mark-row-urgent   { border-left:3px solid #dc3545 }
@@ -181,10 +181,10 @@ require_once 'includes/layout.php';
                     </a>
                     <?php if ($c['contact_company']): ?><div class="text-muted small"><?= e($c['contact_company']) ?></div><?php endif; ?>
                     <?php else: ?>
-                    <span class="text-muted font-monospace"><?= e($c['src'] ?? '') ?></span>
+                    <span class="text-muted font-monospace"><?= phoneLink($c['src'] ?? '') ?></span>
                     <?php endif; ?>
                 </td>
-                <td class="font-monospace small"><?= e($c['src'] ?? '') ?> → <?= e($c['dst'] ?? '') ?></td>
+                <td class="font-monospace small"><?= phoneLink($c['src'] ?? '') ?> → <?= phoneLink($c['dst'] ?? '') ?></td>
                 <td><span class="badge bg-<?= dispositionClass($c['disposition']) ?>"><?= $c['disposition'] ?></span></td>
                 <td><?= formatDuration($c['billsec']) ?></td>
                 <td class="small"><?= e($c['agent_name'] ?: '—') ?></td>
@@ -196,8 +196,14 @@ require_once 'includes/layout.php';
                         <i class="fas fa-external-link-alt"></i>
                     </a>
                     <?php if ($c['recordingfile']): ?>
-                    <button class="btn-sm-icon text-success" title="Play" onclick="playRecording(<?= $c['id'] ?>, <?= j($c['recordingfile']) ?>)">
-                        <i class="fas fa-play"></i>
+                    <?php
+                        $hasLocal = !empty($c['local_recording']) && file_exists($c['local_recording']);
+                        $btnCls = $hasLocal ? 'text-success' : 'text-warning';
+                        $btnIcon = $hasLocal ? 'fa-download' : 'fa-cloud-download-alt';
+                    ?>
+                    <button class="btn-sm-icon <?= $btnCls ?>" title="Download recording"
+                            onclick="downloadRecording(<?= $c['id'] ?>)">
+                        <i class="fas <?= $btnIcon ?>"></i>
                     </button>
                     <?php endif; ?>
                 </td>
@@ -219,29 +225,10 @@ require_once 'includes/layout.php';
     <?php endif; ?>
 </div>
 
-<!-- Audio bar -->
-<div class="audio-bar" id="audioBar" style="display:none">
-    <div class="audio-info" id="audioInfo">Loading…</div>
-    <audio id="audioPlayer" controls style="flex:1;min-width:0"></audio>
-    <a id="audioDlBtn" href="#" class="btn-icon" title="Download"><i class="fas fa-download"></i></a>
-    <button class="btn-icon" onclick="closeAudio()"><i class="fas fa-times"></i></button>
-</div>
+
 
 <script>
 const APP_URL = '<?= APP_URL ?>';
-function playRecording(id, file) {
-    const player = document.getElementById('audioPlayer');
-    document.getElementById('audioInfo').textContent = 'Call #' + id;
-    document.getElementById('audioDlBtn').href = APP_URL + '/api/audio.php?id=' + id + '&dl=1';
-    player.src = APP_URL + '/api/audio.php?id=' + id;
-    player.load();
-    document.getElementById('audioBar').style.display = 'flex';
-    player.play().catch(() => {});
-}
-function closeAudio() {
-    document.getElementById('audioPlayer').pause();
-    document.getElementById('audioBar').style.display = 'none';
-}
 </script>
 
 <?php require_once 'includes/footer.php'; ?>

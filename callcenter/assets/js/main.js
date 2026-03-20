@@ -4,6 +4,120 @@
  * quick call modal, toast, hourly sparkline.
  */
 
+/* ── Mobile search overlay ────────────────────────────────────── */
+let mobileSearchTimer;
+
+function openMobileSearch() {
+    var overlay = document.getElementById('mobileSearchOverlay');
+    if (!overlay) return;
+    overlay.classList.add('show');
+    setTimeout(function () { var el = document.getElementById('mobileSearchInput'); if (el) el.focus(); }, 50);
+}
+
+function closeMobileSearch() {
+    var overlay = document.getElementById('mobileSearchOverlay');
+    if (!overlay) return;
+    overlay.classList.remove('show');
+    var input = document.getElementById('mobileSearchInput');
+    if (input) input.value = '';
+    var box = document.getElementById('mobileSearchResults');
+    if (box) box.innerHTML = '<div class="text-center text-muted py-5"><i class="fas fa-search fa-2x mb-2 d-block"></i>Type a name or phone number</div>';
+}
+
+function mobileCreateAndGo(phone) {
+    closeMobileSearch();
+    fetch(APP_URL + '/api/contacts.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'create', phone: phone.replace(/\D/g, '') })
+    }).then(function (r) { return r.json(); }).then(function (d) {
+        if (d.ok && d.id) {
+            window.location = APP_URL + '/contact_detail.php?id=' + d.id;
+        } else {
+            window.location = APP_URL + '/contacts.php?phone=' + encodeURIComponent(phone);
+        }
+    });
+}
+
+function escHtml(s) {
+    return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+document.addEventListener('DOMContentLoaded', function () {
+    var msInput = document.getElementById('mobileSearchInput');
+    if (!msInput) return;
+
+    msInput.addEventListener('input', function () {
+        clearTimeout(mobileSearchTimer);
+        var q = this.value.trim();
+        var box = document.getElementById('mobileSearchResults');
+        if (!box) return;
+
+        if (q.length < 2) {
+            box.innerHTML = '<div class="text-center text-muted py-5"><i class="fas fa-search fa-2x mb-2 d-block"></i>Type a name or phone number</div>';
+            return;
+        }
+
+        mobileSearchTimer = setTimeout(function () {
+            var digitsOnly = q.replace(/\D/g, '');
+
+            if (digitsOnly.length >= 6) {
+                fetch(APP_URL + '/api/contacts.php?action=lookup&phone=' + encodeURIComponent(digitsOnly))
+                    .then(function (r) { return r.json(); })
+                    .then(function (d) {
+                        if (d.ok && d.contact) {
+                            var c = d.contact;
+                            box.innerHTML =
+                                '<div class="mobile-search-result-card">' +
+                                '<div class="mrc-top">' +
+                                '<div class="contact-avatar-sm"><i class="fas fa-user"></i></div>' +
+                                '<div class="mrc-name">' + escHtml(c.name || c.phone) + '</div>' +
+                                '<div class="mrc-phone">' + escHtml(c.phone) + '</div></div>' +
+                                '<div class="mrc-actions">' +
+                                '<button class="btn btn-outline-success btn-sm" onclick="closeMobileSearch();quickCall(\'' + escHtml(c.phone) + '\',\'outbound\')"><i class="fas fa-paper-plane me-1"></i>Call</button>' +
+                                '<button class="btn btn-outline-primary btn-sm" onclick="closeMobileSearch();window.location=\'' + APP_URL + '/contact_detail.php?id=' + c.id + '\'"><i class="fas fa-user me-1"></i>Profile</button>' +
+                                '</div></div>' +
+                                '<div class="text-center mt-2">' +
+                                '<button class="btn btn-sm btn-outline-warning" onclick="mobileCreateAndGo(\'' + escHtml(q) + '\')"><i class="fas fa-plus me-1"></i>Not you? Create new</button>' +
+                                '</div>';
+                        } else {
+                            box.innerHTML =
+                                '<div class="mobile-no-results"><i class="fas fa-user-plus"></i>No contact found for ' + escHtml(q) + '</div>' +
+                                '<div class="mt-3"><button class="btn btn-primary w-100" onclick="mobileCreateAndGo(\'' + escHtml(q) + '\')"><i class="fas fa-plus me-1"></i>Create Contact &amp; Open</button></div>';
+                        }
+                    })
+                    .catch(function() { box.innerHTML = '<div class="mobile-no-results"><i class="fas fa-wifi"></i>Network error — try again</div>'; });
+            } else {
+                fetch(APP_URL + '/api/search.php?q=' + encodeURIComponent(q))
+                    .then(function (r) { return r.json(); })
+                    .then(function (d) {
+                        if (!d.results || !d.results.length) {
+                            box.innerHTML = '<div class="mobile-no-results"><i class="fas fa-search"></i>No results for "' + escHtml(q) + '"</div>';
+                            return;
+                        }
+                        var contacts = d.results.filter(function (r) { return r.type === 'contact'; });
+                        if (!contacts.length) {
+                            box.innerHTML = '<div class="mobile-no-results"><i class="fas fa-search"></i>No contacts found</div>';
+                            return;
+                        }
+                        box.innerHTML = contacts.slice(0, 10).map(function (c) {
+                            return '<div class="mobile-search-result-card">' +
+                                '<div class="mrc-top">' +
+                                '<div class="contact-avatar-sm"><i class="fas fa-user"></i></div>' +
+                                '<div class="mrc-name">' + escHtml(c.name || c.phone) + '</div>' +
+                                '<div class="mrc-phone">' + escHtml(c.phone) + '</div></div>' +
+                                '<div class="mrc-actions">' +
+                                '<button class="btn btn-outline-success btn-sm" onclick="closeMobileSearch();quickCall(\'' + escHtml(c.phone) + '\',\'outbound\')"><i class="fas fa-paper-plane me-1"></i>Call</button>' +
+                                '<button class="btn btn-outline-primary btn-sm" onclick="closeMobileSearch();window.location=\'' + APP_URL + '/contact_detail.php?id=' + c.id + '\'"><i class="fas fa-user me-1"></i>Profile</button>' +
+                                '</div></div>';
+                        }).join('');
+                    })
+                    .catch(function() { box.innerHTML = '<div class="mobile-no-results"><i class="fas fa-wifi"></i>Network error — try again</div>'; });
+            }
+        }, 280);
+    });
+});
+
 /* ── Sidebar ──────────────────────────────────────────────────── */
 function toggleSidebar() {
     const sb = document.getElementById('sidebar');
@@ -100,6 +214,39 @@ function initGlobalSearch() {
 
     input.addEventListener('keydown', e => {
         if (e.key === 'Escape') { box.classList.remove('show'); input.blur(); }
+        if (e.key === 'Enter') {
+            const q = input.value.trim();
+            if (!q) return;
+            if (q.replace(/\D/g, '').length < 6) return;
+            box.classList.remove('show');
+            e.preventDefault();
+            input.disabled = true;
+            input.value = 'Loading…';
+            const digitsOnly = q.replace(/\D/g, '');
+            fetch(APP_URL + '/api/contacts.php?action=lookup&phone=' + encodeURIComponent(digitsOnly))
+                .then(r => r.json())
+                .then(d => {
+                    if (d.ok && d.contact) {
+                        window.location = APP_URL + '/contact_detail.php?id=' + d.contact.id;
+                    } else {
+                        fetch(APP_URL + '/api/contacts.php', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ action: 'create', phone: q })
+                        }).then(r => r.json()).then(d2 => {
+                            if (d2.ok && d2.id) {
+                                window.location = APP_URL + '/contact_detail.php?id=' + d2.id;
+                            } else {
+                                window.location = APP_URL + '/contacts.php?phone=' + encodeURIComponent(q);
+                            }
+                        });
+                    }
+                })
+                .catch(() => {
+                    window.location = APP_URL + '/contacts.php?phone=' + encodeURIComponent(q);
+                })
+                .finally(() => { input.disabled = false; });
+        }
     });
 }
 
@@ -130,6 +277,53 @@ function contactAutofill(phone) {
     }, 400);
 }
 
+/* ── Quick call modal (global, pre-fill phone + direction-aware) ─ */
+function quickCall(phone, direction) {
+    const agentNum = document.getElementById('qcAgentNum')?.value || '';
+    const dir = direction || 'outbound';
+    document.getElementById('qcDirection').value = dir;
+
+    if (dir === 'inbound') {
+        document.getElementById('qcPhone').value = phone || '';
+        document.getElementById('qcDst').value = agentNum;
+        document.getElementById('qcPhoneLabel').textContent = 'Caller Phone';
+        document.getElementById('qcDstLabel').textContent = 'Agent / Extension';
+    } else {
+        document.getElementById('qcPhone').value = agentNum;
+        document.getElementById('qcDst').value = phone || '';
+        document.getElementById('qcPhoneLabel').textContent = 'My Phone';
+        document.getElementById('qcDstLabel').textContent = 'Contact / Destination';
+    }
+
+    new bootstrap.Modal(document.getElementById('quickCallModal')).show();
+    setTimeout(() => document.getElementById('qcPhone')?.focus(), 300);
+}
+
+/* Swap src/dst when direction changes */
+function qcSwapFields() {
+    const dir = document.getElementById('qcDirection').value;
+    const contact = document.getElementById('qcDst').value;
+    const agent   = document.getElementById('qcPhone').value;
+    const agentNum = document.getElementById('qcAgentNum')?.value || '';
+
+    if (dir === 'inbound') {
+        document.getElementById('qcPhone').value = contact || '';
+        document.getElementById('qcDst').value   = agentNum;
+        document.getElementById('qcPhoneLabel').textContent = 'Caller Phone';
+        document.getElementById('qcDstLabel').textContent   = 'Agent / Extension';
+    } else if (dir === 'outbound') {
+        document.getElementById('qcPhone').value = agentNum;
+        document.getElementById('qcDst').value   = contact || '';
+        document.getElementById('qcPhoneLabel').textContent = 'My Phone';
+        document.getElementById('qcDstLabel').textContent   = 'Contact / Destination';
+    } else {
+        document.getElementById('qcPhone').value = '';
+        document.getElementById('qcDst').value   = '';
+        document.getElementById('qcPhoneLabel').textContent = 'Phone Number';
+        document.getElementById('qcDstLabel').textContent   = 'Destination';
+    }
+}
+
 /* ── Quick call modal submit ──────────────────────────────────── */
 function submitQuickCall() {
     const form = document.getElementById('quickCallForm');
@@ -146,6 +340,7 @@ function submitQuickCall() {
         manual_notes:  form.manual_notes?.value || '',
     };
     if (!data.src) { showToast('Phone number required', 'warning'); return; }
+    if (!data.call_direction) { showToast('Please select a direction', 'warning'); return; }
 
     fetch(APP_URL + '/api/calls.php', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -197,11 +392,6 @@ function renderSparkline() {
     }).join('');
 }
 
-/* ── Escape HTML ───────────────────────────────────────────────── */
-function escHtml(s) {
-    return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-}
-
 /* ── Auto-suggest inputs (used on contacts search, etc.) ─────── */
 function initAutoSuggest() {
     document.querySelectorAll('[data-suggest]').forEach(input => {
@@ -226,7 +416,8 @@ function initAutoSuggest() {
 }
 
 /* ── Keyboard shortcuts ────────────────────────────────────────── */
-document.addEventListener('keydown', e => {
+document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') { closeMobileSearch(); return; }
     // Ctrl+K → focus global search
     if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
         e.preventDefault();
@@ -271,6 +462,25 @@ function initContactSuggest(inputEl, field) {
     });
     inputEl.addEventListener('blur', () => setTimeout(() => { drop.style.display = 'none'; }, 150));
     inputEl.addEventListener('focus', () => { if (inputEl.value.trim()) inputEl.dispatchEvent(new Event('input')); });
+}
+
+/* ── Recording download ─────────────────────────────────────────── */
+function downloadRecording(id) {
+    window.location.href = APP_URL + '/recordings.php?highlight=' + id;
+}
+
+function recBtn(id, hasLocal) {
+    const cls = hasLocal === true
+        ? 'fas fa-download text-success'
+        : hasLocal === false
+        ? 'fas fa-download text-warning'
+        : 'fas fa-times text-danger';
+    const title = hasLocal === true
+        ? 'Download (saved locally)'
+        : hasLocal === false
+        ? 'Download from PBX'
+        : 'No recording available';
+    return `<button class="btn-sm-icon" title="${title}" onclick="downloadRecording(${id})"><i class="${cls}"></i></button>`;
 }
 
 /* ── Init ──────────────────────────────────────────────────────── */

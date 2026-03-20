@@ -152,7 +152,7 @@ require_once 'includes/layout.php';
                     <span class="text-muted small"><i class="fas fa-address-book me-1"></i><?= e($t['contact_name']) ?></span>
                     <?php endif; ?>
                     <?php if ($t['call_src']): ?>
-                    <span class="text-muted small"><i class="fas fa-phone me-1"></i><?= e($t['call_src']) ?></span>
+                    <span class="text-muted small"><i class="fas fa-phone me-1"></i><?= phoneLink($t['call_src']) ?></span>
                     <?php endif; ?>
                     <?php if ($t['due_date']): ?>
                     <span class="<?= strtotime($t['due_date']) < time() && $t['status'] !== 'done' ? 'text-danger fw-bold' : 'text-muted' ?> small">
@@ -220,7 +220,7 @@ require_once 'includes/layout.php';
                 <div class="detail-item">
                     <div class="detail-label">Call</div>
                     <div class="detail-value">
-                        <a href="<?= APP_URL ?>/call_detail.php?id=<?= $viewTask['call_id'] ?>"><?= e($viewTask['call_src']) ?></a>
+                        <a href="<?= APP_URL ?>/call_detail.php?id=<?= $viewTask['call_id'] ?>"><?= phoneLink($viewTask['call_src']) ?></a>
                     </div>
                 </div>
                 <?php endif; ?>

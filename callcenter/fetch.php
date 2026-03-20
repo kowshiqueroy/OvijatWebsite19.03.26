@@ -1,6 +1,10 @@
 <?php
 require_once 'config.php';
 requireLogin();
+if (!in_array(strtolower(trim($_SESSION['department'] ?? '')), ['it', 'management'])) {
+    header('Location: ' . APP_URL . '/dashboard.php?error=unauthorized');
+    exit;
+}
 
 $pageTitle  = 'Fetch PBX';
 $activePage = 'fetch';
@@ -49,10 +53,8 @@ require_once 'includes/layout.php';
 
 <div class="row g-4">
 
-<!-- ── Left: Fetch panel ───────────────────────────────────────────────────── -->
-<div class="col-lg-7">
-
-    <!-- Credentials card -->
+<!-- ── Credentials (full width) ─────────────────────────────────────────── -->
+<div class="col-12">
     <div class="cc-card mb-4">
         <div class="cc-card-head">
             <span><i class="fas fa-key me-2"></i>PBX Credentials</span>
@@ -64,37 +66,38 @@ require_once 'includes/layout.php';
             <div class="cc-card-body">
                 <input type="hidden" name="save_creds" value="1">
                 <div class="row g-3">
-                    <div class="col-sm-6">
+                    <div class="col-sm-5">
                         <label class="form-label">Username</label>
                         <input type="text" name="pbx_username" class="form-control"
                                value="<?= e($pbxUsername) ?>" placeholder="PBX login username" autocomplete="off" required>
                     </div>
-                    <div class="col-sm-6">
+                    <div class="col-sm-5">
                         <label class="form-label">Password</label>
                         <input type="password" name="pbx_password" class="form-control"
                                value="<?= $pbxPassword ? str_repeat('•', 10) : '' ?>"
                                placeholder="PBX login password" autocomplete="off"  required>
                         <div class="form-text text-muted small">Leave unchanged to keep current password.</div>
                     </div>
+                    <div class="col-sm-2 d-flex align-items-end gap-2">
+                        <button type="submit" class="btn btn-primary btn-sm">
+                            <i class="fas fa-save me-1"></i>Save
+                        </button>
+                        <button type="button" class="btn btn-outline-secondary btn-sm" onclick="testConnection()">
+                            <i class="fas fa-plug me-1"></i>Test
+                        </button>
+                    </div>
                 </div>
                 <div class="mt-2 text-muted small">
-                    <i class="fas fa-server me-1"></i>Connects to <strong>ovijatgroup.pbx.com.bd</strong> &nbsp;·&nbsp;
-                    Saved by: <strong><?= e(currentAgent()['full_name']) ?></strong>
+                    <i class="fas fa-server me-1"></i>Connects to <strong>ovijatgroup.pbx.com.bd</strong>
                 </div>
-            </div>
-            <div class="cc-card-foot d-flex gap-2">
-                <button type="submit" class="btn btn-primary btn-sm">
-                    <i class="fas fa-save me-1"></i>Save Credentials
-                </button>
-                <button type="button" class="btn btn-outline-secondary btn-sm" onclick="testConnection()">
-                    <i class="fas fa-plug me-1"></i>Test Connection
-                </button>
             </div>
         </form>
     </div>
+</div>
 
-    <!-- Fetch panel -->
-    <div class="cc-card mb-4">
+<!-- ── Fetch CDR (left) + History (right) ─────────────────────────────── -->
+<div class="col-lg-5">
+    <div class="cc-card">
         <div class="cc-card-head">
             <span><i class="fas fa-cloud-arrow-down me-2"></i>Fetch CDR from PBX</span>
         </div>
@@ -117,7 +120,7 @@ require_once 'includes/layout.php';
                 </div>
                 <div class="col-sm-2">
                     <label class="form-label">Limit</label>
-                    <select id="fetchLimit" class="form-select">
+                    <select id="fetchLimit" class="form-select form-select-sm">
                         <option value="1000">1 K</option>
                         <option value="5000" selected>5 K</option>
                         <option value="10000">10 K</option>
@@ -135,26 +138,51 @@ require_once 'includes/layout.php';
             <div id="fetchResult" style="display:none" class="mb-3"></div>
 
             <div class="d-flex gap-2 flex-wrap">
-                <button class="btn btn-primary btn-lg" id="fetchBtn" onclick="startFetch()">
+                <button class="btn btn-primary" id="fetchBtn" onclick="startFetch()">
                     <i class="fas fa-cloud-arrow-down me-1"></i>Fetch Now
                 </button>
-                <button class="btn btn-outline-secondary" onclick="redetectDirections()" title="Re-guess direction for all existing unknown-direction calls">
-                    <i class="fas fa-compass me-1"></i>Fix Unknown Directions
+                <button class="btn btn-outline-secondary btn-sm" onclick="redetectDirections()" title="Re-guess direction for all existing unknown-direction calls">
+                    <i class="fas fa-compass me-1"></i>Fix Directions
                 </button>
             </div>
             <div class="mt-2 text-muted small">
                 <i class="fas fa-info-circle me-1"></i>
-                Duplicate calls are automatically skipped. Contacts auto-created from new numbers.
-                Every fetch is logged with your identity.
+                Duplicates skipped automatically. Contacts auto-created.
             </div>
             <?php endif; ?>
         </div>
     </div>
 
-    <!-- Fetch history -->
+    <div class="cc-card mt-4">
+        <div class="cc-card-head"><span><i class="fas fa-circle-info me-2"></i>About PBX Fetch</span></div>
+        <div class="cc-card-body">
+            <div class="detail-grid">
+                <div class="detail-item">
+                    <div class="detail-label">PBX Host</div>
+                    <div class="detail-value small">ovijatgroup.pbx.com.bd</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">CDR Source</div>
+                    <div class="detail-value small">FreePBX Web / XML CDR</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">Deduplication</div>
+                    <div class="detail-value small">By call hash (caller + dest + time)</div>
+                </div>
+            </div>
+            <div class="mt-3 text-muted small">
+                <i class="fas fa-shield-halved me-1"></i>
+                All fetch operations are logged with agent identity.
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ── Fetch History ──────────────────────────────────────────────────────── -->
+<div class="col-lg-7">
     <div class="cc-card">
         <div class="cc-card-head"><span><i class="fas fa-history me-2"></i>Fetch History</span></div>
-        <div class="table-responsive">
+        <div class="table-responsive" style="max-height:520px;overflow-y:auto">
             <table class="table cc-table mb-0">
                 <thead>
                     <tr><th>When</th><th>By</th><th>Range</th><th>Total</th><th>New</th><th>Dupes</th><th>Contacts</th><th>Status</th></tr>
@@ -185,37 +213,6 @@ require_once 'includes/layout.php';
                 <?php endwhile; ?>
                 </tbody>
             </table>
-        </div>
-    </div>
-</div>
-
-<!-- ── Right: Info panel ───────────────────────────────────────────────────── -->
-<div class="col-lg-5">
-    <div class="cc-card">
-        <div class="cc-card-head"><span><i class="fas fa-circle-info me-2"></i>About PBX Fetch</span></div>
-        <div class="cc-card-body">
-            <div class="detail-grid">
-                <div class="detail-item">
-                    <div class="detail-label">PBX Host</div>
-                    <div class="detail-value small">ovijatgroup.pbx.com.bd</div>
-                </div>
-                <div class="detail-item">
-                    <div class="detail-label">CDR Source</div>
-                    <div class="detail-value small">FreePBX Web / XML CDR</div>
-                </div>
-                <div class="detail-item">
-                    <div class="detail-label">Deduplication</div>
-                    <div class="detail-value small">By call hash (caller + dest + time)</div>
-                </div>
-                <div class="detail-item">
-                    <div class="detail-label">Recordings</div>
-                    <div class="detail-value small">Direct URL from PBX (streamed via app)</div>
-                </div>
-            </div>
-            <div class="mt-3 text-muted small">
-                <i class="fas fa-shield-halved me-1"></i>
-                Credentials are stored securely. All fetch operations are logged with agent identity and timestamp.
-            </div>
         </div>
     </div>
 </div>

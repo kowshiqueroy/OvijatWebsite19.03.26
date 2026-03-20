@@ -47,6 +47,8 @@ $stmt = $conn->prepare(
             cg.name AS group_name, cg.color AS group_color,
             a.full_name AS assigned_name,
             (SELECT COUNT(*) FROM call_logs cl WHERE cl.contact_id=c.id) AS call_count,
+            COALESCE((SELECT COUNT(*) FROM contact_notes cn WHERE cn.contact_id=c.id),0) AS note_count,
+            COALESCE((SELECT COUNT(*) FROM todos t WHERE t.contact_id=c.id),0) AS task_count,
             (SELECT MAX(cl.calldate) FROM call_logs cl WHERE cl.contact_id=c.id) AS last_call
      FROM contacts c
      LEFT JOIN contact_types  ct ON ct.id = c.type_id
@@ -161,7 +163,7 @@ require_once 'includes/layout.php';
             </thead>
             <tbody>
             <?php if (!$contacts->num_rows): ?>
-                <tr><td colspan="10" class="text-center py-5 text-muted">
+                <tr><td colspan="11" class="text-center py-5 text-muted">
                     <i class="fas fa-address-book fa-2x mb-2 d-block"></i>No contacts found
                 </td></tr>
             <?php endif; ?>
@@ -220,6 +222,11 @@ require_once 'includes/layout.php';
                             onclick="toggleFavorite(<?= $c['id'] ?>, <?= $c['is_favorite'] ?>)">
                         <i class="fas fa-star <?= $c['is_favorite']?'text-warning':'' ?>"></i>
                     </button>
+                    <?php if ($c['call_count'] == 0 && $c['note_count'] == 0 && $c['task_count'] == 0): ?>
+                    <button class="btn-sm-icon text-danger" title="Delete (no activity)" onclick="deleteContact(<?= $c['id'] ?>)">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                    <?php endif; ?>
                 </td>
             </tr>
             <?php endwhile; ?>
@@ -242,7 +249,7 @@ require_once 'includes/layout.php';
 </div>
 
 <!-- Bulk action bar -->
-<div id="bulkBar" style="display:none;position:fixed;bottom:0;left:var(--sidebar-w);right:0;z-index:210;background:var(--card2);border-top:2px solid var(--primary);padding:.5rem 1rem;box-shadow:0 -4px 12px rgba(0,0,0,.2)">
+<div id="bulkBar" class="bulk-action-bar" style="display:none;position:fixed;bottom:0;left:var(--sidebar-w);right:0;z-index:210;background:var(--card2);border-top:2px solid var(--accent);padding:.5rem 1rem;box-shadow:0 -4px 12px rgba(0,0,0,.2)">
     <div class="d-flex align-items-center gap-2 flex-wrap">
         <span class="badge bg-primary" id="bulkCount">0</span>
         <span class="text-muted small">selected — update:</span>
@@ -280,7 +287,7 @@ require_once 'includes/layout.php';
                 <div class="row g-3">
                     <div class="col-sm-6">
                         <label class="form-label">Phone <span class="text-danger">*</span></label>
-                        <input type="text" id="cmPhone" class="form-control" placeholder="01XXXXXXXXX" required>
+                        <input type="text" id="cmPhone" class="form-control" placeholder="01XXXXXXXXX" required<?php if (!empty($_GET['phone'])): ?> value="<?= e($_GET['phone']) ?>"<?php endif; ?>>
                     </div>
                     <div class="col-sm-6">
                         <label class="form-label">Full Name</label>
@@ -380,17 +387,18 @@ document.addEventListener('DOMContentLoaded', () => {
     initContactSuggest(document.getElementById('cmCompany'), 'company');
 });
 
-function openNewContact() {
+function openNewContact(phone) {
     document.getElementById('contactModalTitle').textContent = 'New Contact';
     document.getElementById('cmId').value = '0';
-    ['cmPhone','cmName','cmCompany','cmEmail','cmAddress','cmNotes','cmTypeName','cmGroupName'].forEach(f=>document.getElementById(f).value='');
+    ['cmName','cmCompany','cmEmail','cmAddress','cmNotes','cmTypeName','cmGroupName'].forEach(f=>document.getElementById(f).value='');
+    document.getElementById('cmPhone').value = phone || '';
     document.getElementById('cmScope').value = 'unknown';
     document.getElementById('cmOffice').value = '';
     document.getElementById('cmAssign').value = '';
     document.getElementById('cmFav').checked = false;
     document.getElementById('cmBlocked').checked = false;
     new bootstrap.Modal(document.getElementById('contactModal')).show();
-    setTimeout(()=>document.getElementById('cmPhone').focus(),300);
+    if (!phone) setTimeout(()=>document.getElementById('cmPhone').focus(),300);
 }
 
 function editContact(id) {
@@ -443,6 +451,17 @@ function saveContact() {
             showToast(id === '0' ? 'Contact created' : 'Contact updated', 'success');
             setTimeout(()=>location.reload(), 700);
         } else showToast(d.error || 'Error','danger');
+    });
+}
+
+function deleteContact(id) {
+    if (!confirm('Delete this contact? There are no calls, notes, or tasks linked.')) return;
+    fetch(APP_URL + '/api/contacts.php', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({action:'delete', id})
+    }).then(r=>r.json()).then(d=>{
+        if (d.ok) { showToast('Contact deleted','success'); setTimeout(()=>location.reload(),700); }
+        else showToast(d.error || 'Error','danger');
     });
 }
 
@@ -500,4 +519,7 @@ function applyBulk() {
 }
 </script>
 
+<?php if (!empty($_GET['phone'])): ?>
+<script>document.addEventListener('DOMContentLoaded', () => { openNewContact(); });</script>
+<?php endif; ?>
 <?php require_once 'includes/footer.php'; ?>

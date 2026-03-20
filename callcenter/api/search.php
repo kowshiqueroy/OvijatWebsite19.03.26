@@ -109,4 +109,17 @@ while ($r && $row = $r->fetch_assoc()) {
                   'url'  =>APP_URL.'/todos.php?id='.$row['id']];
 }
 
-echo json_encode(['ok'=>true, 'results'=>$results, 'q'=>$q]);
+$phoneAction = null;
+if (preg_match('/^[\d+\s\-().]+$/', $q)) {
+    $norm = preg_replace('/[^0-9+]/', '', $q);
+    $en   = $conn->real_escape_string($norm);
+    $cr   = $conn->query("SELECT id, name, phone FROM contacts WHERE REPLACE(REPLACE(REPLACE(REPLACE(phone,' ',''),'-',''),'(',''),')','') = '$en' OR phone = '$en' LIMIT 1");
+    if ($cr && $cr->num_rows) {
+        $c = $cr->fetch_assoc();
+        $phoneAction = ['phone'=>$c['phone'], 'contactId'=>$c['id'], 'contactName'=>$c['name'] ?: $c['phone']];
+    } else {
+        $phoneAction = ['phone'=>$norm, 'contactId'=>null, 'contactName'=>null];
+    }
+}
+
+echo json_encode(['ok'=>true, 'results'=>$results, 'q'=>$q, 'phoneAction'=>$phoneAction]);

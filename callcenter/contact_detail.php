@@ -28,6 +28,18 @@ if (!$contact) { header('Location: contacts.php'); exit; }
 $phone  = $contact['phone'];
 $ePhone = $conn->real_escape_string($phone);
 
+/* ── Activity counts for delete eligibility ──────────────────────── */
+$callCount = (int)$conn->query(
+    "SELECT COUNT(*) AS c FROM call_logs WHERE contact_id=$id OR src='$ePhone' OR dst='$ePhone'"
+)->fetch_assoc()['c'];
+$noteCount = (int)$conn->query(
+    "SELECT COUNT(*) AS c FROM contact_notes WHERE contact_id=$id"
+)->fetch_assoc()['c'];
+$taskCount = (int)$conn->query(
+    "SELECT COUNT(*) AS c FROM todos WHERE contact_id=$id"
+)->fetch_assoc()['c'];
+$canDelete = ($callCount == 0 && $noteCount == 0 && $taskCount == 0);
+
 $pageTitle   = $contact['name'] ?: $contact['phone'];
 $pageSubtitle = $contact['company'] ?: '';
 $activePage  = 'contacts';
@@ -44,8 +56,9 @@ $cr = $conn->query(
 );
 while ($row = $cr->fetch_assoc()) $callRows[] = $row;
 
-/* ── Contact notes (threaded) ────────────────────────────────────────────── */
-function fetchContactNotes(mysqli $conn, int $cid, ?int $parentId = null): array {
+/* ── Contact notes (threaded, depth-limited) ─────────────────────────────── */
+function fetchContactNotes(mysqli $conn, int $cid, ?int $parentId = null, int $depth = 0): array {
+    if ($depth > 4) return [];
     $pid = $parentId === null ? 'IS NULL' : "= $parentId";
     $r = $conn->query(
         "SELECT cn.*, a.full_name, a.username
@@ -55,7 +68,7 @@ function fetchContactNotes(mysqli $conn, int $cid, ?int $parentId = null): array
     );
     $nodes = [];
     while ($r && $n = $r->fetch_assoc()) {
-        $n['replies'] = fetchContactNotes($conn, $cid, $n['id']);
+        $n['replies'] = fetchContactNotes($conn, $cid, $n['id'], $depth + 1);
         $nodes[] = $n;
     }
     return $nodes;
@@ -279,6 +292,11 @@ function renderContactNote(array $n, int $depth = 0): void {
         <button class="btn btn-sm btn-outline-secondary" onclick="copyContactInfo()">
             <i class="fas fa-copy me-1"></i>Copy
         </button>
+        <?php if ($canDelete): ?>
+        <button class="btn btn-sm btn-outline-danger" onclick="deleteThisContact()">
+            <i class="fas fa-trash me-1"></i>Delete
+        </button>
+        <?php endif; ?>
     </div>
 </div>
 
@@ -300,6 +318,12 @@ function renderContactNote(array $n, int $depth = 0): void {
                     </h2>
                     <button class="btn-link p-0" onclick="quickToggleFav()" id="favBtn" title="Toggle Favorite">
                         <i class="<?= $contact['is_favorite']?'fas':'far' ?> fa-star text-warning fa-lg"></i>
+                    </button>
+                    <button class="btn-link p-0" onclick="quickCall('<?= e($contact['phone']) ?>', 'outbound')" title="Call this contact (outbound)">
+                        <i class="fas fa-paper-plane text-success fa-lg"></i>
+                    </button>
+                    <button class="btn-link p-0" onclick="quickCall('<?= e($contact['phone']) ?>', 'inbound')" title="Log inbound from this contact">
+                        <i class="fas fa-phone-flip text-info fa-lg"></i>
                     </button>
                 </div>
                 <?php if ($contact['company']): ?>
@@ -517,9 +541,9 @@ function renderContactNote(array $n, int $depth = 0): void {
                         <span class="text-muted"><?= formatDt($c['calldate'],'h:i A') ?></span>
                         <?php if ($c['recordingfile']): ?><i class="fas fa-microphone text-success ms-1" title="Recording available"></i><?php endif; ?>
                     </td>
-                    <td class="font-monospace small"><?= e($c['src'] ?? '') ?></td>
-                    <td class="font-monospace small"><?= e($c['dst'] ?? '') ?></td>
-                    <td><i class="fas <?= directionIcon($c['call_direction']) ?>" title="<?= $c['call_direction'] ?>"></i></td>
+                    <td class="font-monospace small"><?= phoneLink($c['src'] ?? '') ?></td>
+                    <td class="font-monospace small"><?= phoneLink($c['dst'] ?? '') ?></td>
+                    <td><i class="fas <?= directionIcon($c['call_direction']) ?> text-<?= directionColor($c['call_direction']) ?>" title="<?= $c['call_direction'] ?>"></i></td>
                     <td><span class="badge bg-<?= dispositionClass($c['disposition']) ?>"><?= $c['disposition'] ?></span></td>
                     <td><?= formatDuration($c['billsec']) ?></td>
                     <td class="small"><?= e($c['agent_name'] ?: '—') ?></td>
@@ -528,14 +552,15 @@ function renderContactNote(array $n, int $depth = 0): void {
                     </td>
                     <td class="text-center">
                         <?php if ($c['recordingfile']): ?>
-                        <div class="d-flex gap-1 justify-content-center">
-                            <button class="btn-sm-icon text-success" title="Play" onclick="playRecording(<?= $c['id'] ?>, <?= j($c['recordingfile']) ?>)">
-                                <i class="fas fa-play"></i>
-                            </button>
-                            <a class="btn-sm-icon text-muted" href="<?= APP_URL ?>/api/audio.php?id=<?= $c['id'] ?>&dl=1" title="Download">
-                                <i class="fas fa-download"></i>
-                            </a>
-                        </div>
+                        <?php
+                            $hasLocal = !empty($c['local_recording']) && file_exists($c['local_recording']);
+                            $btnCls = $hasLocal ? 'text-success' : 'text-warning';
+                            $btnIcon = $hasLocal ? 'fa-download' : 'fa-cloud-download-alt';
+                        ?>
+                        <button class="btn-sm-icon <?= $btnCls ?>" title="Download recording"
+                                onclick="downloadRecording(<?= $c['id'] ?>)">
+                            <i class="fas <?= $btnIcon ?>"></i>
+                        </button>
                         <?php else: ?><span class="text-muted">—</span><?php endif; ?>
                     </td>
                     <td class="text-nowrap">
@@ -753,9 +778,16 @@ foreach ($tlEvents as $ev):
             <span class="tl-lbl"><?= $dir==='outbound'?'OUT':'IN' ?></span>
             <span class="badge bg-<?= $dCls ?> badge-xs"><?= e($d['disposition']) ?></span>
             <?php if ($d['billsec']): ?><span class="tl-dur"><i class="fas fa-clock"></i> <?= formatDuration($d['billsec']) ?></span><?php endif; ?>
-            <span class="tl-nums"><?= e($d['src']??'') ?> → <?= e($d['dst']??'') ?></span>
+            <span class="tl-nums"><?= phoneLink($d['src'] ?? '') ?> → <?= phoneLink($d['dst'] ?? '') ?></span>
             <?php if ($d['agent_name']): ?><span class="tl-dur"><i class="fas fa-headset"></i> <?= e($d['agent_name']) ?></span><?php endif; ?>
-            <?php if ($d['recordingfile']): ?><button class="tl-pbtn" onclick="playRecording(<?= $d['id'] ?>, <?= j($d['recordingfile']) ?>)" title="Play"><i class="fas fa-play-circle"></i></button><?php endif; ?>
+            <?php if ($d['recordingfile']): ?>
+                <?php
+                    $hasLocal = !empty($d['local_recording']) && file_exists($d['local_recording']);
+                    $btnCls = $hasLocal ? 'text-success' : 'text-warning';
+                    $btnIcon = $hasLocal ? 'fa-download' : 'fa-cloud-download-alt';
+                ?>
+                <button class="tl-pbtn" onclick="downloadRecording(<?= $d['id'] ?>)" title="Download"><i class="fas <?= $btnIcon ?> <?= $btnCls ?>"></i></button>
+            <?php endif; ?>
             <span class="tl-ts"><?= formatDt($d['calldate'],'d M y, h:i A') ?></span>
             <a class="tl-pbtn" href="<?= APP_URL ?>/call_detail.php?id=<?= $d['id'] ?>" title="View Detail" target="_blank" style="color:var(--muted);margin-left:auto"><i class="fas fa-external-link-alt"></i></a>
         </div>
@@ -884,13 +916,7 @@ foreach ($tlEvents as $ev):
 </div>
 <?php endif; ?>
 
-<!-- ── Audio bar ──────────────────────────────────────────────────────────── -->
-<div class="audio-bar" id="audioBar" style="display:none">
-    <div class="audio-info" id="audioInfo">Loading…</div>
-    <audio id="audioPlayer" controls style="flex:1;min-width:0">Your browser does not support audio.</audio>
-    <a id="audioDlBtn" href="#" class="btn-icon" title="Download"><i class="fas fa-download"></i></a>
-    <button class="btn-icon" onclick="closeAudio()"><i class="fas fa-times"></i></button>
-</div>
+
 
 <script>
 const APP_URL    = '<?= APP_URL ?>';
@@ -910,6 +936,22 @@ function switchTab(name) {
         const btn = document.getElementById('tab-btn-' + t);
         if (el) el.style.display = t === name ? '' : 'none';
         if (btn) btn.classList.toggle('active', t === name);
+    });
+}
+
+/* ── Delete this contact ─────────────────────────────────────────────────── */
+function deleteThisContact() {
+    if (!confirm('Delete this contact? There are no calls, notes, or tasks linked.')) return;
+    fetch(APP_URL + '/api/contacts.php', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'delete', id: CONTACT_ID })
+    }).then(r => r.json()).then(d => {
+        if (d.ok) {
+            showToast('Contact deleted', 'success');
+            setTimeout(() => { window.location = APP_URL + '/contacts.php'; }, 700);
+        } else {
+            showToast(d.error || 'Error', 'danger');
+        }
     });
 }
 
@@ -1231,20 +1273,6 @@ function copyContactInfo() {
     navigator.clipboard.writeText(lines).then(() => showToast('Copied!','success'));
 }
 
-/* ── Audio ────────────────────────────────────────────────────────────────── */
-function playRecording(id, file) {
-    const src = APP_URL + '/api/audio.php?id=' + id;
-    document.getElementById('audioInfo').textContent = 'Call #' + id;
-    document.getElementById('audioDlBtn').href = src + '&dl=1';
-    const player = document.getElementById('audioPlayer');
-    player.src = src;
-    document.getElementById('audioBar').style.display = 'flex';
-    player.play().catch(() => {});
-}
-function closeAudio() {
-    document.getElementById('audioPlayer').pause();
-    document.getElementById('audioBar').style.display = 'none';
-}
 
 /* ── Helpers ──────────────────────────────────────────────────────────────── */
 function escHTML(s) {
