@@ -4,21 +4,6 @@ if (!defined('BASE_URL')) require_once dirname(__DIR__) . '/config.php';
 
 $pdo = getPDO();
 
-// Ensure contact_info table exists
-$pdo->exec("CREATE TABLE IF NOT EXISTS contact_info (
-    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-    label VARCHAR(100) NOT NULL,
-    address TEXT,
-    phone VARCHAR(100),
-    email VARCHAR(150),
-    whatsapp VARCHAR(50),
-    show_header TINYINT(1) NOT NULL DEFAULT 1,
-    show_footer TINYINT(1) NOT NULL DEFAULT 1,
-    show_contact_page TINYINT(1) NOT NULL DEFAULT 1,
-    sort_order INT UNSIGNED NOT NULL DEFAULT 0,
-    is_active TINYINT(1) NOT NULL DEFAULT 1
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
-
 // Settings
 $stmtS = $pdo->query("SELECT `key`,`value` FROM settings WHERE `key` IN
     ('site_name','facebook_url','linkedin_url','youtube_url','site_logo','site_logo_2',
@@ -66,6 +51,7 @@ $cats = $pdo->query(
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="<?= BASE_URL ?>/assets/css/style.css">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.css">
+  <link rel="icon" type="image/png" href="<?= BASE_URL ?>/uploads/logo/ovijatlogo.ico">
 </head>
 <body>
 
@@ -155,7 +141,7 @@ $cats = $pdo->query(
         <div class="logo-text-wrap">
           <span class="logo-brand-name">OVIJAT</span>
           <div class="logo-subtitle" id="logo-subtitle">
-            <span class="sub-active" id="sub-a">Food &amp; Bev. Industries Ltd.</span>
+            <span class="sub-active" id="sub-a">Food &amp; Beverage Industries Ltd.</span>
             <span class="sub-enter"  id="sub-b">Group</span>
           </div>
         </div>
@@ -207,26 +193,79 @@ $cats = $pdo->query(
 
 <!-- ===================== MOBILE MENU ===================== -->
 <div id="mobile-menu" role="dialog" aria-label="Mobile navigation" aria-hidden="true">
-  <a href="<?= BASE_URL ?>/"             onclick="closeMobileMenu()">Home</a>
-  <div class="mobile-divider"></div>
-  <a href="<?= BASE_URL ?>/about.php"    onclick="closeMobileMenu()">About</a>
-  <div class="mobile-divider"></div>
-  <div style="width:100%;text-align:center;">
-    <a href="<?= BASE_URL ?>/products.php" onclick="closeMobileMenu()">Products</a>
-    <?php if ($cats): ?>
-    <div style="display:flex;flex-wrap:wrap;justify-content:center;gap:.5rem;margin-top:.75rem;">
-      <?php foreach ($cats as $cat): ?>
-        <a href="<?= BASE_URL ?>/products.php?cat=<?= e($cat['slug']) ?>"
-           onclick="closeMobileMenu()"
-           style="font-size:.72rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--clr-gold);border:1px solid rgba(201,168,76,.3);padding:.3rem .75rem;border-radius:99px;">
-          <?= e($cat['name']) ?>
-        </a>
-      <?php endforeach; ?>
-    </div>
-    <?php endif; ?>
+  <div class="mobile-menu-header">
+    <a href="<?= BASE_URL ?>/" class="mobile-menu-brand">
+      <?php if ($logo1): ?>
+        <img src="<?= BASE_URL ?>/uploads/logo/<?= e($logo1) ?>" alt="<?= e($siteName) ?>" class="mobile-menu-logo">
+      <?php else: ?>
+        <div class="mobile-menu-logo-placeholder">OFB</div>
+      <?php endif; ?>
+      <div class="mobile-menu-brand-text">
+        <span class="mobile-brand-name">OVIJAT</span>
+        <small class="mobile-brand-tagline">Food &amp; Beverage Industries Ltd.</small>
+      </div>
+    </a>
+    <button class="mobile-menu-close" onclick="closeMobileMenu()" aria-label="Close menu">
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
   </div>
-  <div class="mobile-divider"></div>
-  <a href="<?= BASE_URL ?>/global.php"   onclick="closeMobileMenu()">Global Presence</a>
-  <div class="mobile-divider"></div>
-  <a href="<?= BASE_URL ?>/contact.php"  onclick="closeMobileMenu()">Contact</a>
+
+  <div class="mobile-menu-content">
+    <nav class="mobile-nav-links">
+      <a href="<?= BASE_URL ?>/" class="mobile-nav-link <?= ($currentPage??'')==='home'?'active':'' ?>">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+        Home
+      </a>
+      <a href="<?= BASE_URL ?>/about.php" class="mobile-nav-link <?= ($currentPage??'')==='about'?'active':'' ?>">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+        About
+      </a>
+      <div class="mobile-nav-item has-submenu <?= ($currentPage??'')==='products'?'active':'' ?>">
+        <a href="<?= BASE_URL ?>/products.php" class="mobile-nav-link <?= ($currentPage??'')==='products'?'active':'' ?>">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="16.5" y1="9.4" x2="7.5" y2="4.21"/><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+          Products
+        </a>
+        <button class="mobile-submenu-toggle" aria-expanded="false" aria-label="Toggle categories">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+      </div>
+      <div class="mobile-submenu">
+        <a href="<?= BASE_URL ?>/products.php" class="mobile-submenu-link">All Products</a>
+        <?php if ($cats): foreach ($cats as $cat): ?>
+          <a href="<?= BASE_URL ?>/products.php?cat=<?= e($cat['slug']) ?>" class="mobile-submenu-link">
+            <?= e($cat['name']) ?>
+          </a>
+        <?php endforeach; endif; ?>
+      </div>
+      <a href="<?= BASE_URL ?>/global.php" class="mobile-nav-link <?= ($currentPage??'')==='global'?'active':'' ?>">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+        Global Presence
+      </a>
+      <a href="<?= BASE_URL ?>/contact.php" class="mobile-nav-link <?= ($currentPage??'')==='contact'?'active':'' ?>">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+        Contact
+      </a>
+    </nav>
+  </div>
+
+  <div class="mobile-menu-footer">
+    <div class="mobile-social-links">
+      <?php if ($fb): ?>
+        <a href="<?= e($fb) ?>" target="_blank" rel="noopener" class="mobile-social-link" aria-label="Facebook">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 24 24"><path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"/></svg>
+        </a>
+      <?php endif; ?>
+      <?php if ($li): ?>
+        <a href="<?= e($li) ?>" target="_blank" rel="noopener" class="mobile-social-link" aria-label="LinkedIn">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 24 24"><path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-4 0v7h-4V9h4v2a6 6 0 0 1 6-3z"/><rect x="2" y="9" width="4" height="12"/><circle cx="4" cy="4" r="2"/></svg>
+        </a>
+      <?php endif; ?>
+      <?php if ($yt): ?>
+        <a href="<?= e($yt) ?>" target="_blank" rel="noopener" class="mobile-social-link" aria-label="YouTube">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 24 24"><path d="M22.54 6.42a2.78 2.78 0 0 0-1.95-1.96C18.88 4 12 4 12 4s-6.88 0-8.59.46A2.78 2.78 0 0 0 1.46 6.42 29 29 0 0 0 1 12a29 29 0 0 0 .46 5.58 2.78 2.78 0 0 0 1.95 1.95C5.12 20 12 20 12 20s6.88 0 8.59-.47a2.78 2.78 0 0 0 1.96-1.95A29 29 0 0 0 23 12a29 29 0 0 0-.46-5.58z"/><polygon points="9.75 15.02 15.5 12 9.75 8.98 9.75 15.02" fill="var(--clr-dark)"/></svg>
+        </a>
+      <?php endif; ?>
+    </div>
+    <p class="mobile-copyright">&copy; <?= date('Y') ?> Ovijat Group. All rights reserved.</p>
+  </div>
 </div>

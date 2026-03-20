@@ -64,7 +64,7 @@ require_once 'includes/header.php';
 <!-- Mission / Vision / Values -->
 <section style="background:var(--clr-offwhite);padding:5rem 0;">
   <div class="container">
-    <h2 class="section-title">Mission, Vision <em style="font-style:italic;color:var(--clr-gold);">&amp; Values</em></h2>
+    <h2 class="section-title"><em style="font-style:italic;color:var(--clr-gold);">Mission, Vision &amp; Values</em></h2>
     <span class="title-rule" aria-hidden="true"></span>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:2rem;margin-top:1rem;">
       <?php
@@ -77,7 +77,35 @@ require_once 'includes/header.php';
       ?>
       <div style="background:var(--clr-white);border-radius:8px;padding:2.25rem;box-shadow:var(--shadow-sm);border-top:4px solid <?= $color ?>;">
         <div style="width:52px;height:52px;border-radius:50%;background:<?= $color ?>;display:flex;align-items:center;justify-content:center;margin-bottom:1.25rem;">
-          <span style="font-family:var(--ff-ui);font-weight:800;font-size:1.1rem;color:#fff;"><?= $initial ?></span>
+          <span style="font-family:var(--ff-ui);font-weight:800;font-size:1.1rem;color:#fff;">
+           <?php if ($initial == 'M'): ?>
+  <!-- Map Pin -->
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"
+       fill="none" stroke="currentColor" stroke-width="2"
+       stroke-linecap="round" stroke-linejoin="round"
+       class="feather feather-map-pin">
+    <path d="M21 10c0 5.5-9 13-9 13s-9-7.5-9-13a9 9 0 1 1 18 0z"></path>
+    <circle cx="12" cy="10" r="3"></circle>
+  </svg>
+<?php elseif ($initial == 'V'): ?>
+  <!-- Eye -->
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"
+       fill="none" stroke="currentColor" stroke-width="2"
+       stroke-linecap="round" stroke-linejoin="round"
+       class="feather feather-eye">
+    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+    <circle cx="12" cy="12" r="3"></circle>
+  </svg>
+<?php elseif ($initial == 'Va'): ?>
+  <!-- Heart -->
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"
+       fill="none" stroke="currentColor" stroke-width="2"
+       stroke-linecap="round" stroke-linejoin="round"
+       class="feather feather-heart">
+    <path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8z"></path>
+  </svg>
+<?php endif; ?>
+          </span>
         </div>
         <h3 style="font-family:var(--ff-heading);font-size:1.3rem;color:var(--clr-dark);margin-bottom:.75rem;"><?= $title ?></h3>
         <p style="line-height:1.8;font-size:.93rem;"><?= e($text) ?></p>

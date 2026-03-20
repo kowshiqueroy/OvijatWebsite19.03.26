@@ -2,21 +2,6 @@
 // includes/footer.php
 $pdo = getPDO();
 
-// Ensure contact_info table exists (safe guard)
-$pdo->exec("CREATE TABLE IF NOT EXISTS contact_info (
-    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-    label VARCHAR(100) NOT NULL,
-    address TEXT,
-    phone VARCHAR(100),
-    email VARCHAR(150),
-    whatsapp VARCHAR(50),
-    show_header TINYINT(1) NOT NULL DEFAULT 1,
-    show_footer TINYINT(1) NOT NULL DEFAULT 1,
-    show_contact_page TINYINT(1) NOT NULL DEFAULT 1,
-    sort_order INT UNSIGNED NOT NULL DEFAULT 0,
-    is_active TINYINT(1) NOT NULL DEFAULT 1
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
-
 // Settings
 $stmtF = $pdo->query("SELECT `key`,`value` FROM settings WHERE `key` IN
   ('site_name','facebook_url','linkedin_url','youtube_url','about_short','site_logo','site_logo_2')");
@@ -68,7 +53,7 @@ $footerCats = $pdo->query(
           <div class="logo-text-wrap">
             <span class="logo-brand-name" style="color:var(--clr-gold);">OVIJAT</span>
             <span style="font-family:var(--ff-ui);font-size:.55rem;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--clr-crimson);white-space:nowrap;">
-              Food &amp; Bev. Industries Ltd.
+              Food &amp; Beverage Industries Ltd.
             </span>
           </div>
         </a>
@@ -219,7 +204,7 @@ $footerCats = $pdo->query(
     if (loader && taglines.length && typeof Typed !== 'undefined') {
       new Typed('#typed-target', {
         strings: taglines, typeSpeed: 60, backSpeed: 30,
-        backDelay: 1500, loop: true, showCursor: true, cursorChar: '|'
+        backDelay: 1500, loop: true, showCursor: true, cursorChar: 'Ovijat Group'
       });
     }
 
@@ -249,6 +234,37 @@ $footerCats = $pdo->query(
     }
     document.addEventListener('keydown', function(e) {
       if (e.key === 'Escape') window.closeMobileMenu();
+    });
+
+    // ── Mobile Menu Submenu Toggle ──
+    document.querySelectorAll('.mobile-submenu-toggle').forEach(function(toggle) {
+      toggle.addEventListener('click', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        var navItem = this.closest('.mobile-nav-item');
+        var submenu = navItem.nextElementSibling;
+        var isOpen = navItem.classList.contains('submenu-open');
+        
+        // Close all other submenus
+        document.querySelectorAll('.mobile-nav-item.submenu-open').forEach(function(item) {
+          item.classList.remove('submenu-open');
+          item.querySelector('.mobile-submenu-toggle').classList.remove('open');
+          item.querySelector('.mobile-submenu-toggle').setAttribute('aria-expanded', 'false');
+        });
+        document.querySelectorAll('.mobile-submenu.open').forEach(function(sm) {
+          sm.classList.remove('open');
+        });
+        
+        // Toggle current
+        if (!isOpen) {
+          navItem.classList.add('submenu-open');
+          this.classList.add('open');
+          this.setAttribute('aria-expanded', 'true');
+          if (submenu && submenu.classList.contains('mobile-submenu')) {
+            submenu.classList.add('open');
+          }
+        }
+      });
     });
 
     // ── Touch-device dropdown ──

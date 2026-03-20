@@ -7,29 +7,30 @@
 // --- Environment Detection & BASE_URL ---
 // Uses __DIR__ (always the project root where config.php lives).
 // This is reliable regardless of which page includes this file.
-
-$isLocalhost = in_array($_SERVER['HTTP_HOST'] ?? '', ['localhost', '127.0.0.1'], true)
-    || str_starts_with($_SERVER['HTTP_HOST'] ?? '', 'localhost:');
-
-if ($isLocalhost) {
-    // Normalize paths to forward slashes (Windows XAMPP compatibility)
-    $docRoot     = rtrim(str_replace('\\', '/', $_SERVER['DOCUMENT_ROOT']), '/');
-    $projectRoot = rtrim(str_replace('\\', '/', __DIR__), '/');
-    // e.g. docRoot = C:/xampp/htdocs, projectRoot = C:/xampp/htdocs/ovijat
-    // subFolder = /ovijat
-    $subFolder = str_replace($docRoot, '', $projectRoot);
-    define('BASE_URL', 'http://' . ($_SERVER['HTTP_HOST'] ?? 'localhost') . $subFolder);
-} else {
-    // Live server — hard-code your domain
-    define('BASE_URL', 'https://ovijatfood.com');
-}
+$domain = "ovijatfood.com";
+$host = $_SERVER['HTTP_HOST'] ?? '';
+$isNotDomain = $host !== $domain && $host !== 'www.' . $domain;
 
 // --- Database Credentials ---
 define('DB_HOST', 'localhost');
-define('DB_NAME', 'ovijat_food');
-define('DB_USER', 'root');          // Change on live server
-define('DB_PASS', '');              // Change on live server
+
 define('DB_CHARSET', 'utf8mb4');
+
+if ($isNotDomain) {
+    define('DB_NAME', 'ovijat_food');
+    define('DB_USER', 'root');
+    define('DB_PASS', '');
+    $docRoot     = rtrim(str_replace('\\', '/', $_SERVER['DOCUMENT_ROOT']), '/');
+    $projectRoot = rtrim(str_replace('\\', '/', __DIR__), '/');
+    $subFolder = str_replace($docRoot, '', $projectRoot);
+    define('BASE_URL', 'http://' . ($_SERVER['HTTP_HOST'] ?? 'localhost') . $subFolder);
+} else {
+    define('BASE_URL', 'https://' . $domain);
+    define('DB_NAME', 'ovijattt_mainweb7678');
+    define('DB_USER', 'ovijattt_KRkush12');
+    define('DB_PASS', 'KRkush5877');
+}
+
 
 // --- PDO Connection (Singleton) ---
 function getPDO(): PDO {
@@ -43,6 +44,7 @@ function getPDO(): PDO {
         ];
         try {
             $pdo = new PDO($dsn, DB_USER, DB_PASS, $options);
+            ensureTables($pdo);
         } catch (PDOException $e) {
             http_response_code(500);
             exit('Database connection failed. Please try again later.');
@@ -51,12 +53,28 @@ function getPDO(): PDO {
     return $pdo;
 }
 
+function ensureTables(PDO $pdo): void {
+    $pdo->exec("CREATE TABLE IF NOT EXISTS contact_info (
+        id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        label VARCHAR(100) NOT NULL,
+        address TEXT,
+        phone VARCHAR(100),
+        email VARCHAR(150),
+        whatsapp VARCHAR(50),
+        show_header TINYINT(1) NOT NULL DEFAULT 1,
+        show_footer TINYINT(1) NOT NULL DEFAULT 1,
+        show_contact_page TINYINT(1) NOT NULL DEFAULT 1,
+        sort_order INT UNSIGNED NOT NULL DEFAULT 0,
+        is_active TINYINT(1) NOT NULL DEFAULT 1
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+}
+
 // --- Session ---
 if (session_status() === PHP_SESSION_NONE) {
     session_set_cookie_params([
         'lifetime' => 0,
         'path'     => '/',
-        'secure'   => !$isLocalhost,
+        'secure'   => !$isNotDomain,
         'httponly' => true,
         'samesite' => 'Strict',
     ]);

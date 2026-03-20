@@ -14,7 +14,6 @@ $id     = (int)($_GET['id'] ?? 0);
 // DELETE
 if ($action === 'delete' && $id) {
     verifyCsrf();
-    $row = $pdo->prepare("SELECT image FROM products WHERE id=?")->execute([$id]) && ($row = $pdo->prepare("SELECT image FROM products WHERE id=?")->execute([$id]));
     $stmt = $pdo->prepare("SELECT image FROM products WHERE id=?");
     $stmt->execute([$id]);
     $prod = $stmt->fetch();

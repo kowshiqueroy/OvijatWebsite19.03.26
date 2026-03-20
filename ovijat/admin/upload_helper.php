@@ -28,7 +28,7 @@ function uploadImage(
     $ext = $allowed[$mime];
 
     // 3. Random filename
-    $newName  = bin2hex(random_bytes(16)) . '.' . $ext;
+    $newName  = 'Ovijat-Image-' . date('Y-m-d-H-i-s') . '-' . bin2hex(random_bytes(6)) . '.' . $ext;
     $destPath = rtrim($destDir, '/') . '/' . $newName;
 
     // 4. GD resize / compress

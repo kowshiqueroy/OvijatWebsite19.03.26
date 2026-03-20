@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(php -r \":*)",
+      "Bash(/c/xampp/php/php.exe -l \"C:/xampp/htdocs/callcenter/contact_detail.php\")",
+      "Bash(/c/xampp/php/php.exe -l \"C:/xampp/htdocs/callcenter/api/notes.php\")",
+      "Bash(/c/xampp/php/php.exe -r \":*)",
+      "Bash(grep -rL \"ini_set\\(''display_errors''\" /c/xampp/htdocs/callcenter/api/*.php)",
+      "Bash(for f:*)",
+      "Bash(do)",
+      "Bash(sed -i \"s|<?php|<?php\\\\nini_set\\(''display_errors'', 0\\);|\" \"$f\")",
+      "Bash(done)",
+      "Bash(do /c/xampp/php/php.exe -l \"$f\")"
+    ]
+  }
+}

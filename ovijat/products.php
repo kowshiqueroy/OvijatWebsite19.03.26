@@ -36,6 +36,9 @@ if ($activeCat) {
 }
 $products = $stmt->fetchAll();
 
+// Fetch categories for footer
+
+
 require_once 'includes/header.php';
 ?>
 
@@ -62,8 +65,8 @@ require_once 'includes/header.php';
          style="text-decoration:none;">All Products</a>
       <?php foreach ($cats as $c): ?>
         <a href="<?= BASE_URL ?>/products.php?cat=<?= e($c['slug']) ?>"
-           class="region-pill <?= ($activeCat && $activeCat['id'] === $c['id']) ? 'active' : '' ?>"
-           style="text-decoration:none;"><?= e($c['name']) ?></a>
+           class="region-pill"
+           style="text-decoration:none;"><?= e($c['slug']) ?></a>
       <?php endforeach; ?>
     </div>
     <?php endif; ?>
