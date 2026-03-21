@@ -8,11 +8,7 @@ $in     = json_decode(file_get_contents('php://input'), true) ?? [];
 $action = $in['action'] ?? ($_GET['action'] ?? '');
 $aid    = agentId();
 
-function jsonOut($ok, $data = []) {
-    if (ob_get_level()) ob_clean();
-    echo json_encode(array_merge(['ok'=>$ok],$data));
-    exit;
-}
+function jsonOut($ok, $data = []) { echo json_encode(array_merge(['ok'=>$ok],$data)); exit; }
 
 switch ($action) {
 

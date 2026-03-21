@@ -18,7 +18,6 @@ define('APP_NAME',    'Ovijat Call Center');
 define('APP_VERSION', '1.0.0');
 define('APP_ROOT',    __DIR__);
 define('APP_URL',     '/callcenter');
-define('SECURE_KEY',  'ovijat-call-center-secret-2026'); // Change this in production
 
 $conn = new mysqli(DB_HOST, DB_USER, DB_PASS, DB_NAME);
 if ($conn->connect_error) {
@@ -28,23 +27,6 @@ if ($conn->connect_error) {
          <p>Run <a href="setup.php" style="color:#818cf8">setup.php</a> first.</p></div>');
 }
 $conn->set_charset('utf8mb4');
-
-// ── Security helpers ──────────────────────────────────────────────────────────
-function encryptData(string $data): string {
-    if (!$data) return '';
-    $iv  = openssl_random_pseudo_bytes(openssl_cipher_iv_length('aes-256-cbc'));
-    $enc = openssl_encrypt($data, 'aes-256-cbc', SECURE_KEY, 0, $iv);
-    return base64_encode($iv . $enc);
-}
-
-function decryptData(string $data): string {
-    if (!$data) return '';
-    $raw = base64_decode($data);
-    $ivl = openssl_cipher_iv_length('aes-256-cbc');
-    $iv  = substr($raw, 0, $ivl);
-    $enc = substr($raw, $ivl);
-    return openssl_decrypt($enc, 'aes-256-cbc', SECURE_KEY, 0, $iv) ?: $data; // Return original if decrypt fails (might be unencrypted)
-}
 
 // ── Auth helpers ──────────────────────────────────────────────────────────────
 function isLoggedIn(): bool {

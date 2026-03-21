@@ -12,28 +12,20 @@ $aid        = agentId();
 
 // ── Save credentials ───────────────────────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_creds'])) {
-    $u   = $conn->real_escape_string(trim($_POST['pbx_username'] ?? ''));
-    $p   = trim($_POST['pbx_password'] ?? '');
-    $url = $conn->real_escape_string(rtrim(trim($_POST['pbx_url'] ?? ''), '/'));
-
-    if ($u && $url) {
-        $conn->query("INSERT INTO settings (setting_key,setting_value,updated_by) VALUES ('pbx_username','$u',$aid) ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value), updated_by=$aid");
-        $conn->query("INSERT INTO settings (setting_key,setting_value,updated_by) VALUES ('pbx_url','$url',$aid) ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value), updated_by=$aid");
-
-        if ($p && $p !== '**********') {
-            $encP = $conn->real_escape_string(encryptData($p));
-            $conn->query("INSERT INTO settings (setting_key,setting_value,updated_by) VALUES ('pbx_password','$encP',$aid) ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value), updated_by=$aid");
-        } else {
-            $encP = getSetting('pbx_password');
-        }
-
+    $u = $conn->real_escape_string(trim($_POST['pbx_username'] ?? ''));
+    $p = $conn->real_escape_string(trim($_POST['pbx_password'] ?? ''));
+    if ($u && $p) {
+        $conn->query("INSERT INTO settings (setting_key,setting_value,updated_by) VALUES
+            ('pbx_username','$u',$aid),('pbx_password','$p',$aid)
+            ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value), updated_by=$aid");
         // Upsert pbx_settings row (needed for fetch_batches FK)
-        $r = $conn->query("SELECT id FROM pbx_settings WHERE pbx_host='$url' LIMIT 1");
+        $h = 'https://ovijatgroup.pbx.com.bd';
+        $r = $conn->query("SELECT id FROM pbx_settings WHERE pbx_host='$h' LIMIT 1");
         if ($r && $row = $r->fetch_assoc()) {
-            $conn->query("UPDATE pbx_settings SET db_username='$u',db_password='$encP',updated_by=$aid WHERE id={$row['id']}");
+            $conn->query("UPDATE pbx_settings SET db_username='$u',db_password='$p',updated_by=$aid WHERE id={$row['id']}");
         } else {
             $conn->query("INSERT INTO pbx_settings (name,pbx_host,db_host,db_username,db_password,created_by)
-                          VALUES ('Ovijat PBX','$url','localhost','$u','$encP',$aid)");
+                          VALUES ('Ovijat PBX','$h','localhost','$u','$p',$aid)");
         }
         logActivity('pbx_credentials_saved', 'pbx_settings', 1, 'PBX credentials updated');
     }
@@ -43,7 +35,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_creds'])) {
 
 $pbxUsername = getSetting('pbx_username');
 $pbxPassword = getSetting('pbx_password');
-$pbxUrl      = getSetting('pbx_url', 'https://ovijatgroup.pbx.com.bd');
 $hasCreds    = !empty($pbxUsername) && !empty($pbxPassword);
 
 $fetchHistory = $conn->query(
@@ -75,22 +66,17 @@ require_once 'includes/layout.php';
             <div class="cc-card-body">
                 <input type="hidden" name="save_creds" value="1">
                 <div class="row g-3">
-                    <div class="col-sm-4">
-                        <label class="form-label">PBX Host URL</label>
-                        <input type="url" name="pbx_url" class="form-control"
-                               value="<?= e($pbxUrl) ?>" placeholder="https://..." autocomplete="off" required>
-                    </div>
-                    <div class="col-sm-3">
+                    <div class="col-sm-5">
                         <label class="form-label">Username</label>
                         <input type="text" name="pbx_username" class="form-control"
                                value="<?= e($pbxUsername) ?>" placeholder="PBX login username" autocomplete="off" required>
                     </div>
-                    <div class="col-sm-3">
+                    <div class="col-sm-5">
                         <label class="form-label">Password</label>
                         <input type="password" name="pbx_password" class="form-control"
-                               value="<?= $pbxPassword ? '**********' : '' ?>"
+                               value="<?= $pbxPassword ? str_repeat('•', 10) : '' ?>"
                                placeholder="PBX login password" autocomplete="off"  required>
-                        <div class="form-text text-muted small">Type to change. Masked for security.</div>
+                        <div class="form-text text-muted small">Leave unchanged to keep current password.</div>
                     </div>
                     <div class="col-sm-2 d-flex align-items-end gap-2">
                         <button type="submit" class="btn btn-primary btn-sm">
@@ -102,7 +88,7 @@ require_once 'includes/layout.php';
                     </div>
                 </div>
                 <div class="mt-2 text-muted small">
-                    <i class="fas fa-server me-1"></i>Connects to <strong><?= e($pbxUrl) ?></strong>
+                    <i class="fas fa-server me-1"></i>Connects to <strong>ovijatgroup.pbx.com.bd</strong>
                 </div>
             </div>
         </form>
@@ -173,7 +159,7 @@ require_once 'includes/layout.php';
             <div class="detail-grid">
                 <div class="detail-item">
                     <div class="detail-label">PBX Host</div>
-                    <div class="detail-value small"><?= e(parse_url($pbxUrl, PHP_URL_HOST)) ?></div>
+                    <div class="detail-value small">ovijatgroup.pbx.com.bd</div>
                 </div>
                 <div class="detail-item">
                     <div class="detail-label">CDR Source</div>

@@ -8,11 +8,7 @@ $in     = json_decode(file_get_contents('php://input'), true) ?? [];
 $action = $in['action'] ?? ($_GET['action'] ?? '');
 $aid    = agentId();
 
-function jsonOut($ok, $data = []) {
-    if (ob_get_level()) ob_clean();
-    echo json_encode(array_merge(['ok'=>$ok],$data));
-    exit;
-}
+function jsonOut($ok, $data = []) { echo json_encode(array_merge(['ok'=>$ok],$data)); exit; }
 
 // Resolve a type/group name to its ID, creating it if it doesn't exist
 function resolveOrCreate(mysqli $conn, string $table, string $name): ?int {

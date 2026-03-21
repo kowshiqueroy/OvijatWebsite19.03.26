@@ -9,7 +9,6 @@ $action = $in['action'] ?? $_GET['action'] ?? '';
 $aid    = agentId();
 
 function jsonOut($ok, $data = []) {
-    if (ob_get_level()) ob_clean();
     echo json_encode(array_merge(['ok' => $ok], $data));
     exit;
 }

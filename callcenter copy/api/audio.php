@@ -1,7 +1,6 @@
 <?php
 ini_set('display_errors', 0);
 require_once '../config.php';
-require_once '../includes/pbx_client.php';
 requireLogin();
 
 $callId   = (int)($_GET['id'] ?? 0);
@@ -31,7 +30,6 @@ $cname  = $call['contact_name'] ?: '';
 $cdate  = $call['calldate'] ? date('Ymd-His', strtotime($call['calldate'])) : date('Ymd');
 $sanitize = fn($s) => preg_replace('/[^A-Za-z0-9_\-]/', '', str_replace(' ', '_', $s));
 $basename = 'rec-' . $sanitize($cname ?: $number) . '-' . $cdate . '.gsm';
-$mime     = 'audio/x-gsm';
 
 logActivity('recording_played', 'call_logs', $callId,
     ($download ? 'Downloaded' : 'Played') . ' recording: ' . $call['recordingfile']);
@@ -49,7 +47,7 @@ if (!empty($call['local_recording'])) {
         } else {
             header('Content-Disposition: inline; filename="' . $basename . '"');
         }
-        header('Content-Type: ' . $mime);
+        header('Content-Type: audio/x-gsm');
         header('Content-Length: ' . filesize($localPath));
         readfile($localPath);
         exit;
@@ -57,20 +55,56 @@ if (!empty($call['local_recording'])) {
 }
 
 $file = $call['recordingfile'];
+$ext  = 'gsm';
+$mime = 'audio/x-gsm';
 
 // ── Case 1: full URL stored (web-scraped fetch) ───────────────────────────────
 if (str_starts_with($file, 'http://') || str_starts_with($file, 'https://')) {
     $username   = getSetting('pbx_username');
-    $password   = decryptData(getSetting('pbx_password'));
-    $pbxUrl     = getSetting('pbx_url', 'https://ovijatgroup.pbx.com.bd');
+    $password   = getSetting('pbx_password');
+    $cookieFile = sys_get_temp_dir() . '/pbx_cc_' . md5($username) . '.txt';
 
-    $client = new PbxClient($pbxUrl, $username, $password);
-    if (!$client->login()) {
-        http_response_code(502);
-        exit('Could not login to PBX: ' . $client->getLastError());
+    if (!file_exists($cookieFile) || (time() - filemtime($cookieFile)) > 3600) {
+        $ch = curl_init('https://ovijatgroup.pbx.com.bd/core/user_settings/user_dashboard.php');
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_SSL_VERIFYPEER => false,
+            CURLOPT_TIMEOUT        => 30,
+            CURLOPT_POST           => true,
+            CURLOPT_POSTFIELDS     => http_build_query(['username'=>$username,'password'=>$password]),
+            CURLOPT_COOKIEJAR      => $cookieFile,
+            CURLOPT_COOKIEFILE     => $cookieFile,
+            CURLOPT_USERAGENT      => 'Mozilla/5.0',
+        ]);
+        curl_exec($ch);
+        curl_close($ch);
     }
 
-    $client->stream($file, $mime, $basename, $download);
+    if ($download) {
+        header('Content-Disposition: attachment; filename="' . $basename . '"');
+    } else {
+        header('Content-Disposition: inline; filename="' . $basename . '"');
+    }
+    header('Content-Type: ' . $mime);
+
+    $ch = curl_init($file);
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => false,
+        CURLOPT_FOLLOWLOCATION => true,
+        CURLOPT_SSL_VERIFYPEER => false,
+        CURLOPT_TIMEOUT        => 120,
+        CURLOPT_COOKIEFILE     => $cookieFile,
+        CURLOPT_USERAGENT      => 'Mozilla/5.0',
+        CURLOPT_WRITEFUNCTION  => function($ch, $data) { echo $data; return strlen($data); },
+    ]);
+    curl_exec($ch);
+    $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    if ($code !== 200) {
+        http_response_code(502);
+        exit('Could not retrieve recording from PBX (HTTP ' . $code . ')');
+    }
     exit;
 }
 
@@ -105,7 +139,7 @@ if ($call['recording_base_url']) {
         CURLOPT_FOLLOWLOCATION => true,
         CURLOPT_SSL_VERIFYPEER => false,
         CURLOPT_TIMEOUT        => 60,
-        CURLOPT_USERPWD        => $call['db_username'] . ':' . decryptData($call['db_password']),
+        CURLOPT_USERPWD        => $call['db_username'] . ':' . $call['db_password'],
         CURLOPT_HTTPAUTH       => CURLAUTH_BASIC,
         CURLOPT_WRITEFUNCTION  => function($ch, $data) { echo $data; return strlen($data); },
     ]);
@@ -115,11 +149,6 @@ if ($call['recording_base_url']) {
     if ($code !== 200) { http_response_code(404); exit('Recording not accessible (HTTP ' . $code . ')'); }
     exit;
 }
-    $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
-    if ($code !== 200) { http_response_code(404); exit('Recording not accessible (HTTP ' . $code . ')'); }
-    exit;
-
 
 http_response_code(404);
 exit('Recording not found');

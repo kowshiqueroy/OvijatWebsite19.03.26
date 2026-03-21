@@ -4,27 +4,13 @@
  * Drops and recreates callcenter_db with full schema.
  * Run once. Delete after use in production.
  */
-
-// ── SAFETY LOCK ──────────────────────────────────────────────────────────────
-// CHANGE THIS TO true TO ENABLE THE SETUP SCRIPT
-define('ENABLE_SETUP', false);
-
-if (!ENABLE_SETUP) {
-    die('<div style="font-family:sans-serif;padding:2rem;background:#1a1d27;color:#fca5a5;text-align:center">
-         <h3>Setup Locked</h3>
-         <p>For security, you must edit <code>setup.php</code> and set <code>ENABLE_SETUP</code> to <code>true</code> to run this script.</p>
-         <p style="color:#94a3b8;font-size:.9rem">Warning: This script will WIPE all existing data.</p>
-         </div>');
-}
-
-require_once 'config.php';
 $messages = [];
 
 try {
-    $host   = DB_HOST;
-    $user   = DB_USER;
-    $pass   = DB_PASS;
-    $dbname = DB_NAME;
+    $host   = 'localhost';
+    $user   = 'root';
+    $pass   = '';
+    $dbname = 'callcenter_db2';
 
     $conn = new mysqli($host, $user, $pass);
     if ($conn->connect_error) throw new Exception("MySQL connection failed: " . $conn->connect_error);
@@ -493,10 +479,6 @@ try {
     $conn->query("INSERT INTO agents (username, password, full_name, department, status, created_by)
                   VALUES ('admin', '$adminPass', 'Admin Agent', 'Management', 'active', 1)");
     $adminId = $conn->insert_id; // should be 2
-
-    // -- Default PBX Host Setting
-    $defaultPbx = 'https://ovijatgroup.pbx.com.bd';
-    $conn->query("INSERT INTO settings (setting_key, setting_value, updated_by) VALUES ('pbx_url', '$defaultPbx', $adminId)");
 
     // -- Sample agents
     $sampleAgents = [
