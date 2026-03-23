@@ -60,7 +60,6 @@ function navLink(string $page, string $icon, string $label, string $curPage): st
     <div class="nav-section-label">Inventory</div>
     <?= navLink('products',   '📦', 'Products', $curPage) ?>
     <?= navLink('product_entries', '📜', 'Product History', $curPage) ?>
-    <?= navLink('requisition', '📋', 'Requisition', $curPage) ?>
     
   <?php if (isAdmin()): ?>
     <?= navLink('categories', '🏷️', 'Categories', $curPage) ?>

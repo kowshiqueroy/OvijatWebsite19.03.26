@@ -107,7 +107,7 @@ $pageTitle = 'Print Labels';
 require_once BASE_PATH . '/includes/header.php';
 ?>
 <link href="https://fonts.googleapis.com/css2?family=Libre+Barcode+39+Text&display=swap" rel="stylesheet">
-<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=DM+Sans:wght@400;500;600;700&family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 
 <style>
 /* ═══════════════════════════════════════════════════════════
@@ -1250,7 +1250,7 @@ function rl() {
   const PT2PX = 1.3333; // 1pt = 1.333px at 96dpi
 
   // pt-based fonts: fraction of iWpx → pt size, clamped to readable range
-  const fsShop    = clamp(Math.round(iWpx * 0.075 / PT2PX),  4, 18);
+  const fsShop    = clamp(Math.round(iWpx * 0.075 / PT2PX),  4, 9);
   const fsPhone   = clamp(Math.round(iWpx * 0.070 / PT2PX),  4, 8);
   const fsEmail   = clamp(Math.round(iWpx * 0.070 / PT2PX),  4, 8);
   const fsAddr    = clamp(Math.round(iWpx * 0.065 / PT2PX),  3, 8);
@@ -1259,7 +1259,7 @@ function rl() {
   const fsMeta    = clamp(Math.round(iWpx * 0.070 / PT2PX),  4,  9);
   const fsDesc    = clamp(Math.round(iWpx * 0.070 / PT2PX),  4,  9);
   const fsPrice   = clamp(Math.round(iWpx * 0.195 / PT2PX),  8, 26);
-  const fsReg     = clamp(Math.round(iWpx * 0.120 / PT2PX),  7, 17);
+  const fsReg     = clamp(Math.round(iWpx * 0.090 / PT2PX),  5, 12);
   const fsDisc    = clamp(Math.round(iWpx * 0.080 / PT2PX),  4, 10);
   const fsBcTxt   = clamp(Math.round(iWpx * 0.065 / PT2PX),  4,  8);
 
@@ -1268,9 +1268,9 @@ function rl() {
 
   // Discount badge — circle sized relative to fsPrice
   const badgePx = clamp(Math.round(fsPrice * PT2PX * 2.8), 22, 64);
-  const bF1 = Math.round(badgePx * 0.23); // pct digits
-  const bF2 = Math.round(badgePx * 0.25); // OFF text
-  const bF3 = Math.round(badgePx * 0.15); // saved amount
+  const bF1 = Math.round(badgePx * 0.30); // pct digits
+  const bF2 = Math.round(badgePx * 0.20); // OFF text
+  const bF3 = Math.round(badgePx * 0.19); // saved amount
 
   // ── Label style CSS ──
   let lblExtra = '';
@@ -1334,10 +1334,8 @@ function rl() {
     if (cb('shLogo') && SH_LOGO)
       inner += `<div style="text-align:${align};margin-bottom:1px;"><img src="${esc(SH_LOGO)}" style="max-height:${logoHpx}px;max-width:100%;object-fit:contain;display:block;${align==='center'?'margin:auto':align==='right'?'margin-left:auto':''}"></div>`;
 
-    if (cb('shShop') && SH_NAME) {
-      const shopName = esc(SH_NAME);
-      inner += `<div style="width:100%;text-align:${align};font-family:'Orbitron',sans-serif;font-size:${fsShop}pt;font-weight:700;letter-spacing:0.5px;color:#222;line-height:1.1;white-space:nowrap;overflow:hidden;">${shopName}</div>`;
-    }
+    if (cb('shShop') && SH_NAME)
+      inner += row(esc(SH_NAME), `font-size:${fsShop}pt;font-weight:800;color:#222;`);
 
     if (cb('shName'))
       inner += row(esc(item.name), `font-size:${fsName}pt;font-weight:900;color:#000;`);
@@ -1518,7 +1516,7 @@ ${pageRule}
     box-shadow: none !important;
     overflow: hidden !important;
   }
-  .lp-page-last { page-break-after:auto; break-after:auto; }
+  .lp-page:last-child { page-break-after:auto; break-after:auto; }
   .lp-row { page-break-inside:avoid; break-inside:avoid; }
   .lp-lbl { page-break-inside:avoid; break-inside:avoid; outline:none!important; }
 }
@@ -1627,12 +1625,12 @@ ${pageRule}
     `${exp.length} labels · ${pageCount} page${pageCount!==1?'s':''}`;
 
   // ── Step 3: build page HTML from packed row groups ────────────────────────
-  function buildPageFromRows(pageRows, isLast) {
+  function buildPageFromRows(pageRows) {
     const rowsHTML = pageRows.map(row => {
       const cells = row.map(i => `<div class="lp-lbl">${buildLabel(i)}</div>`).join('');
       return `<div class="lp-row" style="display:flex;align-items:flex-start;gap:${colGapPx}px;margin-bottom:${rowGapPx}px;">${cells}</div>`;
     }).join('');
-    return `<div class="lp-page${isLast ? ' lp-page-last' : ''}" style="
+    return `<div class="lp-page" style="
       width:${paperPxW}px;height:${paperPxH}px;
       box-sizing:border-box;background:#fff;
       padding:${mTPx}px ${mRPx}px ${mBPx}px ${mLPx}px;
@@ -1649,9 +1647,8 @@ ${pageRule}
   let pvHTML = CSS;
   let prHTML = CSS;
 
-  pages.forEach((pageRows, idx) => {
-    const isLast = idx === pages.length - 1;
-    const pageHTML = buildPageFromRows(pageRows, isLast);
+  pages.forEach(pageRows => {
+    const pageHTML = buildPageFromRows(pageRows);
     pvHTML += `<div style="transform:scale(${scale.toFixed(4)});transform-origin:top center;
       width:${paperPxW}px;height:${paperPxH}px;
       box-shadow:0 8px 32px rgba(0,0,0,0.4),0 2px 8px rgba(0,0,0,0.3);

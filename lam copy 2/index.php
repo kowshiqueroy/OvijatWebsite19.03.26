@@ -49,8 +49,7 @@ $routes = [
     'logs'           => 'modules/logs/logs.php',
     'settings'       => 'modules/settings/settings.php',
     'barcodes'       => 'modules/barcodes/barcodes.php',
-    'requisition'    => 'modules/requisition/requisition.php',
-   
+  
     'thermal' => 'modules/invoices/thermal.php',
     'backup' => 'modules/tools/backup.php',
 ];

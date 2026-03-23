@@ -12,7 +12,7 @@ if (strpos($_SERVER['HTTP_HOST'], 'localhost') !== false) {
 define('DB_PASS', '');
 } else {
     // define('BASE_URL',    ' https://lam.sohojweb.com');
-   define('BASE_URL',    ' https://7e3c-202-191-127-232.ngrok-free.app/lam');
+   define('BASE_URL',    'https://230a-202-191-127-232.ngrok-free.app/lam');
     define('DB_NAME', 'pos_db');
     define('DB_USER', 'root');
     define('DB_PASS', '');
