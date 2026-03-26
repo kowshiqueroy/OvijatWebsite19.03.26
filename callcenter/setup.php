@@ -519,14 +519,15 @@ try {
     // -- Agent numbers (extensions + official numbers)
     $agentNumbers = [
         // [agent_id_index, type, number, label, is_primary]
-        [1, 'extension',   '102',         'Main Ext',       1],
-        [1, 'mobile',      '01712000001', 'Admin Mobile',   0],
-        [2, 'extension',   '104',         'Sales Ext',      1],
-        [2, 'official',    '01712000101', 'Sales Direct',   0],
+       
         [3, 'extension',   '102',         'Support Ext',    1],
-        [3, 'official',    '01712000102', 'Support Direct', 0],
-        [4, 'extension',   '103',         'Support Ext 2',  1],
-        [5, 'extension',   '103',         'Sales Ext 2',    1],
+        [3, 'official',    '01896002767', 'Robi', 1],
+     [4, 'extension',   '103',         'Support Ext',    1],
+        [4, 'official',    '01896002766', 'Robi', 1],
+         [5, 'extension',   '104',         'Support Ext',    1],
+        [5, 'official',    '01896002746', 'Robi', 1],
+         [6, 'extension',   '105',         'Support Ext',    1],
+        [6, 'official',    '01896002744', 'Robi', 1],
     ];
     $stmt = $conn->prepare("INSERT INTO agent_numbers (agent_id, number_type, number, label, is_primary, created_by) VALUES (?, ?, ?, ?, ?, ?)");
     foreach ($agentNumbers as $n) {

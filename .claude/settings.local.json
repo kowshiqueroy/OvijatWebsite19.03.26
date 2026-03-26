@@ -10,7 +10,18 @@
       "Bash(do)",
       "Bash(sed -i \"s|<?php|<?php\\\\nini_set\\(''display_errors'', 0\\);|\" \"$f\")",
       "Bash(done)",
-      "Bash(do /c/xampp/php/php.exe -l \"$f\")"
+      "Bash(do /c/xampp/php/php.exe -l \"$f\")",
+      "Bash(grep -r documents c:/xampp/htdocs/sohojweb --include=*.php)",
+      "Bash(grep -r \"page_content\\\\|page_seo\" c:/xampp/htdocs/sohojweb --include=*.php)",
+      "Bash(grep -r site_why_choose c:/xampp/htdocs/sohojweb --include=*.php)",
+      "Bash(grep -r job_applicants c:/xampp/htdocs/sohojweb --include=*.php)",
+      "Bash(grep -r job_applications c:/xampp/htdocs/sohojweb --include=*.php)",
+      "Bash(grep -r \"application_forms\\\\|application_forms\" c:/xampp/htdocs/sohojweb --include=*.php)",
+      "Bash(grep -rn sohojweb c:/xampp/htdocs/sohojweb --include=*.php)",
+      "Bash(grep -rn audit_logs c:/xampp/htdocs/sohojweb --include=*.php)",
+      "Bash(grep -rn \"user management\\\\|users\" c:/xampp/htdocs/sohojweb/admin --include=*.php)",
+      "Bash(grep -rn \"job_appli\\\\|job_applicant\" c:/xampp/htdocs/sohojweb --include=*.php)",
+      "Bash(find /c/xampp/htdocs/sohojweb -type f ! -path */.* ! -path */node_modules/*)"
     ]
   }
 }
