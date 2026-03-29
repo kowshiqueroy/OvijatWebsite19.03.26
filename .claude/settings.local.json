@@ -21,7 +21,18 @@
       "Bash(grep -rn audit_logs c:/xampp/htdocs/sohojweb --include=*.php)",
       "Bash(grep -rn \"user management\\\\|users\" c:/xampp/htdocs/sohojweb/admin --include=*.php)",
       "Bash(grep -rn \"job_appli\\\\|job_applicant\" c:/xampp/htdocs/sohojweb --include=*.php)",
-      "Bash(find /c/xampp/htdocs/sohojweb -type f ! -path */.* ! -path */node_modules/*)"
+      "Bash(find /c/xampp/htdocs/sohojweb -type f ! -path */.* ! -path */node_modules/*)",
+      "Bash(php -l /c/xampp/htdocs/projects/worksheet/api.php)",
+      "Bash(php -l /c/xampp/htdocs/projects/worksheet/index.php)",
+      "Bash(php -l /c/xampp/htdocs/projects/includes/layout.php)",
+      "Bash(/c/xampp/php/php -l /c/xampp/htdocs/projects/worksheet/api.php)",
+      "Bash(/c/xampp/php/php -l /c/xampp/htdocs/projects/worksheet/index.php)",
+      "Bash(/c/xampp/php/php -l /c/xampp/htdocs/projects/includes/layout.php)",
+      "Bash(/c/xampp/php/php -l /c/xampp/htdocs/projects/setup.php)",
+      "Bash(do /c/xampp/php/php -l \"$f\")",
+      "Bash(grep -n \"tools_used\\\\|ai_used\" /c/xampp/htdocs/projects/worksheet/*.php)",
+      "Bash(php -l c:/xampp/htdocs/projects/setup.php)",
+      "Bash(c:/xampp/php/php.exe -l c:/xampp/htdocs/projects/setup.php)"
     ]
   }
 }

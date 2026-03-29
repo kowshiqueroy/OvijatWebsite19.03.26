@@ -18,34 +18,48 @@ switch ($action) {
         $desc       = trim($in['description'] ?? '');
         $callId     = !empty($in['call_id'])    ? (int)$in['call_id']    : null;
         $contactId  = !empty($in['contact_id']) ? (int)$in['contact_id'] : null;
-        $assignedTo = !empty($in['assigned_to']) ? (int)$in['assigned_to'] : $aid;
+        $assignedTo = !empty($in['assigned_to']) ? $in['assigned_to'] : (string)$aid;
         $priority   = $in['priority']   ?? 'medium';
         $dueDate    = $in['due_date']   ?: null;
+        $recurType  = $in['recurrence_type'] ?? null;
+        $recurInterval = $in['recurrence_interval'] ?? 1;
+        $recurTime  = $in['recurrence_time']  ?? null;
 
         if (!$title) jsonOut(false, ['error' => 'Title required']);
 
-        $stmt = $conn->prepare(
-            "INSERT INTO todos (title, description, call_id, contact_id, created_by, assigned_to, priority, due_date)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
-        );
-        $stmt->bind_param("ssiiiiss", $title, $desc, $callId, $contactId, $aid, $assignedTo, $priority, $dueDate);
-        if (!$stmt->execute()) jsonOut(false, ['error' => $conn->error]);
+        $assignees = array_filter(array_map('intval', explode(',', $assignedTo)));
+        if (empty($assignees)) $assignees = [$aid];
 
-        $todoId = $conn->insert_id;
+        $createdIds = [];
+        foreach ($assignees as $aId) {
+            $stmt = $conn->prepare(
+                "INSERT INTO todos (title, description, call_id, contact_id, created_by, assigned_to, priority, due_date)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+            );
+            $stmt->bind_param("ssiiiiss", $title, $desc, $callId, $contactId, $aid, $aId, $priority, $dueDate);
+            if (!$stmt->execute()) continue;
 
-        // Log creation
-        $conn->query("INSERT INTO todo_logs (todo_id, agent_id, action, new_value)
-                      VALUES ($todoId, $aid, 'created', '$priority')");
-        logActivity('task_created', 'todos', $todoId, "Task: $title | Assigned to #$assignedTo");
+            $todoId = $conn->insert_id;
+            $createdIds[] = $todoId;
 
-        // Notify assigned agent if not self
-        if ($assignedTo && $assignedTo !== $aid) {
-            $link = APP_URL . "/todos.php?id=$todoId";
-            notify($assignedTo, 'Task Assigned to You', currentAgent()['full_name'] . " assigned: $title",
-                   'task_assigned', 'todos', $todoId, $link);
+            $conn->query("INSERT INTO todo_logs (todo_id, agent_id, action, new_value)
+                          VALUES ($todoId, $aid, 'created', '$priority')");
+            logActivity('task_created', 'todos', $todoId, "Task: $title | Assigned to #$aId");
+
+            if ($recurType) {
+                $nextDue = $dueDate ? $dueDate : date('Y-m-d H:i:s');
+                $conn->query("INSERT INTO todo_recurring (task_id, agent_id, recurrence_type, recurrence_interval, recurrence_time, next_due)
+                              VALUES ($todoId, $aId, '$recurType', $recurInterval, " . ($recurTime ? "'$recurTime'" : "NULL") . ", '$nextDue')");
+            }
+
+            if ($aId !== $aid) {
+                $link = APP_URL . "/todos.php?id=$todoId";
+                notify($aId, 'Task Assigned to You', currentAgent()['full_name'] . " assigned: $title",
+                       'task_assigned', 'todos', $todoId, $link);
+            }
         }
 
-        jsonOut(true, ['id' => $todoId]);
+        jsonOut(true, ['id' => implode(',', $createdIds), 'count' => count($createdIds)]);
     }
 
     // ── Update status ─────────────────────────────────────────────────────────
@@ -73,6 +87,15 @@ switch ($action) {
         if ($newStatus === 'done' && $old['created_by'] && $old['created_by'] != $aid) {
             notify((int)$old['created_by'], 'Task Completed', currentAgent()['full_name'] . " completed: {$old['title']}",
                    'task_assigned', 'todos', $todoId);
+        }
+
+        // Advance recurrence if task done
+        if ($newStatus === 'done') {
+            $recurring = $conn->query("SELECT * FROM todo_recurring WHERE task_id=$todoId AND active=1")->fetch_assoc();
+            if ($recurring) {
+                $newDue = date('Y-m-d H:i:s', strtotime("+{$recurring['recurrence_interval']} " . $recurring['recurrence_type'], strtotime($recurring['next_due'])));
+                $conn->query("UPDATE todo_recurring SET next_due = '$newDue' WHERE id = {$recurring['id']}");
+            }
         }
 
         jsonOut(true);
@@ -158,6 +181,23 @@ switch ($action) {
                        'task_assigned', 'todos', $todoId, APP_URL . "/todos.php?id=$todoId");
             }
         }
+        jsonOut(true);
+    }
+
+    // ── Stop recurring ─────────────────────────────────────────────────────────
+    case 'stop_recurrence': {
+        $todoId = (int)($in['id'] ?? 0);
+        if (!$todoId) jsonOut(false, ['error' => 'Missing id']);
+        $conn->query("UPDATE todo_recurring SET active=0 WHERE task_id=$todoId");
+        jsonOut(true);
+    }
+
+    // ── Skip recurring ─────────────────────────────────────────────────────────
+    case 'skip_recurrence': {
+        $todoId = (int)($in['id'] ?? 0);
+        $skipUntil = $in['skip_until'] ?? null;
+        if (!$todoId) jsonOut(false, ['error' => 'Missing id']);
+        $conn->query("UPDATE todo_recurring SET skip_until = " . ($skipUntil ? "'$skipUntil'" : "NULL") . " WHERE task_id=$todoId");
         jsonOut(true);
     }
 
