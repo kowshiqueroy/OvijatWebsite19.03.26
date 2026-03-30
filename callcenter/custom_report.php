@@ -37,6 +37,10 @@ $notesMap       = [];   // call_id => [root note ids]
 $noteById       = [];   // id => note_data
 $noteChildren   = [];   // parent_id => [child ids]
 $tasksMap       = [];
+$contactIds     = [];
+$contactNotesMap = [];   // contact_id => [root note ids]
+$contactNoteById = [];   // id => note_data
+$contactNoteChildren = []; // parent_id => [child ids]
 $globalSummary  = [];
 $agentSummaries = [];
 
@@ -84,7 +88,7 @@ if ($hasReport) {
         "SELECT cl.id, cl.calldate, cl.src, cl.dst, cl.clid, cl.cnam,
                 cl.duration, cl.billsec, cl.disposition, cl.call_direction,
                 cl.call_mark, cl.recordingfile, cl.is_manual, cl.manual_notes,
-                c.name AS contact_name, c.phone AS contact_phone, c.company,
+                cl.contact_id, c.name AS contact_name, c.phone AS contact_phone, c.company,
                 a.full_name AS agent_name, a.department AS agent_dept, a.id AS agent_id_col
          FROM call_logs cl
          LEFT JOIN contacts c ON c.id = cl.contact_id
@@ -95,7 +99,11 @@ if ($hasReport) {
          LIMIT 2000"
     );
     $reportData = $res ? $res->fetch_all(MYSQLI_ASSOC) : [];
-    foreach ($reportData as $r) $callIds[] = (int)$r['id'];
+    foreach ($reportData as $r) {
+        $callIds[] = (int)$r['id'];
+        if (!empty($r['contact_id'])) $contactIds[] = (int)$r['contact_id'];
+    }
+    $contactIds = array_unique($contactIds);
 
     // ── Notes + Replies ───────────────────────────────────────────────────────
     if ($showNotes && $callIds) {
@@ -113,6 +121,26 @@ if ($hasReport) {
                 $noteChildren[$n['parent_id']][] = $n['id'];
             } else {
                 $notesMap[$n['call_id']][] = $n['id'];
+            }
+        }
+    }
+
+    // ── Contact Notes + Replies ──────────────────────────────────────────────
+    if ($showNotes && $contactIds) {
+        $idStr = implode(',', $contactIds);
+        $nr = $conn->query(
+            "SELECT cn.id, cn.contact_id, cn.parent_id, cn.content, cn.note_type,
+                    cn.priority, cn.log_status, cn.created_at, a.full_name AS by_name
+             FROM contact_notes cn LEFT JOIN agents a ON a.id = cn.agent_id
+             WHERE cn.contact_id IN ($idStr)
+             ORDER BY COALESCE(cn.parent_id, cn.id) ASC, cn.id ASC"
+        );
+        while ($n = $nr->fetch_assoc()) {
+            $contactNoteById[$n['id']] = $n;
+            if ($n['parent_id']) {
+                $contactNoteChildren[$n['parent_id']][] = $n['id'];
+            } else {
+                $contactNotesMap[$n['contact_id']][] = $n['id'];
             }
         }
     }
@@ -800,7 +828,9 @@ body{font-family:'Segoe UI',Arial,sans-serif;background:#f1f5f9;color:#1e293b;mi
                 $isMissed  = in_array($c['disposition'], ['NO ANSWER','BUSY','FAILED','CONGESTION']);
                 $cNoteIds  = $notesMap[$c['id']] ?? [];
                 $cTasks    = $tasksMap[$c['id']] ?? [];
-                $hasNotes  = $showNotes && !empty($cNoteIds);
+                $contactId = $c['contact_id'] ?? null;
+                $cContactNoteIds = $contactId ? ($contactNotesMap[$contactId] ?? []) : [];
+                $hasNotes  = $showNotes && (!empty($cNoteIds) || !empty($cContactNoteIds));
                 $hasTasks  = $showTasks && !empty($cTasks);
                 $hasExtra  = $hasNotes || $hasTasks;
                 [$dBg,$dFg]= repDirBg($c['call_direction'] ?? '');
@@ -837,7 +867,10 @@ body{font-family:'Segoe UI',Arial,sans-serif;background:#f1f5f9;color:#1e293b;mi
                         <span class="bd" style="background:#dcfce7;color:#166534" title="Recording">&#9679;Rec</span>
                         <?php endif; ?>
                         <?php if ($hasNotes): ?>
-                        <span class="bd" style="background:#dbeafe;color:#1d4ed8" title="<?= count($cNoteIds) ?> note(s)"><?= count($cNoteIds) ?>N</span>
+                        <span class="bd" style="background:#dbeafe;color:#1d4ed8" title="<?= count($cNoteIds) ?> call note(s)"><?= count($cNoteIds) ?>CN</span>
+                        <?php if (!empty($cContactNoteIds)): ?>
+                        <span class="bd" style="background:#fce7f3;color:#be185d" title="<?= count($cContactNoteIds) ?> contact note(s)"><?= count($cContactNoteIds) ?>CtN</span>
+                        <?php endif; ?>
                         <?php endif; ?>
                         <?php if ($hasTasks): ?>
                         <span class="bd" style="background:#fef3c7;color:#92400e" title="<?= count($cTasks) ?> task(s)"><?= count($cTasks) ?>T</span>
@@ -885,6 +918,37 @@ body{font-family:'Segoe UI',Arial,sans-serif;background:#f1f5f9;color:#1e293b;mi
                             <?php endforeach; ?>
                         <?php endif; ?>
                         <?php endforeach; ?>
+                        <?php if (!empty($cContactNoteIds)): ?>
+                        <div class="sub-note" style="margin-top:4px;padding-top:4px;border-top:1px dashed #fbcfe8">
+                            <span class="bd" style="background:#fce7f3;color:#be185d;font-weight:700">Contact Notes:</span>
+                        </div>
+                        <?php foreach ($cContactNoteIds as $rootId):
+                            $note = $contactNoteById[$rootId] ?? null;
+                            if (!$note) continue;
+                            $repliesOfNote = $contactNoteChildren[$rootId] ?? [];
+                        ?>
+                        <div class="sub-note">
+                            <span class="bd" style="background:#fce7f3;color:#be185d"><?= e($note['note_type']) ?></span>
+                            <?php if ($note['priority'] !== 'low'): ?>
+                            <span class="bd" style="background:<?= repPriorityColor($note['priority']) ?>20;color:<?= repPriorityColor($note['priority']) ?>"><?= e($note['priority']) ?></span>
+                            <?php endif; ?>
+                            <span><?= e($note['content']) ?></span>
+                            <span class="by">— <?= e($note['by_name']) ?> <?= date('d/m H:i',strtotime($note['created_at'])) ?></span>
+                        </div>
+                        <?php if ($showReplies && $repliesOfNote): ?>
+                            <?php foreach ($repliesOfNote as $replyId):
+                                $reply = $contactNoteById[$replyId] ?? null;
+                                if (!$reply) continue;
+                            ?>
+                            <div class="sub-reply">
+                                <span class="bd" style="background:#fce7f3;color:#be185d">↪ reply</span>
+                                <span><?= e($reply['content']) ?></span>
+                                <span class="by">— <?= e($reply['by_name']) ?> <?= date('d/m H:i',strtotime($reply['created_at'])) ?></span>
+                            </div>
+                            <?php endforeach; ?>
+                        <?php endif; ?>
+                        <?php endforeach; ?>
+                        <?php endif; ?>
                     <?php endif; ?>
                     <?php if ($hasNotes && $hasTasks): ?>
                     <div class="sub-note-tasks-sep"></div>

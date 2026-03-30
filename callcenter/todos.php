@@ -26,11 +26,14 @@ if ($result->num_rows === 0) {
 $pageTitle  = 'Tasks';
 $activePage = 'todos';
 $aid        = agentId();
+$currentUserDept = $conn->query("SELECT department FROM agents WHERE id=$aid")->fetch_assoc()['department'] ?? '';
+$canDeletePending = in_array($currentUserDept, ['IT', 'Management']);
 
 $f_view     = $_GET['view'] ?? 'me';
 $f_status   = $_GET['status'] ?? '';
 $f_priority = $_GET['priority'] ?? '';
 $f_search   = trim($_GET['q'] ?? '');
+$f_agent    = $_GET['agent'] ?? '';
 $viewId     = (int)($_GET['id'] ?? 0);
 $openNew    = isset($_GET['new']);
 
@@ -91,6 +94,7 @@ if ($f_view === 'me') {
 
 if ($f_status)   { $where[] = "t.status=?";   $params[] = $f_status;   $types .= 's'; }
 if ($f_priority) { $where[] = "t.priority=?"; $params[] = $f_priority; $types .= 's'; }
+if ($f_agent)    { $where[] = "t.assigned_to=?"; $params[] = $f_agent; $types .= 'i'; }
 if ($f_search)   { $where[] = "(t.title LIKE ? OR t.description LIKE ?)";
     $s = "%$f_search%"; $params = array_merge($params,[$s,$s]); $types .= 'ss'; }
 if (!$showAll) { $where[] = "(t.due_date IS NULL OR t.due_date >= '$twoDaysAgo')"; }
@@ -344,12 +348,21 @@ require_once 'includes/layout.php';
             <option value="">Last 2 Days + Future</option>
             <option value="all" <?= $dateFilter==='all'?'selected':'' ?>>Show All</option>
         </select>
+        <select name="agent" class="form-select form-select-sm" style="width:auto">
+            <option value="">All Agents</option>
+            <?php foreach ($agents as $a): ?>
+            <option value="<?= $a['id'] ?>" <?= $f_agent==$a['id']?'selected':'' ?>><?= e($a['full_name']) ?></option>
+            <?php endforeach; ?>
+        </select>
         <button type="submit" class="btn btn-primary btn-sm"><i class="fas fa-filter"></i></button>
         <a href="?view=<?= $f_view ?>" class="btn btn-outline-secondary btn-sm">Reset</a>
     </form>
     <button class="btn btn-primary btn-sm ms-auto" onclick="openNewTaskModal()">
         <i class="fas fa-plus me-1"></i>New Task
     </button>
+    <?php if ($f_view === 'all' && $canDeletePending): ?>
+    <span class="text-muted small ms-2"><i class="fas fa-info-circle"></i> IT/Mgmt can delete pending tasks</span>
+    <?php endif; ?>
 </div>
 
 <div class="kanban-board">
@@ -385,6 +398,9 @@ require_once 'includes/layout.php';
                     $isRecurring = $conn->query("SELECT id FROM todo_recurring WHERE task_id={$t['id']} AND active=1")->num_rows > 0;
                     if ($isRecurring): ?>
                     <span class="recurring-badge"><i class="fas fa-redo"></i></span>
+                    <?php endif; ?>
+                    <?php if ($canDeletePending && $t['status'] === 'pending'): ?>
+                    <i class="fas fa-trash text-danger float-end" style="cursor:pointer;font-size:.75rem" onclick="event.stopPropagation();deleteTask(<?= $t['id'] ?>)" title="Delete"></i>
                     <?php endif; ?>
                 </div>
                 <div class="kanban-meta">
@@ -784,6 +800,17 @@ function skipRecurrence(taskId) {
 }
 
 <?php if ($openNew): ?>openNewTaskModal();<?php endif; ?>
+
+function deleteTask(id) {
+    if (!confirm('Delete this pending task?')) return;
+    fetch(APP_URL + '/api/todos.php', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({action:'delete_task', id:id})
+    }).then(r=>r.json()).then(d=>{
+        if (d.ok) { showToast('Task deleted','success'); setTimeout(()=>location.reload(),500); }
+        else showToast(d.error,'danger');
+    });
+}
 </script>
 
 <?php require_once 'includes/footer.php'; ?>

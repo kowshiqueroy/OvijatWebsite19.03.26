@@ -201,6 +201,25 @@ switch ($action) {
         jsonOut(true);
     }
 
+    // ── Delete pending task ────────────────────────────────────────────────────
+    case 'delete_task': {
+        $todoId = (int)($in['id'] ?? 0);
+        if (!$todoId) jsonOut(false, ['error' => 'Missing id']);
+        
+        $currentAgent = currentAgent();
+        $userDept = $currentAgent['dept'] ?? '';
+        if (!in_array($userDept, ['IT', 'Management'])) {
+            jsonOut(false, ['error' => 'Only IT/Management can delete pending tasks']);
+        }
+        
+        $task = $conn->query("SELECT status FROM todos WHERE id=$todoId LIMIT 1")->fetch_assoc();
+        if (!$task) jsonOut(false, ['error' => 'Task not found']);
+        if ($task['status'] !== 'pending') jsonOut(false, ['error' => 'Can only delete pending tasks']);
+        
+        $conn->query("DELETE FROM todos WHERE id=$todoId");
+        jsonOut(true);
+    }
+
     default:
         jsonOut(false, ['error' => 'Unknown action']);
 }
