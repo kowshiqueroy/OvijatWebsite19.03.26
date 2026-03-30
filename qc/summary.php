@@ -1,5 +1,9 @@
 <?php
 include_once 'config.php';
+if (!isset($_SESSION['user_id'])) {
+    header("Location: login.php");
+    exit;
+}
 
 // --- 1. SETUP & FETCH AUTO-COMPLETE DATA ---
 $traders = [];

@@ -4,38 +4,51 @@ include_once 'header.php';
 <?php
 if (isset($_POST['submit'])) {
 
-    // Process the form data
-    $shop_type = $_POST['shop_type'];
-    $received_date = $_POST['received_date'];
-    $inspection_date = $_POST['inspection_date'];
-    $trader_name = $_POST['trader_name'];
-    $user_id = $_SESSION['user_id']; // Assuming user ID is stored in session
-
-    // Prepare and execute the SQL statement
-    $stmt = $conn->prepare("INSERT INTO damage_details (shop_type, received_date, inspection_date, trader_name, created_by) VALUES (?, ?, ?, ?, ?)");
-    $stmt->bind_param("ssssi", $shop_type, $received_date, $inspection_date, $trader_name, $user_id);
-    if ($stmt->execute()) {
-        $msg = "Damage report created successfully!";
-        $id = $conn->insert_id;
-        header("Location: damage_edit.php?id=" . $id);
-         exit();
-    } else {
-        $msg = "Error creating damage report: " . $stmt->error;
+    $errors = [];
+    
+    if (empty($_POST['shop_type']) || !in_array($_POST['shop_type'], ['TP', 'DP'])) {
+        $errors[] = "Please select a valid shop type (TP or DP)";
     }
-    $stmt->close();
-    // Redirect to the damages page
-    $_SESSION['msg'] = $msg;
-    // Use header to redirect
+    if (empty($_POST['received_date']) || !strtotime($_POST['received_date'])) {
+        $errors[] = "Please enter a valid received date";
+    }
+    if (empty($_POST['inspection_date']) || !strtotime($_POST['inspection_date'])) {
+        $errors[] = "Please enter a valid inspection date";
+    }
+    if (empty($_POST['trader_name']) || strlen(trim($_POST['trader_name'])) < 2) {
+        $errors[] = "Please enter a valid trader name (at least 2 characters)";
+    }
+    
+    if (empty($errors)) {
+        $shop_type = $_POST['shop_type'];
+        $received_date = $_POST['received_date'];
+        $inspection_date = $_POST['inspection_date'];
+        $trader_name = trim($_POST['trader_name']);
+        $user_id = $_SESSION['user_id'];
 
-
-
-
-    header("Location: damages.php");
-    exit();
+        $stmt = $conn->prepare("INSERT INTO damage_details (shop_type, received_date, inspection_date, trader_name, created_by) VALUES (?, ?, ?, ?, ?)");
+        $stmt->bind_param("ssssi", $shop_type, $received_date, $inspection_date, $trader_name, $user_id);
+        if ($stmt->execute()) {
+            $msg = "Damage report created successfully!";
+            $id = $conn->insert_id;
+            header("Location: damage_edit.php?id=" . $id);
+             exit();
+        } else {
+            $msg = "Error creating damage report: " . $stmt->error;
+        }
+        $stmt->close();
+    } else {
+        $msg = implode("<br>", $errors);
+    }
 }
 ?>
 <main class="printable">
     <h2>Damage Form</h2>
+    <?php if (isset($msg)): ?>
+        <p style="text-align: center; color: <?= strpos($msg, 'Error') !== false ? 'red' : 'green' ?>;">
+            <?= htmlspecialchars($msg) ?>
+        </p>
+    <?php endif; ?>
    <style>
    
 

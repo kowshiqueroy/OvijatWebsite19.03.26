@@ -2,63 +2,67 @@
 include_once 'header.php';
 ?>
 <?php
-$user_id = $_SESSION['user_id']; // Assuming user ID is stored in session
+$user_id = $_SESSION['user_id'];
 
 if (isset($_GET['id']) && isset($_GET['damage_details_id']) && is_numeric($_GET['id']) && is_numeric($_GET['damage_details_id'])) {
-    $id = $_GET['id'];
-    $damage_details_id = $_GET['damage_details_id'];
+    $id = (int)$_GET['id'];
+    $damage_details_id = (int)$_GET['damage_details_id'];
+    $product_id = isset($_GET['product_id']) ? (int)$_GET['product_id'] : 0;
 
-    $stmt = $conn->prepare("SELECT * FROM damage_items WHERE damage_details_id = ? AND product_id = ?");
-    $stmt->bind_param("ii", $damage_details_id, $_GET['product_id']);
-    $stmt->execute();
-    $result = $stmt->get_result();
-    if ($result->num_rows > 0) {
-        echo "<script>alert('Item already added.'); window.location.href = 'damage_edit.php?id=$id';</script>";
+    if ($product_id > 0) {
+        $stmt = $conn->prepare("SELECT * FROM damage_items WHERE damage_details_id = ? AND product_id = ?");
+        $stmt->bind_param("ii", $damage_details_id, $product_id);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        if ($result->num_rows > 0) {
+            echo "<script>alert('Item already added.'); window.location.href = 'damage_edit.php?id=$id';</script>";
+            exit();
+        }
 
-        exit();
+        $shop_qty = (int)$_GET['shop_qty'];
+        $shop_amount = (float)$_GET['shop_amount'];
+        $received_qty = (int)$_GET['received_qty'];
+        $received_amount = (float)$_GET['received_amount'];
+        $actual_qty = (int)$_GET['actual_qty'];
+        $actual_amount = (float)$_GET['actual_amount'];
+        $insect = (int)$_GET['insect'];
+        $label = (int)$_GET['label'];
+        $sealing = (int)$_GET['sealing'];
+        $expired = (int)$_GET['expired'];
+        $date_problem = (int)$_GET['date_problem'];
+        $broken = (int)$_GET['broken'];
+        $VHsealing = (int)$_GET['VHsealing'];
+        $good = (int)$_GET['good'];
+        $intentional = (int)$_GET['intentional'];
+        $soft = (int)$_GET['soft'];
+        $bodyleakage = (int)$_GET['bodyleakage'];
+        $others = (int)$_GET['others'];
+        $total_negative_qty = (int)$_GET['total_negative_qty'];
+        $total_negative_amount = (float)$_GET['total_negative_amount'];
+        $remarks = isset($_GET['remarks']) ? $_GET['remarks'] : '';
+
+        $stmt = $conn->prepare("INSERT INTO damage_items (damage_details_id, product_id, shop_qty, shop_amount, received_qty, received_amount, actual_qty, actual_amount, insect, label, sealing, expired, date_problem, broken, VHsealing, good, intentional, soft, bodyleakage, others, total_negative_qty, total_negative_amount, remarks) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+        $stmt->bind_param("iiidddiiiiiiiiiiiiiiiidds", $damage_details_id, $product_id, $shop_qty, $shop_amount, $received_qty, $received_amount, $actual_qty, $actual_amount, $insect, $label, $sealing, $expired, $date_problem, $broken, $VHsealing, $good, $intentional, $soft, $bodyleakage, $others, $total_negative_qty, $total_negative_amount, $remarks);
+        
+        if ($stmt->execute()) {
+            $stmt = $conn->prepare("UPDATE damage_details SET updated_by = ?, shop_total_qty = shop_total_qty + ?, shop_total_amount = shop_total_amount + ?, received_total_qty = received_total_qty + ?, received_total_amount = received_total_amount + ?, actual_total_qty = actual_total_qty + ?, actual_total_amount = actual_total_amount + ? WHERE id = ?");
+            $stmt->bind_param("iiiiiddi", $user_id, $shop_qty, $shop_amount, $received_qty, $received_amount, $actual_qty, $actual_amount, $id);
+            if ($stmt->execute()) {
+                header("Location: damage_edit.php?id=$id");
+                exit();
+            } else {
+                $msg = "Error updating damage report: " . $conn->error;
+            }
+        } else {
+            $msg = "Error creating damage report item: " . $conn->error;
+        }
     }
-
-
-    $sql = "INSERT INTO damage_items (damage_details_id, product_id, shop_qty, shop_amount, received_qty, received_amount, actual_qty, actual_amount, insect, label, sealing, expired, date_problem, broken, VHsealing, good, intentional, soft, bodyleakage, others, total_negative_qty, total_negative_amount, remarks) VALUES ('$damage_details_id', '".$_GET['product_id']."', '".$_GET['shop_qty']."', '".$_GET['shop_amount']."', '".$_GET['received_qty']."', '".$_GET['received_amount']."', '".$_GET['actual_qty']."', '".$_GET['actual_amount']."', '".$_GET['insect']."', '".$_GET['label']."', '".$_GET['sealing']."', '".$_GET['expired']."', '".$_GET['date_problem']."', '".$_GET['broken']."', '".$_GET['VHsealing']."', '".$_GET['good']."', '".$_GET['intentional']."', '".$_GET['soft']."', '".$_GET['bodyleakage']."', '".$_GET['others']."', '".$_GET['total_negative_qty']."', '".$_GET['total_negative_amount']."', '".$_GET['remarks']."')";
-    if ($conn->query($sql) === TRUE) {
-
-        $sql = "UPDATE damage_details SET updated_by = $user_id, shop_total_qty = shop_total_qty + '".$_GET['shop_qty']."' , shop_total_amount = shop_total_amount + '".$_GET['shop_amount']."' , received_total_qty = received_total_qty + '".$_GET['received_qty']."' , received_total_amount = received_total_amount + '".$_GET['received_amount']."' , actual_total_qty = actual_total_qty + '".$_GET['actual_qty']."' , actual_total_amount = actual_total_amount + '".$_GET['actual_amount']."' WHERE id = '$id'";
-        if ($conn->query($sql) === TRUE) {
-
-
- 
-        header("Location: damage_edit.php?id=$id");
-        exit();
-    } else {
-        $msg = "Error creating damage report item: " . $conn->error;
-    }
-}
-
 }
 
 
 if (isset($_GET['delete_id']) && is_numeric($_GET['delete_id']) && isset($_GET['id']) && is_numeric($_GET['id'])) {
-    $delete_id = $_GET['delete_id'];
-    $id = $_GET['id'];
-    
-    // // Prepare and execute the deletion query
-    // $sql = "UPDATE damage_details SET updated_by = ?, shop_total_qty = shop_total_qty - (SELECT shop_qty FROM damage_items WHERE id = ?),
-    //      shop_total_amount = shop_total_amount - (SELECT shop_amount FROM damage_items WHERE id = ?),
-    //      received_total_qty = received_total_qty - (SELECT received_qty FROM damage_items WHERE id = ?),
-    //      received_total_amount = received_total_amount - (SELECT received_amount FROM damage_items WHERE id = ?),
-    //      actual_total_qty = actual_total_qty - (SELECT actual_qty FROM damage_items WHERE id = ?),
-    //      actual_total_amount = actual_total_amount - (SELECT actual_amount FROM damage_items WHERE id = ?) WHERE id = ?";
-    // if ($stmt = $conn->prepare($sql)) {
-    //     $stmt->bind_param("iiiiii", $user_id, $delete_id, $delete_id, $delete_id, $delete_id, $delete_id, $id);
-    //     if ($stmt->execute()) {
-    //         header("Location: damage_edit.php?id=$id");
-    //         exit();
-    //     } else {
-    //         $msg = "Error updating damage report: " . $conn->error;
-    //     }
-    // } else {
-    //     $msg = "Error preparing query to update damage report: " . $conn->error;
-    // }
+    $delete_id = (int)$_GET['delete_id'];
+    $id = (int)$_GET['id'];
 
     $stmt = $conn->prepare("SELECT * FROM damage_items WHERE damage_details_id = ? AND id = ?");
     $stmt->bind_param("ii", $id, $delete_id);
@@ -68,7 +72,15 @@ if (isset($_GET['delete_id']) && is_numeric($_GET['delete_id']) && isset($_GET['
     if ($result->num_rows > 0) {
         $row = $result->fetch_assoc();
 
-        $sql = "UPDATE damage_details SET updated_by = $user_id, shop_total_qty = shop_total_qty - '".$row['shop_qty']."' , shop_total_amount = shop_total_amount - '".$row['shop_amount']."' , received_total_qty = received_total_qty - '".$row['received_qty']."' , received_total_amount = received_total_amount - '".$row['received_amount']."' , actual_total_qty = actual_total_qty - '".$row['actual_qty']."' , actual_total_amount = actual_total_amount - '".$row['actual_amount']."' WHERE id = '$id'";
+        $shop_qty = (int)$row['shop_qty'];
+        $shop_amount = (float)$row['shop_amount'];
+        $received_qty = (int)$row['received_qty'];
+        $received_amount = (float)$row['received_amount'];
+        $actual_qty = (int)$row['actual_qty'];
+        $actual_amount = (float)$row['actual_amount'];
+
+        $stmt = $conn->prepare("UPDATE damage_details SET updated_by = ?, shop_total_qty = shop_total_qty - ?, shop_total_amount = shop_total_amount - ?, received_total_qty = received_total_qty - ?, received_total_amount = received_total_amount - ?, actual_total_qty = actual_total_qty - ?, actual_total_amount = actual_total_amount - ? WHERE id = ?");
+        $stmt->bind_param("iiiiiddi", $user_id, $shop_qty, $shop_amount, $received_qty, $received_amount, $actual_qty, $actual_amount, $id);
         if ($conn->query($sql) === TRUE) {
             $stmt = $conn->prepare("DELETE FROM damage_items WHERE id = ?");
             $stmt->bind_param("i", $delete_id);

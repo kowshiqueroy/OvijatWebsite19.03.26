@@ -1,5 +1,9 @@
 <?php
 include_once '../config.php';
+if (!isset($_SESSION['user_id'])) {
+    header("Location: ../login.php");
+    exit;
+}
 
 $traders = [];
 $tq = $conn->query("SELECT DISTINCT trader_name FROM damage_details ORDER BY trader_name ASC");
@@ -230,8 +234,11 @@ function exportToExcel($results, $parent_cols, $child_cols, $act_p_cols, $act_c_
             .search-panel { display: none; }
             table { border: 2px solid #000; font-size: 10px; }
             th, td { border: 1px solid #000; color: #000; }
-            th { background-color: #ddd !important; -webkit-print-color-adjust: exact; }
-            .grand-total { background-color: #eee !important; -webkit-print-color-adjust: exact; }
+            th { background-color: #ddd !important; 
+            print-color-adjust: exact;
+            -webkit-print-color-adjust: exact;
+          }
+            .grand-total { background-color: #eee !important; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
             .new-group { border-top: 2px solid #000 !important; }
             tr:not(.new-group) .parent-cell { border-top-color: #fff !important; }
         }

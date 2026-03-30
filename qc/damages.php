@@ -31,7 +31,7 @@ if (isset($_GET['toggle'])) {
     $row = $result->fetch_assoc(); 
 
     // Toggle status
-    $new_status = ($row['status'] == '0') ? '1' : '1';
+    $new_status = ($row['status'] == '0') ? '1' : '0';
 
     // Update status in the database
     $stmt = $conn->prepare("UPDATE damage_details SET status = ? WHERE id = ?");
@@ -80,11 +80,11 @@ if (isset($_GET['date_from']) && isset($_GET['date_to'])) {
         <div class="form-group" style="flex: 1 0 20%; margin: 0.5rem;">
             <button type="submit" class="btn btn-primary" style="flex: 1 0 20%; margin: 0.5rem; display: flex; align-items: center; justify-content: center;">Search</button>
         </div>
-    </form>
+     </form>
 
 
-     <div class="table-container">
-          
+      <div class="table-container">
+           
             <table>
                 <thead>
                     <tr>
@@ -97,20 +97,45 @@ if (isset($_GET['date_from']) && isset($_GET['date_to'])) {
                         <th>Actual</th>
                         <th></th>
                         <th></th>
-                   
+                    
                     </tr>
                 </thead>
                 <tbody>
                     <?php
-                    $stmt = $conn->prepare("SELECT * FROM damage_details ORDER BY id DESC");
+                    $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
+                    $limit = 20;
+                    $offset = ($page - 1) * $limit;
+                    
+                    $where = "";
+                    $params = [];
+                    $types = "";
+                    
                     if (isset($_GET['id']) && is_numeric($_GET['id']) && $_GET['id'] > 0) {
-                        $stmt->prepare("SELECT * FROM damage_details WHERE id = ?");
-                        $stmt->bind_param("i", $_GET['id']);
+                        $where = "WHERE id = ?";
+                        $params[] = (int)$_GET['id'];
+                        $types .= "i";
                     } else if (isset($_GET['date_from']) && isset($_GET['date_to'])) {
-                        $stmt->prepare("SELECT * FROM damage_details WHERE inspection_date >= ? AND received_date <= ?");
-                        $stmt->bind_param("ss", $_GET['date_from'], $_GET['date_to']);
-                    } else {
-                        $stmt->prepare("SELECT * FROM damage_details ORDER BY id DESC LIMIT 10");
+                        $where = "WHERE inspection_date >= ? AND inspection_date <= ?";
+                        $params[] = $_GET['date_from'];
+                        $params[] = $_GET['date_to'];
+                        $types .= "ss";
+                    }
+                    
+                    $count_sql = "SELECT COUNT(*) as total FROM damage_details $where";
+                    $stmt = $conn->prepare($count_sql);
+                    if (!empty($params)) {
+                        $stmt->bind_param($types, ...$params);
+                    }
+                    $stmt->execute();
+                    $count_result = $stmt->get_result();
+                    $total_row = $count_result->fetch_assoc();
+                    $total_records = $total_row['total'];
+                    $total_pages = ceil($total_records / $limit);
+                    
+                    $sql = "SELECT * FROM damage_details $where ORDER BY id DESC LIMIT $offset, $limit";
+                    $stmt = $conn->prepare($sql);
+                    if (!empty($params)) {
+                        $stmt->bind_param($types, ...$params);
                     }
                     $stmt->execute();
                     $result = $stmt->get_result();
@@ -125,7 +150,7 @@ if (isset($_GET['date_from']) && isset($_GET['date_to'])) {
                        
                         echo "<td>R: {$row['received_date']} I: {$row['inspection_date']} <a style= 'text-decoration: none' href='damages.php?toggle=" 
                          . $row['id'] . "' class='btn-sm'>" . ($row['status']==1 ? "" : "🔴Confirm") . "</a> </td>";
-                        echo "<td>{$row['shop_type']} - {$row['trader_name']}</td>";
+                        echo "<td>{$row['shop_type']} - " . htmlspecialchars($row['trader_name']) . "</td>";
                         echo "<td>{$row['shop_total_qty']} ={$row['shop_total_amount']}/-</td>";
                         echo "<td>{$row['received_total_qty']} ={$row['received_total_amount']}/-</td>";
                         echo "<td><a style='text-decoration: none' href='report.php?id={$row['id']}'>{$row['actual_total_qty']} ={$row['actual_total_amount']}/- </a></td>";
@@ -133,11 +158,17 @@ if (isset($_GET['date_from']) && isset($_GET['date_to'])) {
                         echo "<td>" . ($row['status'] == 0 ? "<a onclick=\"return confirm('Are you sure you want to delete this record?')\" href='damages.php?delid={$row['id']}' style='text-decoration:none'>🗑️</a>" : "") . "</td>";
                        
                        
-                        $createdByQuery = $conn->query("SELECT username FROM users WHERE id = '{$row['created_by']}'");
-                        $createdByUsername = ($createdByQuery->num_rows > 0) ? $createdByQuery->fetch_assoc()['username'] : "-";
+                        $createdByQuery = $conn->prepare("SELECT username FROM users WHERE id = ?");
+                        $createdByQuery->bind_param("i", $row['created_by']);
+                        $createdByQuery->execute();
+                        $createdByResult = $createdByQuery->get_result();
+                        $createdByUsername = ($createdByResult->num_rows > 0) ? htmlspecialchars($createdByResult->fetch_assoc()['username']) : "-";
                         
-                        $updatedByQuery = $conn->query("SELECT username FROM users WHERE id = '{$row['updated_by']}'");
-                        $updatedByUsername = ($updatedByQuery->num_rows > 0) ? $updatedByQuery->fetch_assoc()['username'] : "-";
+                        $updatedByQuery = $conn->prepare("SELECT username FROM users WHERE id = ?");
+                        $updatedByQuery->bind_param("i", $row['updated_by']);
+                        $updatedByQuery->execute();
+                        $updatedByResult = $updatedByQuery->get_result();
+                        $updatedByUsername = ($updatedByResult->num_rows > 0) ? htmlspecialchars($updatedByResult->fetch_assoc()['username']) : "-";
                         
                         echo "<td>by: {$createdByUsername} ";
                         echo "{$row['created_at']} ";
@@ -152,6 +183,30 @@ if (isset($_GET['date_from']) && isset($_GET['date_to'])) {
                 </tbody>
             </table>
         </div>
+
+        <?php if ($total_pages > 1): ?>
+        <div class="pagination" style="display: flex; justify-content: center; gap: 5px; margin-top: 20px; flex-wrap: wrap;">
+            <?php if ($page > 1): ?>
+                <a href="?page=<?= $page-1 ?><?= isset($_GET['id']) ? '&id='.$_GET['id'] : '' ?><?= isset($_GET['date_from']) ? '&date_from='.$_GET['date_from'].'&date_to='.$_GET['date_to'] : '' ?>" class="btn btn-sm">Prev</a>
+            <?php endif; ?>
+            
+            <?php for ($i = 1; $i <= $total_pages; $i++): ?>
+                <?php if ($i == $page): ?>
+                    <span class="btn btn-sm" style="background: #4a90e2; color: white;"><?= $i ?></span>
+                <?php elseif ($i <= 3 || $i > $total_pages - 3 || abs($i - $page) <= 1): ?>
+                    <a href="?page=<?= $i ?><?= isset($_GET['id']) ? '&id='.$_GET['id'] : '' ?><?= isset($_GET['date_from']) ? '&date_from='.$_GET['date_from'].'&date_to='.$_GET['date_to'] : '' ?>" class="btn btn-sm"><?= $i ?></a>
+                <?php elseif ($i == 4 || $i == $total_pages - 3): ?>
+                    <span>...</span>
+                <?php endif; ?>
+            <?php endfor; ?>
+            
+            <?php if ($page < $total_pages): ?>
+                <a href="?page=<?= $page+1 ?><?= isset($_GET['id']) ? '&id='.$_GET['id'] : '' ?><?= isset($_GET['date_from']) ? '&date_from='.$_GET['date_from'].'&date_to='.$_GET['date_to'] : '' ?>" class="btn btn-sm">Next</a>
+            <?php endif; ?>
+            
+            <span style="margin-left: 10px; font-size: 12px;">Total: <?= $total_records ?> records</span>
+        </div>
+        <?php endif; ?>
 
 
 

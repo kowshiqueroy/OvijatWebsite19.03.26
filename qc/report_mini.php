@@ -1,8 +1,13 @@
 <?php
+require_once 'config.php';
+if (!isset($_SESSION['user_id'])) {
+    header("Location: login.php");
+    exit;
+}
+
 if (!isset($_GET['id']) || !is_numeric($_GET['id']) || $_GET['id'] <= 0) {
     die('Invalid or missing ID parameter');
 }
-require_once 'config.php'; // Ensure you have a database connection file
 
 $id = isset($_GET['id']) ? $_GET['id'] : 0;
 
