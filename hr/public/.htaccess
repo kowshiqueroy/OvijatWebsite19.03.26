@@ -1,0 +1,13 @@
+# Rewrite for clean URLs
+# Access profile as: /pf?id=8 or /pf/8
+
+RewriteEngine On
+RewriteBase /public/
+
+# If the request is for an existing file or directory, don't rewrite
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+
+# Rewrite pf to profile.php
+RewriteRule ^pf/?$ profile.php [L,QSA]
+RewriteRule ^pf/(\d+)$ profile.php?id=$1 [L,QSA]

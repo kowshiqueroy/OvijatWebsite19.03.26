@@ -116,8 +116,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                             $status = ucfirst($data['status']);
                         }
                         
-                        $dob = !empty($data['dob']) ? date('Y-m-d', strtotime($data['dob'])) : null;
-                        $joiningDate = !empty($data['joining_date']) ? date('Y-m-d', strtotime($data['joining_date'])) : date('Y-m-d');
+                        $dob = null;
+                        if (!empty($data['dob'])) {
+                            $ts = strtotime($data['dob']);
+                            if ($ts !== false && $ts > 0) {
+                                [$y, $m, $d] = explode('-', date('Y-m-d', $ts));
+                                if (checkdate((int)$m, (int)$d, (int)$y)) {
+                                    $dob = "$y-$m-$d";
+                                }
+                            }
+                        }
+                        $joiningDate = date('Y-m-d');
+                        if (!empty($data['joining_date'])) {
+                            $ts = strtotime($data['joining_date']);
+                            if ($ts !== false && $ts > 0) {
+                                [$y, $m, $d] = explode('-', date('Y-m-d', $ts));
+                                if (checkdate((int)$m, (int)$d, (int)$y)) {
+                                    $joiningDate = "$y-$m-$d";
+                                }
+                            }
+                        }
                         
                         $sql = "INSERT INTO employees (
                             office_name, office_code, department, dept_code,
@@ -136,19 +154,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                             $joiningDate, $status
                         );
                         
-                        if ($stmt->execute()) {
-                            $successCount++;
-                            $importResults[] = [
-                                'row' => $rowNumber,
-                                'status' => 'success',
-                                'message' => 'Imported: ' . htmlspecialchars($data['emp_name'])
-                            ];
-                        } else {
+                        try {
+                            if ($stmt->execute()) {
+                                $successCount++;
+                                $importResults[] = [
+                                    'row' => $rowNumber,
+                                    'status' => 'success',
+                                    'message' => 'Imported: ' . htmlspecialchars($data['emp_name'])
+                                ];
+                            }
+                        } catch (Exception $e) {
                             $errorCount++;
+                            $errMsg = $e->getMessage();
+                            if (strpos($errMsg, 'Duplicate entry') !== false) {
+                                $errMsg = 'Duplicate NID: ' . htmlspecialchars($data['nid']);
+                            }
                             $importResults[] = [
                                 'row' => $rowNumber,
                                 'status' => 'error',
-                                'message' => $conn->error
+                                'message' => $errMsg
                             ];
                         }
                         $stmt->close();

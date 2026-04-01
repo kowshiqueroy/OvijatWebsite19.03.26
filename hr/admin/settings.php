@@ -19,6 +19,9 @@ $message = '';
 $messageType = 'success';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (!verifyCSRFToken($_POST['csrf_token'] ?? '')) {
+        die('Invalid request. Please refresh and try again.');
+    }
     $uploadDir = __DIR__ . '/../uploads/';
     
     if (isset($_FILES['company_logo']) && $_FILES['company_logo']['error'] === UPLOAD_ERR_OK) {
@@ -41,7 +44,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'default_pf_percentage' => sanitize($_POST['default_pf_percentage']),
         'default_working_days' => sanitize($_POST['default_working_days']),
         'currency_symbol' => sanitize($_POST['currency_symbol']),
-        'currency_code' => sanitize($_POST['currency_code'])
+        'currency_code' => sanitize($_POST['currency_code']),
+        'photo_prefix' => sanitize($_POST['photo_prefix'])
     ];
     
     saveSettings($settingsToSave);
@@ -64,6 +68,7 @@ require_once __DIR__ . '/../includes/header.php';
 <?php endif; ?>
 
 <form method="POST" action="" enctype="multipart/form-data">
+<?php echo csrfField(); ?>
     <div class="row g-4">
         <div class="col-lg-6">
             <div class="card">
@@ -133,10 +138,17 @@ require_once __DIR__ . '/../includes/header.php';
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Default Working Days</label>
-                        <input type="number" name="default_working_days" class="form-control" 
-                               value="<?php echo htmlspecialchars($settings['default_working_days'] ?? '26'); ?>" 
+                        <input type="number" name="default_working_days" class="form-control"
+                               value="<?php echo htmlspecialchars($settings['default_working_days'] ?? '26'); ?>"
                                min="1" max="31">
                         <small class="text-muted">Default working days per month for salary calculation</small>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Photo Filename Prefix</label>
+                        <input type="text" name="photo_prefix" class="form-control"
+                               value="<?php echo htmlspecialchars($settings['photo_prefix'] ?? 'Photo_'); ?>"
+                               maxlength="50">
+                        <small class="text-muted">Prefix added to uploaded photo filenames (e.g. <code>Photo_</code>)</small>
                     </div>
                 </div>
             </div>

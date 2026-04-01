@@ -23,18 +23,22 @@ $message = '';
 $messageType = 'success';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['photo_data'])) {
+    if (!verifyCSRFToken($_POST['csrf_token'] ?? '')) {
+        die('Invalid request. Please refresh and try again.');
+    }
     $photoData = $_POST['photo_data'];
     $customName = sanitize($_POST['photo_name'] ?? '');
-    
+
     if (preg_match('/^data:image\/(\w+);base64,/', $photoData, $matches)) {
         $extension = $matches[1];
         $allowedExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
-        
+
         if (in_array(strtolower($extension), $allowedExtensions)) {
             $photoData = base64_decode(preg_replace('/^data:image\/\w+;base64,/', '', $photoData));
-            
+
+            $prefix = getSetting('photo_prefix', 'Photo_');
             $namePart = !empty($customName) ? sanitize($customName) : date('Ymd_His');
-            $newFilename = 'Ovijat_Group_' . $namePart . '_' . time() . '.jpg';
+            $newFilename = $prefix . $namePart . '_' . time() . '.jpg';
             $targetPath = $uploadDir . $newFilename;
             
             if (file_put_contents($targetPath, $photoData)) {
@@ -75,9 +79,26 @@ if (isset($_GET['delete'])) {
     $stmt->close();
 }
 
-$allPhotos = glob($uploadDir . '*.*');
+$allPhotos = glob($uploadDir . '*.*') ?: [];
 rsort($allPhotos);
 $totalPhotos = count($allPhotos);
+
+// Load all employee-photo associations in one query (avoids N+1)
+$photoEmployeeMap = [];
+if (!empty($allPhotos)) {
+    $allPhotoNames = array_map('basename', $allPhotos);
+    $placeholders = implode(',', array_fill(0, count($allPhotoNames), '?'));
+    $conn = getDBConnection();
+    $mapStmt = $conn->prepare("SELECT id, emp_name, office_code, dept_code, photo FROM employees WHERE photo IN ($placeholders)");
+    $mapTypes = str_repeat('s', count($allPhotoNames));
+    $mapStmt->bind_param($mapTypes, ...$allPhotoNames);
+    $mapStmt->execute();
+    $mapResult = $mapStmt->get_result();
+    while ($mapRow = $mapResult->fetch_assoc()) {
+        $photoEmployeeMap[$mapRow['photo']] = $mapRow;
+    }
+    $mapStmt->close();
+}
 
 require_once __DIR__ . '/../includes/header.php';
 ?>
@@ -213,8 +234,8 @@ require_once __DIR__ . '/../includes/header.php';
                     </div>
                     
                     <div class="mb-3">
-                        <label class="form-label">3. Photo Name</label>
-                        <input type="text" id="photoName" class="form-control" placeholder="Ovijat_Group_[name]_datetime">
+                        <label class="form-label">3. Photo Name <small class="text-muted">(prefix: <?php echo htmlspecialchars(getSetting('photo_prefix', 'Photo_')); ?>)</small></label>
+                        <input type="text" id="photoName" class="form-control" placeholder="e.g. John_Doe">
                     </div>
                     
                     <div class="mb-3">
@@ -241,6 +262,7 @@ require_once __DIR__ . '/../includes/header.php';
                 </button>
                 
                 <form id="uploadForm" method="POST" style="display:none;">
+                    <?php echo csrfField(); ?>
                     <input type="hidden" name="photo_data" id="photoData">
                     <input type="hidden" name="photo_name" id="photoNameField">
                 </form>
@@ -258,13 +280,11 @@ require_once __DIR__ . '/../includes/header.php';
                     <p class="text-muted text-center py-4">No photos yet</p>
                 <?php else: ?>
                     <div class="photo-grid">
-                        <?php 
-                        $conn = getDBConnection();
-                        foreach ($allPhotos as $photo): 
+                        <?php foreach ($allPhotos as $photo):
                             $photoName = basename($photo);
-                            $empResult = $conn->query("SELECT id, emp_name, office_code, dept_code FROM employees WHERE photo = '" . $conn->real_escape_string($photoName) . "' LIMIT 1");
-                            $empInfo = $empResult ? $empResult->fetch_assoc() : null;
-                            $isConnected = $empInfo ? true : false;
+                            $empInfo = $photoEmployeeMap[$photoName] ?? null;
+                            $isConnected = $empInfo !== null;
+                            $displayLabel = '';
                             if ($empInfo) {
                                 $empID = generateEmployeeID($empInfo['id'], $empInfo['office_code'], $empInfo['dept_code']);
                                 $displayLabel = $empID . ' - ' . $empInfo['emp_name'];

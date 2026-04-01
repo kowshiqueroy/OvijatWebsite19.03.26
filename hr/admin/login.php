@@ -15,6 +15,10 @@ if (isLoggedIn()) {
 
 $error = '';
 
+if (isset($_GET['timeout'])) {
+    $error = 'Your session has expired due to inactivity. Please log in again.';
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $username = sanitize($_POST['username'] ?? '');
     $password = $_POST['password'] ?? '';
@@ -112,11 +116,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 </button>
             </form>
             
-            <div class="text-center mt-4">
-                <small class="text-muted">
-                    Default: admin / admin123
-                </small>
-            </div>
         </div>
     </div>
     

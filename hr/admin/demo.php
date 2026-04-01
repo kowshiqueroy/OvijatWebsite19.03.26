@@ -74,8 +74,13 @@ if (isset($_POST['add_demo'])) {
         $office = $offices[array_rand($offices)];
         $dept = $departments[array_rand($departments)];
         
-        $result = $conn->query("SELECT id FROM employees WHERE emp_name = '" . $conn->real_escape_string($emp['name']) . "' LIMIT 1");
-        if ($result->num_rows > 0) {
+        $checkNameStmt = $conn->prepare("SELECT id FROM employees WHERE emp_name = ? LIMIT 1");
+        $checkNameStmt->bind_param("s", $emp['name']);
+        $checkNameStmt->execute();
+        $checkNameResult = $checkNameStmt->get_result();
+        $nameExists = $checkNameResult->num_rows > 0;
+        $checkNameStmt->close();
+        if ($nameExists) {
             $skipCount++;
             continue;
         }
@@ -114,7 +119,12 @@ if (isset($_POST['add_demo'])) {
             $successCount++;
             $empId = $conn->insert_id;
             
-            $months = ['2025-01', '2025-02', '2025-03'];
+            // Use the 3 most recent completed months (dynamic)
+            $months = [
+                date('Y-m', strtotime('first day of -3 months')),
+                date('Y-m', strtotime('first day of -2 months')),
+                date('Y-m', strtotime('first day of -1 month')),
+            ];
             foreach ($months as $month) {
                 $workingDays = 26;
                 $present = rand(20, 26);
@@ -184,7 +194,10 @@ require_once __DIR__ . '/../includes/header.php';
                     <li>15 sample employees across different offices and departments</li>
                     <li>Random but realistic personal information (DOB, blood group, etc.)</li>
                     <li>Bank details for each employee</li>
-                    <li>Salary records for the last 3 months (Jan-Mar 2025)</li>
+                    <li>Salary records for the last 3 months (<?php
+                        echo date('M Y', strtotime('first day of -3 months')) . ' – ' .
+                             date('M Y', strtotime('first day of -1 month'));
+                    ?>)</li>
                     <li>Provident Fund calculations</li>
                 </ul>
                 
@@ -234,9 +247,9 @@ require_once __DIR__ . '/../includes/header.php';
                 
                 <h6>Salary Periods</h6>
                 <div>
-                    <span class="badge bg-success me-1">January 2025</span>
-                    <span class="badge bg-success me-1">February 2025</span>
-                    <span class="badge bg-success">March 2025</span>
+                    <?php for ($i = 3; $i >= 1; $i--): ?>
+                        <span class="badge bg-success me-1"><?php echo date('F Y', strtotime("first day of -$i months")); ?></span>
+                    <?php endfor; ?>
                 </div>
             </div>
         </div>

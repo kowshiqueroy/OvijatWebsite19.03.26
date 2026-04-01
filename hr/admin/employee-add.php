@@ -85,8 +85,11 @@ $message = '';
 $messageType = 'success';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (!verifyCSRFToken($_POST['csrf_token'] ?? '')) {
+        die('Invalid request. Please refresh and try again.');
+    }
     $conn = getDBConnection();
-    
+
     $office_name = sanitize($_POST['office_name'] ?? '');
     $office_code = sanitize($_POST['office_code'] ?? '');
     $department = sanitize($_POST['department'] ?? '');
@@ -192,6 +195,7 @@ require_once __DIR__ . '/../includes/header.php';
 <?php endif; ?>
 
 <form method="POST" action="" enctype="multipart/form-data">
+    <?php echo csrfField(); ?>
     <div class="card">
         <div class="card-header">
             <h5 class="mb-0"><i class="bi bi-person-badge me-2"></i>Basic Information</h5>
@@ -305,24 +309,33 @@ require_once __DIR__ . '/../includes/header.php';
                         <option value="">-- Select Photo --</option>
                         <?php
                         $uploadDir = __DIR__ . '/../uploads/photos/';
-                        $existingPhotos = glob($uploadDir . '*.*');
+                        $existingPhotos = glob($uploadDir . '*.*') ?: [];
                         rsort($existingPhotos);
-                        $photoCount = 0;
-                        $conn = getDBConnection();
+                        // Load all employee-photo mappings in one query
+                        $photoEmployeeMap = [];
+                        if (!empty($existingPhotos)) {
+                            $allPhotoNames = array_map('basename', $existingPhotos);
+                            $placeholders = implode(',', array_fill(0, count($allPhotoNames), '?'));
+                            $mapStmt = $conn->prepare("SELECT id, emp_name, office_code, dept_code, photo FROM employees WHERE photo IN ($placeholders)");
+                            $mapTypes = str_repeat('s', count($allPhotoNames));
+                            $mapStmt->bind_param($mapTypes, ...$allPhotoNames);
+                            $mapStmt->execute();
+                            $mapResult = $mapStmt->get_result();
+                            while ($mapRow = $mapResult->fetch_assoc()) {
+                                $photoEmployeeMap[$mapRow['photo']] = $mapRow;
+                            }
+                            $mapStmt->close();
+                        }
                         foreach ($existingPhotos as $photo):
                             $photoName = basename($photo);
-                            $photoCount++;
-                            if ($photoCount > 5) break;
-                            
-                            $empResult = $conn->query("SELECT id, emp_name, office_code, dept_code FROM employees WHERE photo = '" . $conn->real_escape_string($photoName) . "' LIMIT 1");
-                            $empInfo = $empResult->fetch_assoc();
+                            $empInfo = $photoEmployeeMap[$photoName] ?? null;
                             $displayLabel = $photoName;
                             if ($empInfo) {
                                 $empID = generateEmployeeID($empInfo['id'], $empInfo['office_code'], $empInfo['dept_code']);
                                 $displayLabel = $empID . ' - ' . $empInfo['emp_name'];
                             }
                         ?>
-                            <option value="<?php echo htmlspecialchars($photoName); ?>" 
+                            <option value="<?php echo htmlspecialchars($photoName); ?>"
                                 <?php echo ($employee['photo'] ?? '') === $photoName ? 'selected' : ''; ?>
                                 data-preview="<?php echo htmlspecialchars($photoName); ?>">
                                 <?php echo htmlspecialchars($displayLabel); ?>

@@ -58,6 +58,9 @@ function runSetup($reset = false) {
     try {
         if ($reset) {
             $steps[] = ['status' => 'info', 'message' => 'Dropping existing tables...'];
+            $conn->query("DROP TABLE IF EXISTS bonuses");
+            $conn->query("DROP TABLE IF EXISTS loan_transactions");
+            $conn->query("DROP TABLE IF EXISTS pf_transactions");
             $conn->query("DROP TABLE IF EXISTS salary_sheets");
             $conn->query("DROP TABLE IF EXISTS employees");
             $conn->query("DROP TABLE IF EXISTS settings");
@@ -130,12 +133,21 @@ function runSetup($reset = false) {
             basic_salary DECIMAL(12,2) NOT NULL,
             pf_percentage DECIMAL(5,2) DEFAULT 5.00,
             pf_deduction DECIMAL(12,2) DEFAULT 0,
+            bonus DECIMAL(12,2) DEFAULT 0,
             gross_salary DECIMAL(12,2) DEFAULT 0,
             net_payable DECIMAL(12,2) DEFAULT 0,
+            confirmed TINYINT(1) DEFAULT 0,
+            confirmed_by INT DEFAULT NULL,
+            confirmed_at DATETIME DEFAULT NULL,
+            unconfirmed_by INT DEFAULT NULL,
+            unconfirmed_at DATETIME DEFAULT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE,
+            FOREIGN KEY (confirmed_by) REFERENCES admin(id) ON DELETE SET NULL,
+            FOREIGN KEY (unconfirmed_by) REFERENCES admin(id) ON DELETE SET NULL,
             UNIQUE KEY unique_employee_month (employee_id, month),
-            INDEX idx_month (month)
+            INDEX idx_month (month),
+            INDEX idx_confirmed (confirmed)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
         ";
         
@@ -143,6 +155,84 @@ function runSetup($reset = false) {
             throw new Exception("Error creating salary_sheets table: " . $conn->error);
         }
         $steps[] = ['status' => 'success', 'message' => 'Salary sheets table created successfully'];
+
+        $steps[] = ['status' => 'info', 'message' => 'Creating pf_transactions table...'];
+        $sql = "
+        CREATE TABLE IF NOT EXISTS pf_transactions (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            employee_id INT NOT NULL,
+            transaction_date DATE NOT NULL,
+            type ENUM('credit','debit') NOT NULL,
+            amount DECIMAL(12,2) NOT NULL,
+            description VARCHAR(255),
+            created_by INT DEFAULT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE,
+            FOREIGN KEY (created_by) REFERENCES admin(id) ON DELETE SET NULL,
+            INDEX idx_pf_employee (employee_id),
+            INDEX idx_pf_date (transaction_date)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+        ";
+        if (!$conn->query($sql)) {
+            throw new Exception("Error creating pf_transactions table: " . $conn->error);
+        }
+        $steps[] = ['status' => 'success', 'message' => 'PF transactions table created successfully'];
+
+        $steps[] = ['status' => 'info', 'message' => 'Creating loan_transactions table...'];
+        $sql = "
+        CREATE TABLE IF NOT EXISTS loan_transactions (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            employee_id INT NOT NULL,
+            transaction_date DATE NOT NULL,
+            type ENUM('debit','credit') NOT NULL,
+            amount DECIMAL(12,2) NOT NULL,
+            description VARCHAR(255),
+            created_by INT DEFAULT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE,
+            FOREIGN KEY (created_by) REFERENCES admin(id) ON DELETE SET NULL,
+            INDEX idx_loan_employee (employee_id),
+            INDEX idx_loan_date (transaction_date)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+        ";
+        if (!$conn->query($sql)) {
+            throw new Exception("Error creating loan_transactions table: " . $conn->error);
+        }
+        $steps[] = ['status' => 'success', 'message' => 'Loan transactions table created successfully'];
+
+        $steps[] = ['status' => 'info', 'message' => 'Creating bonuses table...'];
+        $sql = "
+        CREATE TABLE IF NOT EXISTS bonuses (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            employee_id INT NOT NULL,
+            month VARCHAR(7) NOT NULL,
+            bonus_type VARCHAR(50) DEFAULT 'Festival',
+            amount DECIMAL(12,2) NOT NULL,
+            description VARCHAR(255),
+            created_by INT DEFAULT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE,
+            FOREIGN KEY (created_by) REFERENCES admin(id) ON DELETE SET NULL,
+            INDEX idx_bonus_employee (employee_id),
+            INDEX idx_bonus_month (month)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+        ";
+        if (!$conn->query($sql)) {
+            throw new Exception("Error creating bonuses table: " . $conn->error);
+        }
+        $steps[] = ['status' => 'success', 'message' => 'Bonuses table created successfully'];
+
+        $result = $conn->query("SHOW COLUMNS FROM salary_sheets LIKE 'confirmed'");
+        if ($result->num_rows == 0) {
+            $steps[] = ['status' => 'info', 'message' => 'Adding confirmation fields to salary_sheets...'];
+            $conn->query("ALTER TABLE salary_sheets ADD COLUMN confirmed TINYINT(1) DEFAULT 0");
+            $conn->query("ALTER TABLE salary_sheets ADD COLUMN confirmed_by INT DEFAULT NULL");
+            $conn->query("ALTER TABLE salary_sheets ADD COLUMN confirmed_at DATETIME DEFAULT NULL");
+            $conn->query("ALTER TABLE salary_sheets ADD COLUMN unconfirmed_by INT DEFAULT NULL");
+            $conn->query("ALTER TABLE salary_sheets ADD COLUMN unconfirmed_at DATETIME DEFAULT NULL");
+            $conn->query("ALTER TABLE salary_sheets ADD INDEX idx_confirmed (confirmed)");
+            $steps[] = ['status' => 'success', 'message' => 'Confirmation fields added successfully'];
+        }
         
         $steps[] = ['status' => 'info', 'message' => 'Creating settings table...'];
         $sql = "
@@ -175,8 +265,9 @@ function runSetup($reset = false) {
                 'company_logo' => '',
                 'default_pf_percentage' => '5.00',
                 'default_working_days' => '26',
-                'currency_symbol' => '$',
-                'currency_code' => 'USD'
+                'currency_symbol' => '৳',
+                'currency_code' => 'BDT',
+                'photo_prefix' => 'Photo_'
             ];
             
             foreach ($defaults as $key => $value) {
@@ -379,7 +470,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <div class="db-status-item">
                         <span><i class="bi bi-table me-2"></i>Table Status</span>
                         <span>
-                            <?php $tables = ['admin', 'employees', 'salary_sheets']; ?>
+                            <?php $tables = ['admin', 'employees', 'salary_sheets', 'pf_transactions', 'loan_transactions', 'bonuses', 'settings']; ?>
                             <?php foreach ($tables as $table): ?>
                                 <?php if (in_array($table, $dbStatus['tables'] ?? [])): ?>
                                     <span class="table-badge exists"><?php echo $table; ?> ✓</span>

@@ -1,0 +1,8 @@
+# Enable RewriteEngine
+RewriteEngine On
+
+# Rewrite /pf/8 to /public/profile.php?id=8
+RewriteRule ^pf/(\d+)$ public/profile.php?id=$1 [L,QSA]
+
+# Rewrite /pf to public profile without id
+RewriteRule ^pf/?$ public/profile.php [L,QSA]

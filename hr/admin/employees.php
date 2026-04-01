@@ -23,7 +23,55 @@ $filter = [
     'status' => $_GET['status'] ?? ''
 ];
 
-$employees = getAllEmployees($filter);
+$filterSubmitted = isset($_GET['office']);
+
+$perPage = 50;
+$pageNum = max(1, (int)($_GET['page'] ?? 1));
+$totalEmployees = 0;
+$totalPages = 1;
+$employees = [];
+$balances = [];
+if ($filterSubmitted) {
+    $totalEmployees = countAllEmployees($filter);
+    $totalPages = $totalEmployees > 0 ? (int)ceil($totalEmployees / $perPage) : 1;
+    $employees = getAllEmployees($filter, $perPage, ($pageNum - 1) * $perPage);
+    $employeeIds = array_column($employees, 'id');
+    $balances = !empty($employeeIds) ? getBatchEmployeeBalances($employeeIds) : [];
+}
+
+// CSV export — must run before any HTML output
+if ($filterSubmitted && isset($_GET['export']) && $_GET['export'] === 'csv') {
+    // For CSV we need all employees (no pagination limit)
+    $allEmployees = getAllEmployees($filter);
+    $empIds = array_column($allEmployees, 'id');
+    $balances = getBatchEmployeeBalances($empIds);
+
+    header('Content-Type: text/csv; charset=utf-8');
+    header('Content-Disposition: attachment; filename="employees_' . date('Y-m-d') . '.csv"');
+    $out = fopen('php://output', 'w');
+    fputcsv($out, ['Emp ID','Name','Office','Department','Unit','Position','Type','Basic Salary','PF %','Joining Date','Status','Loan Balance','PF Balance']);
+    foreach ($allEmployees as $emp) {
+        $bal = $balances[$emp['id']] ?? ['loan_balance' => 0, 'pf_balance' => 0];
+        fputcsv($out, [
+            generateEmployeeID($emp['id'], $emp['office_code'], $emp['dept_code']),
+            $emp['emp_name'],
+            $emp['office_name'],
+            $emp['department'],
+            $emp['unit'] ?? '',
+            $emp['position'],
+            $emp['employee_type'],
+            $emp['basic_salary'],
+            $emp['pf_percentage'],
+            $emp['joining_date'] ?? '',
+            $emp['status'],
+            number_format($bal['loan_balance'], 2),
+            number_format($bal['pf_balance'], 2),
+        ]);
+    }
+    fclose($out);
+    exit;
+}
+
 $offices = getOfficeList();
 $departments = getDepartmentList($filter['office']);
 $units = getUnitList($filter['department']);
@@ -58,6 +106,11 @@ require_once __DIR__ . '/../includes/header.php';
         <small class="text-muted">Manage employee records</small>
     </div>
     <div class="d-flex gap-2">
+        <?php if ($filterSubmitted && !empty($employees)): ?>
+        <a href="employees.php?<?php echo http_build_query(array_filter($filter)); ?>&export=csv" class="btn btn-outline-success">
+            <i class="bi bi-download me-1"></i> Download CSV
+        </a>
+        <?php endif; ?>
         <a href="employee-import.php" class="btn btn-success">
             <i class="bi bi-file-earmark-spreadsheet me-1"></i> Import CSV
         </a>
@@ -152,9 +205,17 @@ require_once __DIR__ . '/../includes/header.php';
     </div>
 </div>
 
+<?php if (!$filterSubmitted): ?>
+<div class="card">
+    <div class="card-body text-center py-5 text-muted">
+        <i class="bi bi-funnel fs-1 d-block mb-3"></i>
+        <p class="mb-0">Select filters above and click <strong>Filter</strong> to view employees.</p>
+    </div>
+</div>
+<?php else: ?>
 <div class="card">
     <div class="card-header d-flex justify-content-between align-items-center">
-        <h5 class="mb-0">Employee Records (<?php echo count($employees); ?>)</h5>
+        <h5 class="mb-0">Employee Records (<?php echo $totalEmployees; ?>)</h5>
     </div>
     <div class="card-body p-0">
         <div class="table-responsive">
@@ -169,6 +230,8 @@ require_once __DIR__ . '/../includes/header.php';
                         <th>Position</th>
                         <th>Type</th>
                         <th>Basic Salary</th>
+                        <th>PF Balance</th>
+                        <th>Loan Balance</th>
                         <th>Status</th>
                         <th>Actions</th>
                     </tr>
@@ -176,7 +239,7 @@ require_once __DIR__ . '/../includes/header.php';
                 <tbody>
                     <?php if (empty($employees)): ?>
                         <tr>
-                            <td colspan="10" class="text-center text-muted py-4">No employees found</td>
+                            <td colspan="12" class="text-center text-muted py-4">No employees found</td>
                         </tr>
                     <?php else: ?>
                         <?php foreach ($employees as $emp): ?>
@@ -188,10 +251,10 @@ require_once __DIR__ . '/../includes/header.php';
                                 </td>
                                 <td>
                                     <?php if ($emp['photo']): ?>
-                                        <img src="../uploads/photos/<?php echo htmlspecialchars($emp['photo']); ?>" 
+                                        <img src="../uploads/photos/<?php echo htmlspecialchars($emp['photo']); ?>"
                                              alt="" class="rounded-circle" width="40" height="40" style="object-fit: cover;">
                                     <?php else: ?>
-                                        <div class="bg-secondary rounded-circle d-flex align-items-center justify-content-center" 
+                                        <div class="bg-secondary rounded-circle d-flex align-items-center justify-content-center"
                                              style="width: 40px; height: 40px;">
                                             <i class="bi bi-person text-white"></i>
                                         </div>
@@ -208,6 +271,11 @@ require_once __DIR__ . '/../includes/header.php';
                                     <span class="badge bg-info"><?php echo $emp['employee_type']; ?></span>
                                 </td>
                                 <td>$<?php echo formatCurrency($emp['basic_salary']); ?></td>
+                                <?php $bal = $balances[$emp['id']] ?? ['pf_balance' => 0, 'loan_balance' => 0]; ?>
+                                <td class="text-success"><?php echo number_format($bal['pf_balance'], 2); ?></td>
+                                <td class="<?php echo $bal['loan_balance'] > 0 ? 'text-danger' : 'text-muted'; ?>">
+                                    <?php echo number_format($bal['loan_balance'], 2); ?>
+                                </td>
                                 <td>
                                     <span class="badge badge-<?php echo strtolower($emp['status']); ?>">
                                         <?php echo $emp['status']; ?>
@@ -215,15 +283,15 @@ require_once __DIR__ . '/../includes/header.php';
                                 </td>
                                 <td>
                                     <div class="btn-group btn-group-sm">
-                                        <a href="employee-add.php?edit=<?php echo $emp['id']; ?>" 
+                                        <a href="employee-add.php?edit=<?php echo $emp['id']; ?>"
                                            class="btn btn-outline-primary" title="Edit">
                                             <i class="bi bi-pencil"></i>
                                         </a>
-                                        <a href="../public/profile.php?id=<?php echo $emp['id']; ?>" 
+                                        <a href="../public/profile.php?id=<?php echo $emp['id']; ?>"
                                            class="btn btn-outline-info" title="View Profile" target="_blank">
                                             <i class="bi bi-eye"></i>
                                         </a>
-                                        <a href="employees.php?delete=<?php echo $emp['id']; ?>" 
+                                        <a href="employees.php?delete=<?php echo $emp['id']; ?>"
                                            class="btn btn-outline-danger" title="Delete"
                                            onclick="return confirm('Are you sure you want to delete this employee?');">
                                             <i class="bi bi-trash"></i>
@@ -237,6 +305,15 @@ require_once __DIR__ . '/../includes/header.php';
             </table>
         </div>
     </div>
+    <?php if ($totalPages > 1): ?>
+    <div class="card-footer">
+        <?php
+        $baseUrl = 'employees.php?' . http_build_query(array_filter($filter));
+        renderPagination($pageNum, $totalPages, $baseUrl);
+        ?>
+    </div>
+    <?php endif; ?>
 </div>
+<?php endif; ?>
 
 <?php require_once __DIR__ . '/../includes/footer.php'; ?>

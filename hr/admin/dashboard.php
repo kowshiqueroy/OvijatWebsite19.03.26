@@ -20,7 +20,7 @@ $inactiveEmployees = getEmployeeCount('Inactive');
 $salaryStats = getSalaryStats();
 $recentEmployees = getAllEmployees();
 $recentEmployees = array_slice($recentEmployees, 0, 5);
-$monthList = getMonthList();
+$monthList = getSalaryMonths();
 $currentMonth = date('Y-m');
 $currentSalaryStats = getSalaryStats($currentMonth);
 

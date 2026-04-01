@@ -161,6 +161,21 @@
                 </a>
             </li>
             <li class="nav-item">
+                <a class="nav-link <?php echo ($currentPage ?? '') === 'loans' ? 'active' : ''; ?>" href="loan.php">
+                    <i class="bi bi-cash-stack"></i> Loans
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link <?php echo ($currentPage ?? '') === 'pf-ledger' ? 'active' : ''; ?>" href="pf-ledger.php">
+                    <i class="bi bi-piggy-bank"></i> PF Ledger
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link <?php echo ($currentPage ?? '') === 'bonuses' ? 'active' : ''; ?>" href="bonuses.php">
+                    <i class="bi bi-gift"></i> Bonuses
+                </a>
+            </li>
+            <li class="nav-item">
                 <a class="nav-link <?php echo ($currentPage ?? '') === 'settings' ? 'active' : ''; ?>" href="settings.php">
                     <i class="bi bi-gear"></i> Settings
                 </a>
