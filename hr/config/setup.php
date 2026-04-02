@@ -58,6 +58,7 @@ function runSetup($reset = false) {
     try {
         if ($reset) {
             $steps[] = ['status' => 'info', 'message' => 'Dropping existing tables...'];
+            $conn->query("DROP TABLE IF EXISTS bonus_sheets");
             $conn->query("DROP TABLE IF EXISTS bonuses");
             $conn->query("DROP TABLE IF EXISTS loan_transactions");
             $conn->query("DROP TABLE IF EXISTS pf_transactions");
@@ -200,27 +201,34 @@ function runSetup($reset = false) {
         }
         $steps[] = ['status' => 'success', 'message' => 'Loan transactions table created successfully'];
 
-        $steps[] = ['status' => 'info', 'message' => 'Creating bonuses table...'];
+        $steps[] = ['status' => 'info', 'message' => 'Creating bonus_sheets table...'];
         $sql = "
-        CREATE TABLE IF NOT EXISTS bonuses (
+        CREATE TABLE IF NOT EXISTS bonus_sheets (
             id INT AUTO_INCREMENT PRIMARY KEY,
             employee_id INT NOT NULL,
             month VARCHAR(7) NOT NULL,
+            basic_salary DECIMAL(12,2) DEFAULT 0,
+            bonus_pct DECIMAL(5,2) DEFAULT 0,
+            bonus_amount DECIMAL(12,2) DEFAULT 0,
             bonus_type VARCHAR(50) DEFAULT 'Festival',
-            amount DECIMAL(12,2) NOT NULL,
-            description VARCHAR(255),
+            description VARCHAR(255) DEFAULT '',
+            confirmed TINYINT(1) DEFAULT 0,
+            confirmed_by INT DEFAULT NULL,
+            confirmed_at DATETIME DEFAULT NULL,
             created_by INT DEFAULT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE KEY unique_emp_month (employee_id, month),
             FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE,
+            FOREIGN KEY (confirmed_by) REFERENCES admin(id) ON DELETE SET NULL,
             FOREIGN KEY (created_by) REFERENCES admin(id) ON DELETE SET NULL,
             INDEX idx_bonus_employee (employee_id),
             INDEX idx_bonus_month (month)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
         ";
         if (!$conn->query($sql)) {
-            throw new Exception("Error creating bonuses table: " . $conn->error);
+            throw new Exception("Error creating bonus_sheets table: " . $conn->error);
         }
-        $steps[] = ['status' => 'success', 'message' => 'Bonuses table created successfully'];
+        $steps[] = ['status' => 'success', 'message' => 'Bonus sheets table created successfully'];
 
         $result = $conn->query("SHOW COLUMNS FROM salary_sheets LIKE 'confirmed'");
         if ($result->num_rows == 0) {
@@ -470,7 +478,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <div class="db-status-item">
                         <span><i class="bi bi-table me-2"></i>Table Status</span>
                         <span>
-                            <?php $tables = ['admin', 'employees', 'salary_sheets', 'pf_transactions', 'loan_transactions', 'bonuses', 'settings']; ?>
+                            <?php $tables = ['admin', 'employees', 'salary_sheets', 'pf_transactions', 'loan_transactions', 'bonus_sheets', 'settings']; ?>
                             <?php foreach ($tables as $table): ?>
                                 <?php if (in_array($table, $dbStatus['tables'] ?? [])): ?>
                                     <span class="table-badge exists"><?php echo $table; ?> ✓</span>

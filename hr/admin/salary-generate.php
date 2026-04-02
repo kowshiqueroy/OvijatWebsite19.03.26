@@ -328,9 +328,9 @@ require_once __DIR__ . '/../includes/header.php';
                 <table class="table table-bordered table-sm mb-0">
                     <thead class="table-light">
                         <tr>
-                            <th rowspan="2" class="align-middle">ID / Name / Dept / Position / Office</th>
+                            <th rowspan="2" class="align-middle" style="min-width:150px;max-width:200px;">Employee</th>
                             <th colspan="4" class="text-center">Attendance</th>
-                            <th colspan="4" class="text-center">Salary Details</th>
+                            <th colspan="5" class="text-center">Salary Details</th>
                             <th rowspan="2" class="align-middle text-end">Net Payable</th>
                             <th rowspan="2" class="align-middle text-center">Status</th>
                         </tr>
@@ -341,7 +341,8 @@ require_once __DIR__ . '/../includes/header.php';
                             <th>Working</th>
                             <th>Basic</th>
                             <th>PF %</th>
-                            <th>Bonus</th>
+                            <th>Bonus%</th>
+                            <th>Bonus Amt</th>
                             <th>Gross</th>
                         </tr>
                     </thead>
@@ -372,17 +373,14 @@ require_once __DIR__ . '/../includes/header.php';
                             }
                             ?>
                             <tr class="<?php echo $isConfirmed ? 'table-success' : ''; ?>">
-                                <td>
-                                    <div class="d-flex flex-column">
-                                        <span class="badge bg-dark">
-                                            <?php echo generateEmployeeID($emp['id'], $emp['office_code'], $emp['dept_code']); ?>
-                                        </span>
-                                        <strong><?php echo htmlspecialchars($emp['emp_name']); ?></strong>
-                                        <small class="text-muted">
-                                            <?php echo htmlspecialchars($emp['department']); ?> | 
-                                            <?php echo htmlspecialchars($emp['position']); ?> | 
-                                            <?php echo htmlspecialchars($emp['office_name']); ?>
-                                        </small>
+                                <td style="min-width:150px;max-width:200px;">
+                                    <span class="badge bg-dark d-inline-block mb-1" style="font-size:10px;">
+                                        <?php echo generateEmployeeID($emp['id'], $emp['office_code'], $emp['dept_code']); ?>
+                                    </span>
+                                    <div style="font-size:12px;font-weight:600;line-height:1.3;"><?php echo htmlspecialchars($emp['emp_name']); ?></div>
+                                    <div class="text-muted" style="font-size:10px;line-height:1.3;">
+                                        <?php echo htmlspecialchars($emp['department']); ?><br>
+                                        <?php echo htmlspecialchars($emp['position']); ?> · <?php echo htmlspecialchars($emp['office_name']); ?>
                                     </div>
                                 </td>
                                 <td style="width: 80px;">
@@ -417,10 +415,19 @@ require_once __DIR__ . '/../includes/header.php';
                                            value="<?php echo $pf; ?>" step="0.01" min="0" max="100"
                                            <?php echo $isConfirmed ? 'readonly' : ''; ?>>
                                 </td>
-                                <td style="width: 100px;">
+                                <?php
+                                $bonusAmt = isset($sheetsByEmployee[$emp['id']]) ? (float)($sheetsByEmployee[$emp['id']]['bonus'] ?? 0) : ($bonusesByEmployee[$emp['id']] ?? 0);
+                                $bonusPct = ($salary > 0 && $bonusAmt > 0) ? round($bonusAmt / $salary * 100, 2) : 0;
+                                ?>
+                                <td style="width: 70px;">
+                                    <input type="number" class="form-control form-control-sm calc-bonus-pct"
+                                           value="<?php echo $bonusPct; ?>" step="0.01" min="0" max="100"
+                                           <?php echo $isConfirmed ? 'readonly' : ''; ?>>
+                                </td>
+                                <td style="width: 95px;">
                                     <input type="number" name="bonus_<?php echo $emp['id']; ?>"
                                            class="form-control form-control-sm calc-bonus"
-                                           value="<?php echo isset($sheetsByEmployee[$emp['id']]) ? (float)($sheetsByEmployee[$emp['id']]['bonus'] ?? 0) : ($bonusesByEmployee[$emp['id']] ?? 0); ?>"
+                                           value="<?php echo $bonusAmt; ?>"
                                            step="0.01" min="0"
                                            <?php echo $isConfirmed ? 'readonly' : ''; ?>>
                                 </td>
@@ -465,62 +472,80 @@ require_once __DIR__ . '/../includes/header.php';
 
 <script>
 document.addEventListener('input', function(e) {
-    if (!e.target.name || !e.target.name.match(/^(present_|leave_|salary_|pf_|bonus_)/)) return;
+    const calcClasses = ['calc-present','calc-leave','calc-salary','calc-pf','calc-bonus','calc-bonus-pct'];
+    if (!calcClasses.some(c => e.target.classList.contains(c))) return;
 
     let row = e.target.closest('tr');
     if (!row) return;
 
-    let workingDays = parseInt(row.querySelector('.calc-working').value) || 0;
-    let presentInput = row.querySelector('.calc-present');
-    let leaveInput = row.querySelector('.calc-leave');
-    let absentInput = row.querySelector('.calc-absent');
-    let salaryInput = row.querySelector('.calc-salary');
-    let pfInput = row.querySelector('.calc-pf');
-    let bonusInput = row.querySelector('.calc-bonus');
+    let workingInput  = row.querySelector('.calc-working');
+    let presentInput  = row.querySelector('.calc-present');
+    let leaveInput    = row.querySelector('.calc-leave');
+    let absentInput   = row.querySelector('.calc-absent');
+    let salaryInput   = row.querySelector('.calc-salary');
+    let pfInput       = row.querySelector('.calc-pf');
+    let bonusInput    = row.querySelector('.calc-bonus');
+    let bonusPctInput = row.querySelector('.calc-bonus-pct');
 
-    let present = parseInt(presentInput.value) || 0;
-    let leave = parseInt(leaveInput.value) || 0;
-    let salary = parseFloat(salaryInput.value) || 0;
-    let pf = parseFloat(pfInput.value) || 0;
-    let bonus = parseFloat(bonusInput?.value) || 0;
+    let workingDays = parseInt(workingInput.value) || 0;
+    let present     = parseInt(presentInput.value) || 0;
+    let leave       = parseInt(leaveInput.value) || 0;
+    let salary      = parseFloat(salaryInput.value) || 0;
+    let pf          = parseFloat(pfInput.value) || 0;
 
+    // Bonus % <-> Bonus Amt bidirectional sync
+    if (e.target.classList.contains('calc-bonus-pct')) {
+        let pct = parseFloat(bonusPctInput.value) || 0;
+        bonusInput.value = salary > 0 ? (salary * pct / 100).toFixed(2) : '0.00';
+    } else if (e.target.classList.contains('calc-bonus')) {
+        let amt = parseFloat(bonusInput.value) || 0;
+        bonusPctInput.value = salary > 0 ? (amt / salary * 100).toFixed(2) : '0.00';
+    } else if (e.target.classList.contains('calc-salary')) {
+        // When salary changes, keep bonus% and recalculate bonus amount
+        let pct = parseFloat(bonusPctInput.value) || 0;
+        if (pct > 0) {
+            bonusInput.value = (salary * pct / 100).toFixed(2);
+        }
+    }
+
+    let bonus = parseFloat(bonusInput.value) || 0;
+
+    // Attendance
     let totalDays = present + leave;
-    let absent = workingDays - totalDays;
-
-    if (absent < 0) absent = 0;
+    let absent = Math.max(0, workingDays - totalDays);
     absentInput.value = absent;
 
-    let hasWarning = false;
+    // Clear all validation styles
+    [presentInput, leaveInput, absentInput, salaryInput, pfInput, workingInput].forEach(el => {
+        el.classList.remove('border-warning', 'border-danger');
+        el.style.backgroundColor = '';
+    });
 
-    presentInput.classList.remove('border-warning');
-    leaveInput.classList.remove('border-warning');
-    absentInput.classList.remove('border-warning');
-    salaryInput.classList.remove('border-warning');
-    pfInput.classList.remove('border-warning');
+    // Validate
+    if (present < 0 || present > 31)  presentInput.classList.add('border-warning');
+    if (leave < 0 || leave > 31)      leaveInput.classList.add('border-warning');
+    if (salary < 0)                   salaryInput.classList.add('border-warning');
+    if (pf < 0 || pf > 100)          pfInput.classList.add('border-warning');
 
-    if (present < 0 || present > 31) { presentInput.classList.add('border-warning'); hasWarning = true; }
-    if (leave < 0 || leave > 31) { leaveInput.classList.add('border-warning'); hasWarning = true; }
     if (totalDays > workingDays) {
         presentInput.classList.add('border-warning');
         leaveInput.classList.add('border-warning');
-        absentInput.classList.add('border-warning');
-        hasWarning = true;
+        workingInput.classList.add('border-danger');
+        workingInput.style.backgroundColor = '#ffd7d7';
     }
-    if (salary < 0) { salaryInput.classList.add('border-warning'); hasWarning = true; }
-    if (pf < 0 || pf > 100) { pfInput.classList.add('border-warning'); hasWarning = true; }
 
+    // Recalculate gross / net
     if (workingDays > 0 && (present > 0 || leave > 0)) {
-        let dailyRate = salary / workingDays;
-        let payableDays = present + leave;
-        let gross = dailyRate * payableDays;
+        let gross       = (salary / workingDays) * (present + leave);
         let pfDeduction = (gross * pf) / 100;
-        let net = gross - pfDeduction + bonus;
+        let net         = gross - pfDeduction + bonus;
 
-        let grossCell = row.cells[row.cells.length - 4];
-        let netCell = row.cells[row.cells.length - 3];
+        // columns: [Employee, Present, Leave, Absent, Working, Basic, PF%, BonusPct, BonusAmt, Gross, Net, Status]
+        let grossCell = row.cells[row.cells.length - 3];
+        let netCell   = row.cells[row.cells.length - 2];
 
-        if (grossCell) grossCell.textContent = '$' + gross.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-        if (netCell) netCell.textContent = '$' + net.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        if (grossCell) grossCell.textContent = gross.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        if (netCell)   netCell.textContent   = net.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
     }
 });
 </script>

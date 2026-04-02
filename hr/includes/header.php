@@ -176,6 +176,11 @@
                 </a>
             </li>
             <li class="nav-item">
+                <a class="nav-link <?php echo ($currentPage ?? '') === 'employee-report' ? 'active' : ''; ?>" href="employee-report.php">
+                    <i class="bi bi-file-earmark-spreadsheet"></i> Employee Report
+                </a>
+            </li>
+            <li class="nav-item">
                 <a class="nav-link <?php echo ($currentPage ?? '') === 'settings' ? 'active' : ''; ?>" href="settings.php">
                     <i class="bi bi-gear"></i> Settings
                 </a>

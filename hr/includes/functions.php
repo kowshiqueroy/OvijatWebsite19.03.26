@@ -484,6 +484,23 @@ function getSalaryMonths() {
     return $months;
 }
 
+function getBonusMonths() {
+    $conn = getDBConnection();
+    $result = $conn->query("SELECT DISTINCT month FROM bonus_sheets ORDER BY month DESC");
+    if (!$result) return [];
+    $months = [];
+    while ($row = $result->fetch_assoc()) {
+        $months[] = $row['month'];
+    }
+    return $months;
+}
+
+function tableExists($tableName) {
+    $conn = getDBConnection();
+    $result = $conn->query("SHOW TABLES LIKE '" . $conn->real_escape_string($tableName) . "'");
+    return $result && $result->num_rows > 0;
+}
+
 // ─── Authentication ───────────────────────────────────────────────────────────
 
 function isLoggedIn() {
@@ -744,8 +761,8 @@ function getBatchBonusesForMonth(array $employeeIds, $month) {
     $pl = implode(',', array_fill(0, count($employeeIds), '?'));
     $t  = str_repeat('i', count($employeeIds)) . 's';
     $stmt = $conn->prepare(
-        "SELECT employee_id, COALESCE(SUM(amount), 0) as total
-         FROM bonuses WHERE employee_id IN ($pl) AND month = ?
+        "SELECT employee_id, COALESCE(SUM(bonus_amount), 0) as total
+         FROM bonus_sheets WHERE employee_id IN ($pl) AND month = ?
          GROUP BY employee_id"
     );
     $params = array_merge($employeeIds, [$month]);
