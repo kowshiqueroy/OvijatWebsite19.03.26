@@ -33,7 +33,8 @@
       "Bash(grep -n \"tools_used\\\\|ai_used\" /c/xampp/htdocs/projects/worksheet/*.php)",
       "Bash(php -l c:/xampp/htdocs/projects/setup.php)",
       "Bash(c:/xampp/php/php.exe -l c:/xampp/htdocs/projects/setup.php)",
-      "Bash(grep -r \"TODO\\\\|FIXME\\\\|HACK\\\\|BUG\" /c/xampp/htdocs/hr --include=*.php)"
+      "Bash(grep -r \"TODO\\\\|FIXME\\\\|HACK\\\\|BUG\" /c/xampp/htdocs/hr --include=*.php)",
+      "Bash(ls -la /c/xampp/htdocs/projects/modules/*/)"
     ]
   }
 }

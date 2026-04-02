@@ -16,9 +16,11 @@ $curAssign  = array_column(dbFetchAll("SELECT user_id FROM task_assignees WHERE 
 $milestones = dbFetchAll("SELECT id, title, status FROM milestones WHERE project_id=? ORDER BY status='completed', ISNULL(due_date), due_date, title", [$task['project_id']]);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    validateCsrf();
     if (isset($_POST['delete'])) {
         if ($user['role'] !== 'admin' && $task['created_by'] !== $user['id']) redirect(BASE_URL . '/modules/tasks/index.php');
-        dbQuery("DELETE FROM tasks WHERE id=?", [$id]);
+        dbQuery("UPDATE tasks SET deleted_at=NOW() WHERE id=?", [$id]);
+        dbInsert('updates', ['project_id' => $task['project_id'], 'user_id' => $user['id'], 'type' => 'task', 'message' => "Deleted task \"{$task['title']}\"."]);
         flash('success', 'Task deleted.');
         redirect(BASE_URL . '/modules/tasks/index.php?project_id=' . $task['project_id']);
     }
@@ -40,9 +42,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'start_date' => $startDate, 'due_date' => $due ?: null,
         'estimated_hours' => $estH, 'milestone_id' => $milestoneId,
     ], ['id' => $id]);
+    $prevAssignees = $curAssign;
     dbQuery("DELETE FROM task_assignees WHERE task_id=?", [$id]);
     foreach ($assignees as $uid) {
         try { dbInsert('task_assignees', ['task_id' => $id, 'user_id' => $uid]); } catch (\Exception $e) {}
+        // Notify newly added assignees only
+        if ($uid !== $user['id'] && !in_array($uid, $prevAssignees)) {
+            try { dbInsert('notifications', ['user_id' => $uid, 'type' => 'task_assigned', 'message' => $user['full_name'] . ' assigned you to "' . $title . '"', 'link' => BASE_URL . '/modules/tasks/view.php?id=' . $id, 'related_entity_type' => 'task', 'related_entity_id' => $id, 'created_at' => date('Y-m-d H:i:s')]); } catch (\Exception $e) {}
+        }
     }
     dbInsert('updates', ['project_id' => $task['project_id'], 'user_id' => $user['id'], 'type' => 'task', 'message' => "Updated task \"{$title}\"."]);
     flash('success', 'Task updated.');
@@ -60,6 +67,7 @@ $project = dbFetch("SELECT name FROM projects WHERE id=?", [$task['project_id']]
     </div>
     <?php if ($user['role'] === 'admin' || $task['created_by'] === $user['id']): ?>
     <form method="POST" onsubmit="return confirm('Delete this task?')">
+        <?= csrfField() ?>
         <input type="hidden" name="delete" value="1">
         <button class="btn btn-danger btn-sm">Delete Task</button>
     </form>
@@ -69,6 +77,7 @@ $project = dbFetch("SELECT name FROM projects WHERE id=?", [$task['project_id']]
 <div class="card" style="max-width:680px">
 <div class="card-body">
 <form method="POST">
+    <?= csrfField() ?>
     <div class="form-group">
         <label class="form-label">Title *</label>
         <input name="title" class="form-control" value="<?= e($_POST['title'] ?? $task['title']) ?>" required autofocus>

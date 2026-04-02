@@ -38,7 +38,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['generate_task'])) {
 // Handle RSVP
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['rsvp'])) {
     $rsvp = $_POST['rsvp'];
-    if (in_array($rsvp, ['confirmed','declined','pending'])) {
+    if (in_array($rsvp, ['yes','no','maybe','pending'])) {
         $exists = dbFetch("SELECT id FROM meeting_attendees WHERE meeting_id=? AND user_id=?", [$id, $user['id']]);
         if ($exists) {
             dbUpdate('meeting_attendees', ['rsvp' => $rsvp], ['meeting_id' => $id, 'user_id' => $user['id']]);
@@ -95,13 +95,18 @@ layoutStart(e($meeting['title']), 'meetings');
         <!-- RSVP -->
         <form method="POST" style="display:flex;gap:4px">
             <?= csrfField() ?>
-            <input type="hidden" name="rsvp" value="confirmed">
-            <button class="btn btn-sm <?= $myRsvp === 'confirmed' ? 'btn-primary' : 'btn-secondary' ?>">✓ Confirm</button>
+            <input type="hidden" name="rsvp" value="yes">
+            <button class="btn btn-sm <?= $myRsvp === 'yes' ? 'btn-primary' : 'btn-secondary' ?>">✓ Yes</button>
         </form>
         <form method="POST">
             <?= csrfField() ?>
-            <input type="hidden" name="rsvp" value="declined">
-            <button class="btn btn-sm <?= $myRsvp === 'declined' ? 'btn-danger' : 'btn-secondary' ?>">✗ Decline</button>
+            <input type="hidden" name="rsvp" value="maybe">
+            <button class="btn btn-sm <?= $myRsvp === 'maybe' ? 'btn-warning' : 'btn-secondary' ?>">? Maybe</button>
+        </form>
+        <form method="POST">
+            <?= csrfField() ?>
+            <input type="hidden" name="rsvp" value="no">
+            <button class="btn btn-sm <?= $myRsvp === 'no' ? 'btn-danger' : 'btn-secondary' ?>">✗ No</button>
         </form>
         <?php if ($user['role'] === 'admin'): ?>
         <form method="POST" onsubmit="return confirm('Delete this meeting?')">

@@ -494,7 +494,8 @@ function getChatData(int $pid, int $userId, int $since = 0, int $before = 0): ar
         $sql .= " ORDER BY wc.created_at " . ($before ? "DESC" : "ASC") . " LIMIT $limit";
         
         $data = dbFetchAll($sql, $params);
-        return $before ? array_reverse($data) : ($data ?: []);
+        $data = $before ? array_reverse($data) : ($data ?: []);
+        return attachChatReactions($data, $userId);
     } catch (\Exception $e) {
         return [];
     }
@@ -505,20 +506,44 @@ function getPinnedChatData(int $pid, int $userId): array {
         $sql = "SELECT wc.*, u.full_name, u.username,
                 (SELECT 1 FROM chat_likes WHERE chat_id=wc.id AND user_id=?) as is_liked,
                 pwc.body as parent_body, pu.full_name as parent_name, ru.full_name as recipient_name
-                FROM worksheet_chat wc 
-                JOIN users u ON u.id=wc.user_id 
+                FROM worksheet_chat wc
+                JOIN users u ON u.id=wc.user_id
                 LEFT JOIN worksheet_chat pwc ON pwc.id=wc.parent_id
                 LEFT JOIN users pu ON pu.id=pwc.user_id
                 LEFT JOIN users ru ON ru.id=wc.recipient_id
-                WHERE wc.project_id=? 
+                WHERE wc.project_id=?
                 AND wc.is_pinned = 1
                 AND (wc.recipient_id IS NULL OR wc.recipient_id = ? OR wc.user_id = ?)";
         $params = [$userId, $pid, $userId, $userId];
         $sql .= " ORDER BY wc.created_at DESC";
-        return dbFetchAll($sql, $params) ?: [];
+        $data = dbFetchAll($sql, $params) ?: [];
+        return attachChatReactions($data, $userId);
     } catch (\Exception $e) {
         return [];
     }
+}
+
+function attachChatReactions(array $messages, int $userId): array {
+    if (!$messages) return [];
+    $ids = array_column($messages, 'id');
+    $phs = implode(',', array_fill(0, count($ids), '?'));
+    $allReactions = dbFetchAll(
+        "SELECT chat_id, emoji, COUNT(*) as cnt FROM chat_reactions WHERE chat_id IN ($phs) GROUP BY chat_id, emoji ORDER BY cnt DESC",
+        $ids
+    );
+    $myReactions = dbFetchAll(
+        "SELECT chat_id, emoji FROM chat_reactions WHERE chat_id IN ($phs) AND user_id=?",
+        array_merge($ids, [$userId])
+    );
+    $reactMap = [];
+    foreach ($allReactions as $r) $reactMap[$r['chat_id']][] = $r;
+    $myMap = [];
+    foreach ($myReactions as $r) $myMap[$r['chat_id']][] = $r['emoji'];
+    foreach ($messages as &$msg) {
+        $msg['reactions']    = $reactMap[$msg['id']] ?? [];
+        $msg['my_reactions'] = $myMap[$msg['id']] ?? [];
+    }
+    return $messages;
 }
 
 function getFeedData(int $pid, int $userId, int $since): array {

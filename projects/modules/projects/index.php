@@ -11,7 +11,7 @@ $user = currentUser();
 $status = $_GET['status'] ?? '';
 $search = trim($_GET['q'] ?? '');
 
-$where = ['1=1'];
+$where = ['p.deleted_at IS NULL'];
 $params = [];
 
 if ($user['role'] !== 'admin') {
@@ -19,7 +19,11 @@ if ($user['role'] !== 'admin') {
     $params[] = $user['id'];
 }
 if ($status) { $where[] = 'p.status=?'; $params[] = $status; }
-if ($search)  { $where[] = '(p.name LIKE ? OR p.client_name LIKE ?)'; $params[] = "%$search%"; $params[] = "%$search%"; }
+if ($search) {
+    $safe = str_replace(['\\','%','_'], ['\\\\','\%','\_'], $search);
+    $where[] = '(p.name LIKE ? OR p.client_name LIKE ?)';
+    $params[] = "%$safe%"; $params[] = "%$safe%";
+}
 
 $projects = dbFetchAll(
     "SELECT p.*, u.full_name as creator,

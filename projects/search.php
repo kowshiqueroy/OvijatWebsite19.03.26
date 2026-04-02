@@ -12,7 +12,8 @@ $q     = trim($_GET['q'] ?? '');
 $tasks = $projects = $updates = $meetings = [];
 
 if (strlen($q) >= 2) {
-    $like = '%' . $q . '%';
+    $safe = str_replace(['\\', '%', '_'], ['\\\\', '\%', '\_'], $q);
+    $like = '%' . $safe . '%';
 
     // Tasks
     if ($user['role'] === 'admin') {

@@ -22,7 +22,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['bulk_action'])) {
         dbQuery("UPDATE tasks SET priority=? WHERE id IN ($phs)", array_merge([$value], array_values($ids)));
         echo json_encode(['ok' => true]);
     } elseif ($action === 'delete' && $user['role'] === 'admin') {
-        dbQuery("DELETE FROM tasks WHERE id IN ($phs)", array_values($ids));
+        dbQuery("UPDATE tasks SET deleted_at=NOW() WHERE id IN ($phs)", array_values($ids));
         echo json_encode(['ok' => true]);
     } else {
         echo json_encode(['ok' => false, 'error' => 'Invalid action']);
@@ -49,7 +49,7 @@ $filterPriority = $_GET['priority'] ?? '';
 $filterProject  = (int)($_GET['project_id'] ?? 0);
 $search         = trim($_GET['q'] ?? '');
 
-$where = ['1=1'];
+$where = ['t.deleted_at IS NULL'];
 $params = [];
 
 if ($user['role'] !== 'admin') {
@@ -59,7 +59,10 @@ if ($user['role'] !== 'admin') {
 if ($filterStatus)   { $where[] = 't.status=?'; $params[] = $filterStatus; }
 if ($filterPriority) { $where[] = 't.priority=?'; $params[] = $filterPriority; }
 if ($filterProject)  { $where[] = 't.project_id=?'; $params[] = $filterProject; }
-if ($search)         { $where[] = 't.title LIKE ?'; $params[] = "%$search%"; }
+if ($search) {
+    $safe = str_replace(['\\','%','_'], ['\\\\','\%','\_'], $search);
+    $where[] = 't.title LIKE ?'; $params[] = "%$safe%";
+}
 
 $tasks = dbFetchAll(
     "SELECT DISTINCT t.*, p.name as project_name FROM tasks t

@@ -127,6 +127,9 @@ window.MY_PROJECTS = <?= json_encode(array_map(fn($p)=>['id'=>(int)$p['id'],'nam
         <li><a href="<?= $baseUrl ?>/modules/users/index.php" class="<?= $activeNav === 'users' ? 'active' : '' ?>">
             <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
             <span class="nav-label">Users</span></a></li>
+        <li><a href="<?= $baseUrl ?>/modules/users/performance.php" class="<?= $activeNav === 'performance' ? 'active' : '' ?>">
+            <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+            <span class="nav-label">Performance</span></a></li>
         <?php endif ?>
     </ul>
     <div class="sidebar-footer">

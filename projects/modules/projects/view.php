@@ -23,9 +23,11 @@ function checkProjectAccess(int $pid, array $user): array {
 
 $project = checkProjectAccess($id, $user);
 
-// Handle delete
+// Handle delete (soft)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete']) && $user['role'] === 'admin') {
-    dbQuery("DELETE FROM projects WHERE id=?", [$id]);
+    validateCsrf();
+    dbQuery("UPDATE projects SET deleted_at=NOW() WHERE id=?", [$id]);
+    dbInsert('updates', ['project_id' => null, 'user_id' => $user['id'], 'type' => 'project', 'message' => "Archived/deleted project \"{$project['name']}\"."]);
     flash('success', 'Project deleted.');
     redirect(BASE_URL . '/modules/projects/index.php');
 }
@@ -93,6 +95,7 @@ layoutStart(e($project['name']), 'projects');
         <?php if ($user['role'] === 'admin'): ?>
         <a href="<?= BASE_URL ?>/modules/projects/edit.php?id=<?= $id ?>" class="btn btn-secondary btn-sm">Edit</a>
         <form method="POST" style="display:inline" onsubmit="return confirm('Delete this project and all its data?')">
+            <?= csrfField() ?>
             <input type="hidden" name="delete" value="1">
             <button type="submit" class="btn btn-danger btn-sm">Delete</button>
         </form>

@@ -56,21 +56,23 @@ if ($submitted && !empty($empIds)) {
     $stmt->close();
 
     // Loan summary
-    $stmt = $conn->prepare(
-        "SELECT lt.employee_id, e.emp_name,
-                COALESCE(SUM(CASE WHEN lt.type='debit'  THEN lt.amount ELSE 0 END), 0) as total_debited,
-                COALESCE(SUM(CASE WHEN lt.type='credit' THEN lt.amount ELSE 0 END), 0) as total_repaid
-         FROM loan_transactions lt
-         JOIN employees e ON lt.employee_id = e.id
-         WHERE lt.employee_id IN ($pl)
-         GROUP BY lt.employee_id, e.emp_name
-         ORDER BY e.emp_name ASC"
-    );
-    $stmt->bind_param($ti, ...$empIds);
-    $stmt->execute();
-    $res = $stmt->get_result();
-    while ($row = $res->fetch_assoc()) $loanSummary[$row['employee_id']] = $row;
-    $stmt->close();
+    if (tableExists('loan_transactions')) {
+        $stmt = $conn->prepare(
+            "SELECT lt.employee_id, e.emp_name,
+                    COALESCE(SUM(CASE WHEN lt.type='debit'  THEN lt.amount ELSE 0 END), 0) as total_debited,
+                    COALESCE(SUM(CASE WHEN lt.type='credit' THEN lt.amount ELSE 0 END), 0) as total_repaid
+             FROM loan_transactions lt
+             JOIN employees e ON lt.employee_id = e.id
+             WHERE lt.employee_id IN ($pl)
+             GROUP BY lt.employee_id, e.emp_name
+             ORDER BY e.emp_name ASC"
+        );
+        $stmt->bind_param($ti, ...$empIds);
+        $stmt->execute();
+        $res = $stmt->get_result();
+        while ($row = $res->fetch_assoc()) $loanSummary[$row['employee_id']] = $row;
+        $stmt->close();
+    }
 
     // PF summary
     $stmt = $conn->prepare(
@@ -89,38 +91,42 @@ if ($submitted && !empty($empIds)) {
     $stmt->close();
 
     // PF manual transactions
-    $stmt = $conn->prepare(
-        "SELECT employee_id,
-                COALESCE(SUM(CASE WHEN type='credit' THEN amount ELSE 0 END), 0) as manual_credit,
-                COALESCE(SUM(CASE WHEN type='debit'  THEN amount ELSE 0 END), 0) as manual_debit
-         FROM pf_transactions WHERE employee_id IN ($pl) GROUP BY employee_id"
-    );
-    $stmt->bind_param($ti, ...$empIds);
-    $stmt->execute();
-    $res = $stmt->get_result();
-    while ($row = $res->fetch_assoc()) {
-        $eid = $row['employee_id'];
-        if (isset($pfSummary[$eid])) {
-            $pfSummary[$eid]['manual_credit'] = (float)$row['manual_credit'];
-            $pfSummary[$eid]['manual_debit']  = (float)$row['manual_debit'];
+    if (tableExists('pf_transactions')) {
+        $stmt = $conn->prepare(
+            "SELECT employee_id,
+                    COALESCE(SUM(CASE WHEN type='credit' THEN amount ELSE 0 END), 0) as manual_credit,
+                    COALESCE(SUM(CASE WHEN type='debit'  THEN amount ELSE 0 END), 0) as manual_debit
+             FROM pf_transactions WHERE employee_id IN ($pl) GROUP BY employee_id"
+        );
+        $stmt->bind_param($ti, ...$empIds);
+        $stmt->execute();
+        $res = $stmt->get_result();
+        while ($row = $res->fetch_assoc()) {
+            $eid = $row['employee_id'];
+            if (isset($pfSummary[$eid])) {
+                $pfSummary[$eid]['manual_credit'] = (float)$row['manual_credit'];
+                $pfSummary[$eid]['manual_debit']  = (float)$row['manual_debit'];
+            }
         }
+        $stmt->close();
     }
-    $stmt->close();
 
     // Bonus sheets
-    $stmt = $conn->prepare(
-        "SELECT bs.*, e.emp_name
-         FROM bonus_sheets bs
-         JOIN employees e ON bs.employee_id = e.id
-         WHERE bs.employee_id IN ($pl) AND bs.month >= ? AND bs.month <= ?
-         ORDER BY e.emp_name ASC, bs.month DESC"
-    );
-    $params = array_merge($empIds, [$fromMonth, $toMonth]);
-    $stmt->bind_param($ti . 'ss', ...$params);
-    $stmt->execute();
-    $res = $stmt->get_result();
-    while ($row = $res->fetch_assoc()) $bonusRows[] = $row;
-    $stmt->close();
+    if (tableExists('bonus_sheets')) {
+        $stmt = $conn->prepare(
+            "SELECT bs.*, e.emp_name
+             FROM bonus_sheets bs
+             JOIN employees e ON bs.employee_id = e.id
+             WHERE bs.employee_id IN ($pl) AND bs.month >= ? AND bs.month <= ?
+             ORDER BY e.emp_name ASC, bs.month DESC"
+        );
+        $params = array_merge($empIds, [$fromMonth, $toMonth]);
+        $stmt->bind_param($ti . 'ss', ...$params);
+        $stmt->execute();
+        $res = $stmt->get_result();
+        while ($row = $res->fetch_assoc()) $bonusRows[] = $row;
+        $stmt->close();
+    }
 }
 
 // ── Group salary rows by employee for subtotals ───────────────────────────────

@@ -810,7 +810,14 @@ window.ws_pinChat = async function(id) {
 
 window.ws_reactChat = async function(chatId, emoji) {
     const d = await post({action:'react_chat', project_id: state.projectId, chat_id: chatId, emoji});
-    if (d.success) { state.chat = d.data.chat; state.pinnedChat = d.data.pinned_chat; renderChatList(); }
+    if (d.success) {
+        // API returns {reactions, my_reactions, chat_id} — patch the affected message in state
+        for (const list of [state.chat, state.pinnedChat]) {
+            const msg = list.find(m => parseInt(m.id) === parseInt(d.data.chat_id));
+            if (msg) { msg.reactions = d.data.reactions; msg.my_reactions = d.data.my_reactions; }
+        }
+        renderChatList();
+    }
 };
 
 window.ws_rsvpMeeting = async function(meetingId, rsvp) {
@@ -1149,6 +1156,7 @@ window.ws_scrollToChat = function(id) {
     ws_scrollToMessage(id);
 };
 
+
 /* ── Helpers ──────────────────────────────────────────── */
 function rerenderPanel(panel) {
     if (panel === 'chat') renderChatPanel();
@@ -1197,16 +1205,15 @@ function startSyncTimer() {
         if (el) el.textContent = secs < 5 ? 'Last updated: just now' : `Last updated: ${secs}s ago`;
     }, 1000);
 
-    // Auto-refresh full worksheet every 5 minutes
+    // Auto-refresh every 10 seconds
     setInterval(async () => {
         if (!state.projectId) return;
         try {
             await doFullRefresh();
         } catch(e) {
-            console.warn("Auto-refresh failed", e);
             showReconnecting();
         }
-    }, 300000);
+    }, 10000);
 }
 
 async function doFullRefresh() {

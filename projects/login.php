@@ -12,12 +12,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $password = $_POST['password'] ?? '';
     $user = dbFetch("SELECT * FROM users WHERE username = ?", [$username]);
     if ($user && $user['is_active'] && password_verify($password, $user['password_hash'])) {
+        session_regenerate_id(true);
         $_SESSION['user'] = [
             'id'        => $user['id'],
             'username'  => $user['username'],
             'full_name' => $user['full_name'],
             'role'      => $user['role'],
         ];
+        dbQuery("UPDATE users SET last_login=NOW() WHERE id=?", [$user['id']]);
         redirect(BASE_URL . '/index.php');
     } else {
         $error = 'Invalid username or password, or account is inactive.';

@@ -16,6 +16,7 @@ $projects = $user['role'] === 'admin'
     : dbFetchAll("SELECT p.id, p.name FROM projects p JOIN project_members pm ON pm.project_id=p.id WHERE pm.user_id=? AND p.status NOT IN ('archived','completed') ORDER BY p.name", [$user['id']]);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    validateCsrf();
     $projectId  = (int)$_POST['project_id'];
     $parentId   = (int)($_POST['parent_task_id'] ?? 0) ?: null;
     $title      = trim($_POST['title'] ?? '');
@@ -41,6 +42,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     ]);
     foreach ($assignees as $uid) {
         try { dbInsert('task_assignees', ['task_id' => $id, 'user_id' => $uid]); } catch (\Exception $e) {}
+        if ($uid !== $user['id']) {
+            try { dbInsert('notifications', ['user_id' => $uid, 'type' => 'task_assigned', 'message' => $user['full_name'] . ' assigned you to "' . $title . '"', 'link' => BASE_URL . '/modules/tasks/view.php?id=' . $id, 'related_entity_type' => 'task', 'related_entity_id' => $id, 'created_at' => date('Y-m-d H:i:s')]); } catch (\Exception $e) {}
+        }
     }
     dbInsert('updates', ['project_id' => $projectId, 'user_id' => $user['id'], 'type' => 'task', 'message' => "Created task \"{$title}\"."]);
     flash('success', 'Task created.');
@@ -64,6 +68,7 @@ layoutStart('New Task', 'tasks');
 <div class="card" style="max-width:680px">
 <div class="card-body">
 <form method="POST" id="taskForm">
+    <?= csrfField() ?>
     <div class="form-group">
         <label class="form-label">Project *</label>
         <select name="project_id" class="form-control" required onchange="this.form.submit()" id="projectSel">

@@ -127,8 +127,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     // ── confirm_all ───────────────────────────────────────────────────────────
     if (isset($_POST['confirm_all']) && $month) {
-        // confirm_all bind: "is" (admin_id INT, month VARCHAR)
-        $stmt = $conn->prepare("UPDATE bonus_sheets SET confirmed = 1, confirmed_by = ?, confirmed_at = NOW() WHERE month = ? AND confirmed = 0");
+        $stmt = $conn->prepare("UPDATE bonus_sheets SET confirmed = 1, confirmed_by = ?, confirmed_at = NOW() WHERE month = ? AND confirmed = 0 AND bonus_amount > 0");
         $stmt->bind_param("is", $adminId, $month);
         $stmt->execute();
         $affected = $stmt->affected_rows;
@@ -142,25 +141,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $ids = array_filter($ids, fn($id) => $id > 0);
         $affected = 0;
         foreach ($ids as $cid) {
-            $s = $conn->prepare("UPDATE bonus_sheets SET confirmed=1, confirmed_by=?, confirmed_at=NOW() WHERE id=? AND confirmed=0");
+            $s = $conn->prepare("UPDATE bonus_sheets SET confirmed=1, confirmed_by=?, confirmed_at=NOW() WHERE id=? AND confirmed=0 AND bonus_amount > 0");
             $s->bind_param("ii", $adminId, $cid);
             $s->execute();
             $affected += $s->affected_rows;
             $s->close();
         }
         $message = "{$affected} bonus record(s) confirmed.";
-    }
-
-    // ── unconfirm_all ─────────────────────────────────────────────────────────
-    if (isset($_POST['unconfirm_all']) && $month) {
-        // unconfirm_all bind: "s" (month VARCHAR)
-        $stmt = $conn->prepare("UPDATE bonus_sheets SET confirmed = 0, confirmed_by = NULL, confirmed_at = NULL WHERE month = ? AND confirmed = 1");
-        $stmt->bind_param("s", $month);
-        $stmt->execute();
-        $affected = $stmt->affected_rows;
-        $stmt->close();
-        $message     = "{$affected} bonus record(s) un-confirmed for correction.";
-        $messageType = 'warning';
     }
 
     // Preserve GET params after POST redirect
@@ -508,13 +495,6 @@ require_once __DIR__ . '/../includes/header.php';
                         <button type="submit" name="confirm_all" class="btn btn-primary"
                                 onclick="return confirm('Confirm all pending bonus entries for this month?');">
                             <i class="bi bi-check-all me-1"></i> Confirm All
-                        </button>
-                    <?php endif; ?>
-                    <?php if ($anyConfirmed): ?>
-                        <button type="submit" name="unconfirm_all"
-                                class="btn btn-outline-warning"
-                                onclick="return confirm('Un-confirm all confirmed entries for this month to allow corrections?');">
-                            <i class="bi bi-unlock me-1"></i> Unconfirm All
                         </button>
                     <?php endif; ?>
                 </div>

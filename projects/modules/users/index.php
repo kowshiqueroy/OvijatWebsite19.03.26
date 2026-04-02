@@ -10,6 +10,7 @@ $user = currentUser();
 
 // Toggle active
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['toggle_active'])) {
+    validateCsrf();
     $uid = (int)$_POST['user_id'];
     if ($uid !== $user['id']) {
         $u = dbFetch("SELECT is_active FROM users WHERE id=?", [$uid]);
@@ -32,6 +33,10 @@ layoutStart('Users', 'users');
         <h1 class="page-title">Users</h1>
         <p class="page-subtitle"><?= count($users) ?> user<?= count($users) !== 1 ? 's' : '' ?></p>
     </div>
+    <a href="<?= BASE_URL ?>/modules/users/performance.php" class="btn btn-secondary">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+        Performance
+    </a>
     <a href="<?= BASE_URL ?>/modules/users/create.php" class="btn btn-primary">
         <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
         New User
@@ -66,6 +71,7 @@ layoutStart('Users', 'users');
             </a>
             <?php if ($u['id'] !== $user['id']): ?>
             <form method="POST" style="display:inline" onsubmit="return confirm('Toggle user status?')">
+                <?= csrfField() ?>
                 <input type="hidden" name="toggle_active" value="1">
                 <input type="hidden" name="user_id" value="<?= $u['id'] ?>">
                 <button class="btn btn-ghost btn-sm btn-icon" title="<?= $u['is_active'] ? 'Deactivate' : 'Activate' ?>">

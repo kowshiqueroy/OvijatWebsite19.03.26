@@ -109,30 +109,37 @@ if (!$configExists && $_SERVER['REQUEST_METHOD'] === 'POST') {
 function getTables(): array {
     return [
         'users' => "CREATE TABLE IF NOT EXISTS users (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    username VARCHAR(60) UNIQUE NOT NULL,
+    id          INT AUTO_INCREMENT PRIMARY KEY,
+    username    VARCHAR(60)  UNIQUE NOT NULL,
+    email       VARCHAR(180) UNIQUE NULL,
     password_hash VARCHAR(255) NOT NULL,
-    full_name VARCHAR(120) NOT NULL,
-    role ENUM('admin','member') NOT NULL DEFAULT 'member',
-    is_active TINYINT NOT NULL DEFAULT 1,
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    full_name   VARCHAR(120) NOT NULL,
+    avatar_url  VARCHAR(500) NULL,
+    role        ENUM('admin','member') NOT NULL DEFAULT 'member',
+    is_active   TINYINT      NOT NULL DEFAULT 1,
+    last_login  DATETIME     NULL,
+    created_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB",
 
         'projects' => "CREATE TABLE IF NOT EXISTS projects (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    name VARCHAR(160) NOT NULL,
-    slug VARCHAR(160) UNIQUE NOT NULL,
+    id          INT AUTO_INCREMENT PRIMARY KEY,
+    name        VARCHAR(160) NOT NULL,
+    slug        VARCHAR(160) UNIQUE NOT NULL,
     description TEXT,
-    status ENUM('planning','active','on_hold','completed','archived') NOT NULL DEFAULT 'planning',
+    status      ENUM('planning','active','on_hold','completed','archived') NOT NULL DEFAULT 'planning',
     client_name VARCHAR(160),
-    start_date DATE,
-    due_date DATE,
-    tools_used JSON,
-    ai_used JSON,
-    tech_notes TEXT,
-    created_by INT NOT NULL,
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    start_date  DATE,
+    due_date    DATE,
+    tools_used  JSON,
+    ai_used     JSON,
+    tech_notes  TEXT,
+    budget      DECIMAL(14,2) NULL,
+    deleted_at  DATETIME NULL,
+    created_by  INT NOT NULL,
+    created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    KEY idx_proj_status     (status),
+    KEY idx_proj_deleted_at (deleted_at),
     FOREIGN KEY (created_by) REFERENCES users(id)
 ) ENGINE=InnoDB",
 
@@ -148,53 +155,66 @@ function getTables(): array {
 ) ENGINE=InnoDB",
 
         'milestones' => "CREATE TABLE IF NOT EXISTS milestones (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    project_id INT NOT NULL,
-    title VARCHAR(255) NOT NULL,
-    due_date DATE,
-    status ENUM('open','completed') NOT NULL DEFAULT 'open',
-    created_by INT NOT NULL,
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    id          INT AUTO_INCREMENT PRIMARY KEY,
+    project_id  INT NOT NULL,
+    title       VARCHAR(255) NOT NULL,
+    description TEXT NULL,
+    due_date    DATE,
+    status      ENUM('open','completed') NOT NULL DEFAULT 'open',
+    created_by  INT NOT NULL,
+    created_at  DATETIME NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at  DATETIME NULL ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
     FOREIGN KEY (created_by) REFERENCES users(id)
 ) ENGINE=InnoDB",
 
         'tasks' => "CREATE TABLE IF NOT EXISTS tasks (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    project_id INT NOT NULL,
-    parent_task_id INT,
-    milestone_id INT,
-    title VARCHAR(255) NOT NULL,
-    description TEXT,
-    status ENUM('todo','in_progress','review','done') NOT NULL DEFAULT 'todo',
-    priority ENUM('low','medium','high') NOT NULL DEFAULT 'medium',
-    start_date DATE,
-    due_date DATE,
-    estimated_hours DECIMAL(6,2),
-    created_by INT NOT NULL,
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
-    FOREIGN KEY (parent_task_id) REFERENCES tasks(id) ON DELETE SET NULL,
-    FOREIGN KEY (milestone_id) REFERENCES milestones(id) ON DELETE SET NULL,
-    FOREIGN KEY (created_by) REFERENCES users(id)
+    id                INT AUTO_INCREMENT PRIMARY KEY,
+    project_id        INT NOT NULL,
+    parent_task_id    INT NULL,
+    blocked_by_task_id INT NULL,
+    milestone_id      INT NULL,
+    title             VARCHAR(255) NOT NULL,
+    description       TEXT,
+    status            ENUM('todo','in_progress','review','done') NOT NULL DEFAULT 'todo',
+    priority          ENUM('low','medium','high') NOT NULL DEFAULT 'medium',
+    start_date        DATE,
+    due_date          DATE,
+    estimated_hours   DECIMAL(6,2) NULL CHECK (estimated_hours IS NULL OR estimated_hours > 0),
+    actual_hours      DECIMAL(6,2) NULL CHECK (actual_hours IS NULL OR actual_hours > 0),
+    deleted_at        DATETIME NULL,
+    created_by        INT NOT NULL,
+    created_at        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    KEY idx_tasks_status     (status),
+    KEY idx_tasks_due_date   (due_date),
+    KEY idx_tasks_deleted_at (deleted_at),
+    KEY idx_tasks_created_by (created_by),
+    FOREIGN KEY (project_id)         REFERENCES projects(id)  ON DELETE CASCADE,
+    FOREIGN KEY (parent_task_id)     REFERENCES tasks(id)     ON DELETE SET NULL,
+    FOREIGN KEY (blocked_by_task_id) REFERENCES tasks(id)     ON DELETE SET NULL,
+    FOREIGN KEY (milestone_id)       REFERENCES milestones(id) ON DELETE SET NULL,
+    FOREIGN KEY (created_by)         REFERENCES users(id)
 ) ENGINE=InnoDB",
 
         'task_assignees' => "CREATE TABLE IF NOT EXISTS task_assignees (
-    id INT AUTO_INCREMENT PRIMARY KEY,
+    id      INT AUTO_INCREMENT PRIMARY KEY,
     task_id INT NOT NULL,
     user_id INT NOT NULL,
-    UNIQUE KEY (task_id, user_id),
+    UNIQUE KEY uq_ta (task_id, user_id),
+    KEY idx_ta_task_id (task_id),
+    KEY idx_ta_user_id (user_id),
     FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB",
 
         'task_comments' => "CREATE TABLE IF NOT EXISTS task_comments (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    task_id INT NOT NULL,
-    user_id INT NOT NULL,
-    body TEXT NOT NULL,
+    id         INT AUTO_INCREMENT PRIMARY KEY,
+    task_id    INT NOT NULL,
+    user_id    INT NOT NULL,
+    body       TEXT NOT NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    KEY idx_tc_task_id (task_id),
     FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB",
@@ -211,67 +231,79 @@ function getTables(): array {
 ) ENGINE=InnoDB",
 
         'task_time_logs' => "CREATE TABLE IF NOT EXISTS task_time_logs (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    task_id INT NOT NULL,
-    user_id INT NOT NULL,
-    hours DECIMAL(6,2) NOT NULL,
-    note VARCHAR(255),
+    id        INT AUTO_INCREMENT PRIMARY KEY,
+    task_id   INT NOT NULL,
+    user_id   INT NOT NULL,
+    hours     DECIMAL(6,2) NOT NULL CHECK (hours > 0),
+    note      VARCHAR(255),
     logged_at DATE NOT NULL,
+    KEY idx_ttl_task_id  (task_id),
+    KEY idx_ttl_user_id  (user_id),
+    KEY idx_ttl_logged_at (logged_at),
     FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB",
 
         'meetings' => "CREATE TABLE IF NOT EXISTS meetings (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    project_id INT,
-    title VARCHAR(255) NOT NULL,
-    agenda TEXT,
-    meeting_date DATETIME NOT NULL,
-    duration_minutes INT,
+    id               INT AUTO_INCREMENT PRIMARY KEY,
+    project_id       INT NULL,
+    title            VARCHAR(255) NOT NULL,
+    agenda           TEXT,
+    meeting_date     DATETIME NOT NULL,
+    duration_minutes INT NULL CHECK (duration_minutes IS NULL OR duration_minutes > 0),
     location_or_link VARCHAR(500),
-    status ENUM('scheduled','done','cancelled') NOT NULL DEFAULT 'scheduled',
-    recurrence ENUM('none','daily','weekly','biweekly','monthly') NOT NULL DEFAULT 'none',
-    notes TEXT,
-    created_by INT NOT NULL,
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    status           ENUM('scheduled','done','cancelled') NOT NULL DEFAULT 'scheduled',
+    recurrence       ENUM('none','daily','weekly','biweekly','monthly') NOT NULL DEFAULT 'none',
+    notes            TEXT,
+    created_by       INT NOT NULL,
+    created_at       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    KEY idx_meetings_date    (meeting_date),
+    KEY idx_meetings_status  (status),
+    KEY idx_meetings_project (project_id),
     FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL,
     FOREIGN KEY (created_by) REFERENCES users(id)
 ) ENGINE=InnoDB",
 
         'meeting_attendees' => "CREATE TABLE IF NOT EXISTS meeting_attendees (
-    id INT AUTO_INCREMENT PRIMARY KEY,
+    id         INT AUTO_INCREMENT PRIMARY KEY,
     meeting_id INT NOT NULL,
-    user_id INT NOT NULL,
-    rsvp ENUM('pending','confirmed','declined','yes','no','maybe') NOT NULL DEFAULT 'pending',
-    UNIQUE KEY (meeting_id, user_id),
+    user_id    INT NOT NULL,
+    rsvp       ENUM('pending','yes','no','maybe') NOT NULL DEFAULT 'pending',
+    UNIQUE KEY uq_ma (meeting_id, user_id),
+    KEY idx_ma_meeting_id (meeting_id),
+    KEY idx_ma_user_id    (user_id),
     FOREIGN KEY (meeting_id) REFERENCES meetings(id) ON DELETE CASCADE,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    FOREIGN KEY (user_id)    REFERENCES users(id)    ON DELETE CASCADE
 ) ENGINE=InnoDB",
 
         'meeting_action_items' => "CREATE TABLE IF NOT EXISTS meeting_action_items (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    meeting_id INT NOT NULL,
-    task_id INT,
+    id          INT AUTO_INCREMENT PRIMARY KEY,
+    meeting_id  INT NOT NULL,
+    task_id     INT NULL,
     description TEXT NOT NULL,
-    assigned_to INT,
-    due_date DATE,
-    is_done TINYINT NOT NULL DEFAULT 0,
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (meeting_id) REFERENCES meetings(id) ON DELETE CASCADE,
-    FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE SET NULL,
-    FOREIGN KEY (assigned_to) REFERENCES users(id) ON DELETE SET NULL
+    assigned_to INT NULL,
+    due_date    DATE NULL,
+    is_done     TINYINT NOT NULL DEFAULT 0,
+    priority    ENUM('low','medium','high') NOT NULL DEFAULT 'medium',
+    created_at  DATETIME NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at  DATETIME NULL ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (meeting_id)  REFERENCES meetings(id) ON DELETE CASCADE,
+    FOREIGN KEY (task_id)     REFERENCES tasks(id)    ON DELETE SET NULL,
+    FOREIGN KEY (assigned_to) REFERENCES users(id)    ON DELETE SET NULL
 ) ENGINE=InnoDB",
 
         'updates' => "CREATE TABLE IF NOT EXISTS updates (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    project_id INT,
-    user_id INT NOT NULL,
-    type ENUM('task','meeting','project','general') NOT NULL DEFAULT 'general',
-    message TEXT NOT NULL,
-    is_pinned TINYINT NOT NULL DEFAULT 0,
+    id         INT AUTO_INCREMENT PRIMARY KEY,
+    project_id INT NULL,
+    user_id    INT NOT NULL,
+    type       ENUM('task','meeting','project','general') NOT NULL DEFAULT 'general',
+    message    TEXT NOT NULL,
+    is_pinned  TINYINT NOT NULL DEFAULT 0,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    KEY idx_updates_project_id (project_id),
+    KEY idx_updates_created_at (created_at),
     FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    FOREIGN KEY (user_id)    REFERENCES users(id)    ON DELETE CASCADE
 ) ENGINE=InnoDB",
 
         'update_reads' => "CREATE TABLE IF NOT EXISTS update_reads (
@@ -285,19 +317,24 @@ function getTables(): array {
 ) ENGINE=InnoDB",
 
         'worksheet_chat' => "CREATE TABLE IF NOT EXISTS worksheet_chat (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    project_id INT NOT NULL,
-    user_id INT NOT NULL,
+    id           INT AUTO_INCREMENT PRIMARY KEY,
+    project_id   INT NOT NULL,
+    user_id      INT NOT NULL,
     recipient_id INT NULL,
-    parent_id INT NULL,
-    body TEXT NOT NULL,
-    likes_count INT DEFAULT 0,
-    is_pinned TINYINT NOT NULL DEFAULT 0,
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-    FOREIGN KEY (recipient_id) REFERENCES users(id) ON DELETE SET NULL,
-    FOREIGN KEY (parent_id) REFERENCES worksheet_chat(id) ON DELETE CASCADE
+    parent_id    INT NULL,
+    body         TEXT NOT NULL,
+    likes_count  INT NOT NULL DEFAULT 0,
+    is_pinned    TINYINT NOT NULL DEFAULT 0,
+    is_edited    TINYINT NOT NULL DEFAULT 0,
+    edited_at    DATETIME NULL,
+    created_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    KEY idx_wc_project_id (project_id),
+    KEY idx_wc_user_id    (user_id),
+    KEY idx_wc_created_at (created_at),
+    FOREIGN KEY (project_id)   REFERENCES projects(id)       ON DELETE CASCADE,
+    FOREIGN KEY (user_id)      REFERENCES users(id)          ON DELETE CASCADE,
+    FOREIGN KEY (recipient_id) REFERENCES users(id)          ON DELETE SET NULL,
+    FOREIGN KEY (parent_id)    REFERENCES worksheet_chat(id) ON DELETE CASCADE
 ) ENGINE=InnoDB",
 
         'chat_likes' => "CREATE TABLE IF NOT EXISTS chat_likes (
@@ -320,13 +357,17 @@ function getTables(): array {
 ) ENGINE=InnoDB",
 
         'notifications' => "CREATE TABLE IF NOT EXISTS notifications (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    user_id INT NOT NULL,
-    type ENUM('mention','task_assigned','comment','meeting') NOT NULL DEFAULT 'mention',
-    message TEXT NOT NULL,
-    link VARCHAR(500),
-    is_read TINYINT NOT NULL DEFAULT 0,
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    id                  INT AUTO_INCREMENT PRIMARY KEY,
+    user_id             INT NOT NULL,
+    type                ENUM('mention','task_assigned','comment','meeting') NOT NULL DEFAULT 'mention',
+    message             TEXT NOT NULL,
+    link                VARCHAR(500),
+    related_entity_type VARCHAR(40) NULL,
+    related_entity_id   INT NULL,
+    is_read             TINYINT NOT NULL DEFAULT 0,
+    created_at          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    KEY idx_notif_user_id (user_id),
+    KEY idx_notif_is_read (is_read),
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB",
     ];
@@ -526,9 +567,9 @@ function insertDemoData(PDO $pdo): array {
     ]);
 
     // Meeting attendees + RSVP
-    if ($m1) { foreach ([$adminId=>'confirmed', $alice=>'confirmed', $bob=>'pending'] as $uid=>$r) $ins('meeting_attendees', ['meeting_id'=>$m1,'user_id'=>$uid,'rsvp'=>$r]); }
-    if ($m2) { foreach ([$adminId=>'confirmed', $alice=>'confirmed', $bob=>'confirmed'] as $uid=>$r) $ins('meeting_attendees', ['meeting_id'=>$m2,'user_id'=>$uid,'rsvp'=>$r]); }
-    if ($m3) { foreach ([$adminId=>'confirmed', $bob=>'pending', $charlie=>'confirmed'] as $uid=>$r) $ins('meeting_attendees', ['meeting_id'=>$m3,'user_id'=>$uid,'rsvp'=>$r]); }
+    if ($m1) { foreach ([$adminId=>'yes', $alice=>'yes', $bob=>'pending'] as $uid=>$r) $ins('meeting_attendees', ['meeting_id'=>$m1,'user_id'=>$uid,'rsvp'=>$r]); }
+    if ($m2) { foreach ([$adminId=>'yes', $alice=>'yes', $bob=>'yes'] as $uid=>$r) $ins('meeting_attendees', ['meeting_id'=>$m2,'user_id'=>$uid,'rsvp'=>$r]); }
+    if ($m3) { foreach ([$adminId=>'yes', $bob=>'pending', $charlie=>'yes'] as $uid=>$r) $ins('meeting_attendees', ['meeting_id'=>$m3,'user_id'=>$uid,'rsvp'=>$r]); }
 
     // Action items
     if ($m2) {
