@@ -50,6 +50,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     
     saveSettings($settingsToSave);
     $settings = getAllSettings();
+    logActivity('update', 'settings', null, 'Company settings updated');
     $message = 'Settings saved successfully!';
 }
 

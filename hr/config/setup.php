@@ -258,6 +258,30 @@ function runSetup($reset = false) {
         }
         $steps[] = ['status' => 'success', 'message' => 'Settings table created successfully'];
         
+        $steps[] = ['status' => 'info', 'message' => 'Creating activity_logs table...'];
+        $sql = "
+        CREATE TABLE IF NOT EXISTS activity_logs (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            user_id INT NOT NULL,
+            username VARCHAR(100) NOT NULL,
+            action VARCHAR(50) NOT NULL,
+            entity_type VARCHAR(50) NOT NULL,
+            entity_id INT,
+            details TEXT,
+            ip_address VARCHAR(45),
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            INDEX idx_user (user_id),
+            INDEX idx_action (action),
+            INDEX idx_entity (entity_type, entity_id),
+            INDEX idx_created (created_at)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+        ";
+        
+        if (!$conn->query($sql)) {
+            throw new Exception("Error creating activity_logs table: " . $conn->error);
+        }
+        $steps[] = ['status' => 'success', 'message' => 'Activity logs table created successfully'];
+        
         $result = $conn->query("SELECT COUNT(*) as cnt FROM settings WHERE setting_key = 'company_name'");
         $row = $result->fetch_assoc();
         

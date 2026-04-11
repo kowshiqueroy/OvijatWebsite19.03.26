@@ -128,6 +128,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($successCount == 0 && $updateCount == 0 && $skipCount > 0) {
                 $messageType = 'warning';
             }
+            logActivity('create', 'salary', null, "Salary generated for $month: $successCount new, $updateCount updated");
         } // end working days validation
     }
     
@@ -141,6 +142,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $affected = $stmt->affected_rows;
         $stmt->close();
         
+        logActivity('confirm', 'salary', null, "Confirmed all salary for $month: $affected entries");
         $message = "$affected salary(s) confirmed successfully";
     }
     
@@ -153,6 +155,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt->execute();
         $stmt->close();
         
+        logActivity('confirm', 'salary', $salaryId, "Confirmed salary entry");
         $message = "Salary confirmed successfully";
     }
 }
@@ -225,6 +228,7 @@ require_once __DIR__ . '/../includes/header.php';
                 <input type="number" name="working_days" class="form-control" value="<?php echo $selectedWorkingDays; ?>" min="1" max="31">
             </div>
             <div class="col-md-3">
+                <label class="form-label">Office</label>
                 <select name="office" class="form-select filter-select">
                     <option value="">All Offices</option>
                     <?php foreach ($offices as $off): ?>
@@ -236,6 +240,7 @@ require_once __DIR__ . '/../includes/header.php';
                 </select>
             </div>
             <div class="col-md-3">
+                <label class="form-label">Department</label>
                 <select name="department" class="form-select filter-select">
                     <option value="">All Departments</option>
                     <?php foreach ($departments as $dept): ?>
@@ -431,8 +436,8 @@ require_once __DIR__ . '/../includes/header.php';
                                            step="0.01" min="0"
                                            <?php echo $isConfirmed ? 'readonly' : ''; ?>>
                                 </td>
-                                <td class="text-end">$<?php echo formatCurrency($calc['gross_salary']); ?></td>
-                                <td class="text-end fw-bold">$<?php echo formatCurrency($calc['net_payable'] + (isset($sheetsByEmployee[$emp['id']]) ? (float)($sheetsByEmployee[$emp['id']]['bonus'] ?? 0) : ($bonusesByEmployee[$emp['id']] ?? 0))); ?></td>
+                                <td class="text-end"><?php echo formatCurrency($calc['gross_salary']); ?></td>
+                                <td class="text-end fw-bold"><?php echo formatCurrency($calc['net_payable'] + (isset($sheetsByEmployee[$emp['id']]) ? (float)($sheetsByEmployee[$emp['id']]['bonus'] ?? 0) : ($bonusesByEmployee[$emp['id']] ?? 0))); ?></td>
                                 <td class="text-center">
                                     <?php if ($isConfirmed): ?>
                                         <span class="badge bg-success">
@@ -454,12 +459,7 @@ require_once __DIR__ . '/../includes/header.php';
                     Absent = Working Days - Present - Leave
                 </small>
                 <div>
-                    <?php if ($anyConfirmed && !$allConfirmed): ?>
-                        <button type="submit" name="confirm_all" class="btn btn-primary" 
-                                onclick="return confirm('Confirm all pending salary entries for this month?');">
-                            <i class="bi bi-check-all me-1"></i> Confirm All Pending
-                        </button>
-                    <?php elseif (!$anyConfirmed): ?>
+                    <?php if (!$allConfirmed): ?>
                         <button type="submit" name="generate_salary" class="btn btn-success">
                             <i class="bi bi-check2-circle me-1"></i> Generate Salary
                         </button>

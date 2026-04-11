@@ -1,0 +1,6 @@
+# Secure Media Access - Deny all direct access
+# Media is only accessible via media.php with authentication
+
+<FilesMatch ".*">
+    Deny from all
+</FilesMatch>

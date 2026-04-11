@@ -1213,7 +1213,7 @@ function startSyncTimer() {
         } catch(e) {
             showReconnecting();
         }
-    }, 10000);
+    }, 30000);
 }
 
 async function doFullRefresh() {

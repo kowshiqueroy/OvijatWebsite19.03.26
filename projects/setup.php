@@ -392,18 +392,20 @@ function runTables(PDO $pdo): array {
             $results[$name] = 'error:' . $e->getMessage();
         }
     }
+    
     return $results;
 }
 
 // ════════════════════════════════════════════════════════════
-// RESET — wipe all data, keep structure
+// RESET — drop and recreate all tables fresh
 // ════════════════════════════════════════════════════════════
 function doReset(PDO $pdo): void {
     $pdo->exec("SET FOREIGN_KEY_CHECKS = 0");
     foreach (array_reverse(array_keys(getTables())) as $table) {
-        try { $pdo->exec("TRUNCATE TABLE `$table`"); } catch (PDOException $e) {}
+        try { $pdo->exec("DROP TABLE IF EXISTS `$table`"); } catch (PDOException $e) {}
     }
     $pdo->exec("SET FOREIGN_KEY_CHECKS = 1");
+    runTables($pdo);
 }
 
 // ════════════════════════════════════════════════════════════

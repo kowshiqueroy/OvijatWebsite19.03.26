@@ -30,20 +30,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt = $conn->prepare("INSERT INTO loan_transactions (employee_id, transaction_date, type, amount, description, created_by) VALUES (?,?,?,?,?,?)");
         $stmt->bind_param("issdsi", $empId, $date, $type, $amount, $desc, $adminId);
         if ($stmt->execute()) {
+            $stmt->close();
+            logActivity('create', 'loan', $empId, "Added loan $type: " . number_format($amount, 2));
             $message = 'Transaction added successfully';
         } else {
             $message = 'Error adding transaction';
             $messageType = 'danger';
         }
-        $stmt->close();
     }
     if (isset($_POST['delete_transaction'])) {
         $tid = (int)$_POST['transaction_id'];
+        
+        $getStmt = $conn->prepare("SELECT employee_id, type, amount FROM loan_transactions WHERE id = ?");
+        $getStmt->bind_param("i", $tid);
+        $getStmt->execute();
+        $getResult = $getStmt->get_result();
+        $trans = $getResult->fetch_assoc();
+        $getStmt->close();
+        
         $stmt = $conn->prepare("DELETE FROM loan_transactions WHERE id = ?");
         $stmt->bind_param("i", $tid);
         $stmt->execute();
-        $message = 'Transaction deleted';
         $stmt->close();
+        
+        logActivity('delete', 'loan', $trans['employee_id'] ?? null, "Deleted loan {$trans['type']}: " . number_format($trans['amount'] ?? 0, 2));
+        $message = 'Transaction deleted';
     }
 }
 

@@ -18,7 +18,8 @@ $filter = [
     'office' => $_GET['office'] ?? '',
     'department' => $_GET['department'] ?? '',
     'unit' => $_GET['unit'] ?? '',
-    'position' => $_GET['position'] ?? ''
+    'position' => $_GET['position'] ?? '',
+    'search' => $_GET['search'] ?? ''
 ];
 
 $selectedMonth = $_GET['month'] ?? '';
@@ -60,6 +61,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt->execute();
             $affected = $stmt->affected_rows;
             $stmt->close();
+            
+            logActivity('confirm', 'salary', null, "Bulk confirmed $affected salary entries for $selectedMonth");
             $message = "$affected salary entry(s) confirmed successfully";
             header("Location: salary-list.php?month={$selectedMonth}&msg=confirmed");
             exit;
@@ -89,7 +92,7 @@ if (isset($_GET['delete'])) {
     $id = (int)$_GET['delete'];
     $conn = getDBConnection();
     
-    $stmt = $conn->prepare("SELECT confirmed FROM salary_sheets WHERE id = ?");
+    $stmt = $conn->prepare("SELECT * FROM salary_sheets WHERE id = ?");
     $stmt->bind_param("i", $id);
     $stmt->execute();
     $result = $stmt->get_result();
@@ -100,9 +103,12 @@ if (isset($_GET['delete'])) {
         $message = 'Cannot delete confirmed salary sheet.';
         $messageType = 'danger';
     } else {
+        $sheetDetails = json_encode($sheet);
         $stmt = $conn->prepare("DELETE FROM salary_sheets WHERE id = ?");
         $stmt->bind_param("i", $id);
         if ($stmt->execute()) {
+            $stmt->close();
+            logActivity('delete', 'salary', $id, "Deleted salary for emp {$sheet['employee_id']} | Data: " . $sheetDetails);
             header('Location: salary-list.php?month=' . $selectedMonth . '&msg=deleted');
             exit;
         }
@@ -161,7 +167,7 @@ require_once __DIR__ . '/../includes/header.php';
             <div class="card stat-card success">
                 <div class="card-body py-3">
                     <small class="text-muted">Total Gross</small>
-                    <h4 class="mb-0">$<?php echo formatCurrency($monthStats['total_gross'] ?? 0); ?></h4>
+                    <h4 class="mb-0"><?php echo formatCurrency($monthStats['total_gross'] ?? 0); ?></h4>
                 </div>
             </div>
         </div>
@@ -169,7 +175,7 @@ require_once __DIR__ . '/../includes/header.php';
             <div class="card stat-card warning">
                 <div class="card-body py-3">
                     <small class="text-muted">Total PF</small>
-                    <h4 class="mb-0">$<?php echo formatCurrency($monthStats['total_pf'] ?? 0); ?></h4>
+                    <h4 class="mb-0"><?php echo formatCurrency($monthStats['total_pf'] ?? 0); ?></h4>
                 </div>
             </div>
         </div>
@@ -177,7 +183,7 @@ require_once __DIR__ . '/../includes/header.php';
             <div class="card stat-card danger">
                 <div class="card-body py-3">
                     <small class="text-muted">Total Net Payable</small>
-                    <h4 class="mb-0">$<?php echo formatCurrency($monthStats['total_payable'] ?? 0); ?></h4>
+                    <h4 class="mb-0"><?php echo formatCurrency($monthStats['total_payable'] ?? 0); ?></h4>
                 </div>
             </div>
         </div>
@@ -218,7 +224,10 @@ require_once __DIR__ . '/../includes/header.php';
                     <?php endforeach; ?>
                 </select>
             </div>
-            <div class="col-md-4">
+            <div class="col-md-2">
+                <input type="text" name="search" class="form-control" placeholder="ID or Name" value="<?php echo htmlspecialchars($_GET['search'] ?? ''); ?>">
+            </div>
+            <div class="col-md-2">
                 <button type="submit" class="btn btn-primary"><i class="bi bi-search me-1"></i> Filter</button>
                 <a href="salary-list.php" class="btn btn-outline-secondary"><i class="bi bi-x-circle me-1"></i> Clear</a>
             </div>
@@ -295,12 +304,12 @@ if (empty($selectedMonth)) {
                     <td><?php echo generateEmployeeID($sheet['id'], $sheet['office_code'], $sheet['dept_code']); ?></td>
                     <td><?php echo htmlspecialchars($sheet['emp_name']); ?><br><small><?php echo htmlspecialchars($sheet['department']); ?></small></td>
                     <td>P:<?php echo $sheet['present_days']; ?> L:<?php echo $sheet['leave_days']; ?> A:<?php echo $sheet['absent_days']; ?></td>
-                    <td>$<?php echo formatCurrency($sheet['basic_salary']); ?></td>
+                    <td><?php echo formatCurrency($sheet['basic_salary']); ?></td>
                     <td><?php echo $sheet['pf_percentage']; ?>%</td>
-                    <td>$<?php echo formatCurrency($sheet['pf_deduction']); ?></td>
-                    <td>$<?php echo formatCurrency($sheet['bonus'] ?? 0); ?></td>
-                    <td>$<?php echo formatCurrency($sheet['gross_salary']); ?></td>
-                    <td>$<?php echo formatCurrency($sheet['net_payable']); ?></td>
+                    <td><?php echo formatCurrency($sheet['pf_deduction']); ?></td>
+                    <td><?php echo formatCurrency($sheet['bonus'] ?? 0); ?></td>
+                    <td><?php echo formatCurrency($sheet['gross_salary']); ?></td>
+                    <td><?php echo formatCurrency($sheet['net_payable']); ?></td>
                     <td><?php echo $sheet['confirmed'] ? 'Confirmed' : 'Pending'; ?></td>
                 </tr>
                 <?php endforeach; ?>
@@ -308,9 +317,9 @@ if (empty($selectedMonth)) {
             <tfoot>
                 <tr>
                     <td colspan="6" style="text-align:right"><strong>Total:</strong></td>
-                    <td>$<?php echo formatCurrency(array_sum(array_column($sheets, 'bonus'))); ?></td>
-                    <td>$<?php echo formatCurrency(array_sum(array_column($sheets, 'gross_salary'))); ?></td>
-                    <td>$<?php echo formatCurrency(array_sum(array_column($sheets, 'net_payable'))); ?></td>
+                    <td><?php echo formatCurrency(array_sum(array_column($sheets, 'bonus'))); ?></td>
+                    <td><?php echo formatCurrency(array_sum(array_column($sheets, 'gross_salary'))); ?></td>
+                    <td><?php echo formatCurrency(array_sum(array_column($sheets, 'net_payable'))); ?></td>
                     <td></td>
                 </tr>
             </tfoot>
@@ -349,11 +358,6 @@ if (empty($selectedMonth)) {
                         <?php if ($pendingCount > 0): ?>
                         <button type="submit" name="bulk_confirm" class="btn btn-success" onclick="return confirm('Confirm selected entries?');">
                             <i class="bi bi-check-all me-1"></i> Confirm Selected
-                        </button>
-                        <?php endif; ?>
-                        <?php if ($confirmedCount > 0): ?>
-                        <button type="submit" name="bulk_unconfirm" class="btn btn-warning" onclick="return confirm('Unconfirm selected entries? This will unlock them for editing.');">
-                            <i class="bi bi-unlock me-1"></i> Unconfirm Selected
                         </button>
                         <?php endif; ?>
                     </div>

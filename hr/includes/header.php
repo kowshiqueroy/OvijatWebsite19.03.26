@@ -23,12 +23,27 @@
         .sidebar {
             width: var(--sidebar-width);
             min-height: 100vh;
+            height: 100vh;
             background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
             position: fixed;
             left: 0;
             top: 0;
             z-index: 1000;
             transition: all 0.3s;
+            overflow-y: auto;
+        }
+        .sidebar::-webkit-scrollbar {
+            width: 6px;
+        }
+        .sidebar::-webkit-scrollbar-track {
+            background: rgba(255,255,255,0.05);
+        }
+        .sidebar::-webkit-scrollbar-thumb {
+            background: rgba(255,255,255,0.2);
+            border-radius: 3px;
+        }
+        .sidebar::-webkit-scrollbar-thumb:hover {
+            background: rgba(255,255,255,0.3);
         }
         .sidebar .nav-link {
             color: rgba(255,255,255,0.7);
@@ -178,6 +193,21 @@
             <li class="nav-item">
                 <a class="nav-link <?php echo ($currentPage ?? '') === 'employee-report' ? 'active' : ''; ?>" href="employee-report.php">
                     <i class="bi bi-file-earmark-spreadsheet"></i> Employee Report
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link <?php echo ($currentPage ?? '') === 'users' ? 'active' : ''; ?>" href="user-management.php">
+                    <i class="bi bi-shield-lock"></i> User Management
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link <?php echo ($currentPage ?? '') === 'activity-logs' ? 'active' : ''; ?>" href="activity-logs.php">
+                    <i class="bi bi-clock-history"></i> Activity Logs
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link <?php echo ($currentPage ?? '') === 'id-cards' ? 'active' : ''; ?>" href="id-cards.php">
+                    <i class="bi bi-person-badge"></i> ID Cards
                 </a>
             </li>
             <li class="nav-item">

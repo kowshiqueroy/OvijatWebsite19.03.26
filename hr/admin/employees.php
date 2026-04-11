@@ -80,10 +80,22 @@ $positions = getPositionList($filter['department']);
 if (isset($_GET['delete'])) {
     $id = (int)$_GET['delete'];
     $conn = getDBConnection();
+    
+    $empStmt = $conn->prepare("SELECT * FROM employees WHERE id = ?");
+    $empStmt->bind_param("i", $id);
+    $empStmt->execute();
+    $empResult = $empStmt->get_result();
+    $empData = $empResult->fetch_assoc();
+    $empStmt->close();
+    
+    $empName = $empData['emp_name'] ?? 'Unknown';
+    $empDetails = json_encode($empData);
+    
     $stmt = $conn->prepare("DELETE FROM employees WHERE id = ?");
     $stmt->bind_param("i", $id);
     if ($stmt->execute()) {
         $stmt->close();
+        logActivity('delete', 'employee', $id, "Deleted: $empName | Data: " . $empDetails);
         header('Location: employees.php?msg=deleted');
         exit;
     }
@@ -270,7 +282,7 @@ require_once __DIR__ . '/../includes/header.php';
                                 <td>
                                     <span class="badge bg-info"><?php echo $emp['employee_type']; ?></span>
                                 </td>
-                                <td>$<?php echo formatCurrency($emp['basic_salary']); ?></td>
+                                <td><?php echo formatCurrency($emp['basic_salary']); ?></td>
                                 <?php $bal = $balances[$emp['id']] ?? ['pf_balance' => 0, 'loan_balance' => 0]; ?>
                                 <td class="text-success"><?php echo number_format($bal['pf_balance'], 2); ?></td>
                                 <td class="<?php echo $bal['loan_balance'] > 0 ? 'text-danger' : 'text-muted'; ?>">

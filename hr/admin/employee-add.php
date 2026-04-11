@@ -157,6 +157,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
     
     if ($stmt->execute()) {
+        $empId = $isEdit ? (int)$_GET['edit'] : $conn->insert_id;
+        $action = $isEdit ? 'update' : 'create';
+        
+        if ($isEdit) {
+            $getStmt = $conn->prepare("SELECT * FROM employees WHERE id = ?");
+            $getStmt->bind_param("i", $empId);
+            $getStmt->execute();
+            $result = $getStmt->get_result();
+            $empData = $result->fetch_assoc();
+            $getStmt->close();
+            logActivity($action, 'employee', $empId, "Updated: " . sanitize($_POST['emp_name']) . " | Data: " . json_encode($empData));
+        } else {
+            logActivity($action, 'employee', $empId, "Created: " . sanitize($_POST['emp_name']) . " | ID: $empId");
+        }
+        
         $message = $isEdit ? 'Employee updated successfully!' : 'Employee added successfully!';
         if (!$isEdit) {
             $newId = $conn->insert_id;

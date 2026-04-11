@@ -14,10 +14,21 @@ requireLogin();
 $pageTitle = 'Manage Bonuses';
 $currentPage = 'bonuses';
 
+$companyName = getSetting('company_name') ?? 'My Company';
+$companyTagline = getSetting('company_tagline') ?? '';
+$companyAddress = getSetting('company_address') ?? '';
+$companyPhone = getSetting('company_phone') ?? '';
+$companyEmail = getSetting('company_email') ?? '';
+$companyLogo = getSetting('company_logo') ?? '';
+
 $filter = [
     'office'     => $_GET['office']     ?? '',
     'department' => $_GET['department'] ?? '',
+    'search'     => $_GET['search']     ?? ''
 ];
+
+$statusFilter = $_GET['status_filter'] ?? '';
+$printOption = $_GET['print_option'] ?? 'full';
 
 $selectedMonth = $_GET['month'] ?? '';
 
@@ -123,6 +134,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($newCount === 0 && $updateCount === 0 && $skipCount > 0) {
             $messageType = 'warning';
         }
+        logActivity('update', 'bonus', null, "Bonuses saved for $month: $newCount new, $updateCount updated");
     }
 
     // ── confirm_all ───────────────────────────────────────────────────────────
@@ -132,6 +144,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt->execute();
         $affected = $stmt->affected_rows;
         $stmt->close();
+        
+        logActivity('confirm', 'bonus', null, "Confirmed all bonuses for $month: $affected entries");
         $message = "{$affected} bonus record(s) confirmed successfully.";
     }
 
@@ -147,6 +161,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $affected += $s->affected_rows;
             $s->close();
         }
+        
+        logActivity('confirm', 'bonus', null, "Bulk confirmed $affected bonus entries for $month");
         $message = "{$affected} bonus record(s) confirmed.";
     }
 
@@ -233,6 +249,140 @@ require_once __DIR__ . '/../includes/header.php';
     <?php showAlert($message, $messageType); ?>
 <?php endif; ?>
 
+<?php 
+$bonusEmployeesWithSheets = [];
+if (!empty($selectedMonth) && !empty($employees)) {
+    foreach ($employees as $emp) {
+        if (isset($sheetsByEmployee[$emp['id']])) {
+            $sheet = $sheetsByEmployee[$emp['id']];
+            if ($statusFilter === 'confirmed' && $sheet['confirmed'] != 1) continue;
+            if ($statusFilter === 'pending' && $sheet['confirmed'] == 1) continue;
+            $bonusEmployeesWithSheets[] = [
+                'employee' => $emp,
+                'sheet' => $sheet
+            ];
+        }
+    }
+}
+
+$totalBonusAmount = array_sum(array_column(array_column($bonusEmployeesWithSheets, 'sheet'), 'bonus_amount'));
+$confirmedBonusCount = count(array_filter($bonusEmployeesWithSheets, fn($item) => $item['sheet']['confirmed'] == 1));
+$pendingBonusCount = count($bonusEmployeesWithSheets) - $confirmedBonusCount;
+
+$showBankDetails = in_array($printOption, ['full', 'minimal_bank']);
+$isMinimal = in_array($printOption, ['minimal', 'minimal_bank']);
+?>
+
+<!-- Print Section -->
+<?php if (!empty($selectedMonth) && count($bonusEmployeesWithSheets) > 0): ?>
+<div class="print-section">
+    <div class="print-header">
+        <div style="display:flex; align-items:center; justify-content:center; gap:15px; margin-bottom:10px;">
+            <?php if (!empty($companyLogo)): ?>
+                <img src="../uploads/<?php echo htmlspecialchars($companyLogo); ?>" style="height:50px;width:auto;">
+            <?php endif; ?>
+            <div>
+                <h2 style="margin:0;font-size:20px;"><?php echo htmlspecialchars($companyName); ?></h2>
+                <?php if (!empty($companyTagline)): ?>
+                    <p style="margin:0;font-size:12px;"><?php echo htmlspecialchars($companyTagline); ?></p>
+                <?php endif; ?>
+            </div>
+        </div>
+        <p style="font-size:14px;font-weight:bold;margin:5px 0;">
+            BONUS SHEET - <?php echo date('F Y', strtotime($selectedMonth . '-01')); ?>
+            <?php if ($statusFilter === 'confirmed'): ?> (Confirmed Only)<?php endif; ?>
+            <?php if ($statusFilter === 'pending'): ?> (Pending Only)<?php endif; ?>
+        </p>
+        <div style="font-size:11px;">
+            <?php if (!empty($companyAddress)) echo htmlspecialchars($companyAddress); ?>
+            <?php if (!empty($companyPhone)) echo ' | Phone: ' . htmlspecialchars($companyPhone); ?>
+            <?php if (!empty($companyEmail)) echo ' | Email: ' . htmlspecialchars($companyEmail); ?>
+        </div>
+    </div>
+    <table>
+        <thead>
+            <tr>
+                <?php if (!$isMinimal): ?>
+                    <th>ID</th>
+                <?php endif; ?>
+                <th>Employee</th>
+                <?php if (!$isMinimal): ?>
+                    <th>Department</th>
+                    <th>Basic Salary</th>
+                    <th>Bonus %</th>
+                <?php endif; ?>
+                <th>Bonus Amount</th>
+                <th>Type</th>
+                <?php if ($isMinimal): ?>
+                    <th>Description</th>
+                <?php endif; ?>
+                <?php if ($showBankDetails): ?>
+                    <th>Bank Name</th>
+                    <th>Account No.</th>
+                <?php endif; ?>
+                <?php if (!$isMinimal): ?>
+                    <th>Status</th>
+                <?php endif; ?>
+            </tr>
+        </thead>
+        <tbody>
+            <?php foreach ($bonusEmployeesWithSheets as $item): ?>
+            <tr>
+                <?php if (!$isMinimal): ?>
+                    <td><?php echo generateEmployeeID($item['employee']['id'], $item['employee']['office_code'], $item['employee']['dept_code']); ?></td>
+                <?php endif; ?>
+                <td><?php echo htmlspecialchars($item['employee']['emp_name']); ?></td>
+                <?php if (!$isMinimal): ?>
+                    <td><?php echo htmlspecialchars($item['employee']['department']); ?></td>
+                    <td><?php echo formatCurrency($item['sheet']['basic_salary']); ?></td>
+                    <td><?php echo $item['sheet']['bonus_pct']; ?>%</td>
+                <?php endif; ?>
+                <td><?php echo formatCurrency($item['sheet']['bonus_amount']); ?></td>
+                <td><?php echo htmlspecialchars($item['sheet']['bonus_type']); ?></td>
+                <?php if ($isMinimal): ?>
+                    <td><?php echo htmlspecialchars($item['sheet']['description'] ?? '-'); ?></td>
+                <?php endif; ?>
+                <?php if ($showBankDetails): ?>
+                    <td><?php echo htmlspecialchars($item['employee']['bank_name'] ?? '-'); ?></td>
+                    <td><?php echo htmlspecialchars($item['employee']['bank_account'] ?? '-'); ?></td>
+                <?php endif; ?>
+                <?php if (!$isMinimal): ?>
+                    <td><?php echo $item['sheet']['confirmed'] ? 'Confirmed' : 'Pending'; ?></td>
+                <?php endif; ?>
+            </tr>
+            <?php endforeach; ?>
+        </tbody>
+        <tfoot>
+            <tr>
+                <?php 
+                $leftCols = 0;
+                if (!$isMinimal) $leftCols += 4; // ID, Department, Basic, Bonus %
+                $leftCols += 1; // Employee
+                ?>
+                <td colspan="<?php echo $leftCols; ?>" style="text-align:right"><strong>Total:</strong></td>
+                <td><strong><?php echo formatCurrency($totalBonusAmount); ?></strong></td>
+                <?php 
+                $rightCols = 1; // Type
+                if ($isMinimal) $rightCols += 1; // Description
+                if ($showBankDetails) $rightCols += 2; // Bank Name, Account
+                if (!$isMinimal) $rightCols += 1; // Status
+                ?>
+                <td colspan="<?php echo $rightCols; ?>"></td>
+            </tr>
+        </tfoot>
+    </table>
+    <div class="print-footer">
+        <div style="display:flex;justify-content:space-between;">
+            <span><strong>Prepared By:</strong> ____________________</span>
+            <span><strong>Approved By:</strong> ____________________</span>
+        </div>
+        <div style="text-align:center;margin-top:10px;">
+            <small>Total: <?php echo count($bonusEmployeesWithSheets); ?> | Confirmed: <?php echo $confirmedBonusCount; ?> | Pending: <?php echo $pendingBonusCount; ?></small>
+        </div>
+    </div>
+</div>
+<?php endif; ?>
+
 <!-- Filter form (GET) -->
 <form method="GET" action="" class="card mb-4">
     <div class="card-header">
@@ -284,7 +434,7 @@ require_once __DIR__ . '/../includes/header.php';
                     <?php endforeach; ?>
                 </select>
             </div>
-            <div class="col-md-3">
+            <div class="col-md-2">
                 <label class="form-label">Department</label>
                 <select name="department" class="form-select filter-select">
                     <option value="">All Departments</option>
@@ -297,10 +447,37 @@ require_once __DIR__ . '/../includes/header.php';
                 </select>
             </div>
             <div class="col-md-2">
+                <label class="form-label">Status</label>
+                <select name="status_filter" class="form-select">
+                    <option value="">All</option>
+                    <option value="confirmed" <?php echo ($_GET['status_filter'] ?? '') === 'confirmed' ? 'selected' : ''; ?>>Confirmed</option>
+                    <option value="pending" <?php echo ($_GET['status_filter'] ?? '') === 'pending' ? 'selected' : ''; ?>>Pending</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Print Options</label>
+                <select name="print_option" class="form-select">
+                    <option value="full">Full Print</option>
+                    <option value="minimal" <?php echo ($_GET['print_option'] ?? '') === 'minimal' ? 'selected' : ''; ?>>Minimal Print</option>
+                    <option value="minimal_bank" <?php echo ($_GET['print_option'] ?? '') === 'minimal_bank' ? 'selected' : ''; ?>>Minimal + Bank</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Search</label>
+                <input type="text" name="search" class="form-control" placeholder="ID or Name" value="<?php echo htmlspecialchars($filter['search'] ?? ''); ?>">
+            </div>
+            <div class="col-md-2">
                 <button type="submit" class="btn btn-primary w-100">
                     <i class="bi bi-search me-1"></i> Search
                 </button>
             </div>
+            <?php if (!empty($selectedMonth) && count($employees) > 0): ?>
+            <div class="col-md-2">
+                <button type="button" class="btn btn-success w-100" onclick="window.print()">
+                    <i class="bi bi-printer me-1"></i> Print
+                </button>
+            </div>
+            <?php endif; ?>
         </div>
     </div>
 </form>
@@ -506,6 +683,42 @@ require_once __DIR__ . '/../includes/header.php';
 
 <style>
 .border-warning { border: 2px solid #ffc107 !important; }
+.print-section { display: none; }
+
+@media print {
+    @page { margin: 0.5cm; }
+
+    .sidebar,
+    .navbar,
+    .page-header,
+    .alert,
+    .row.g-3,
+    form[method="GET"],
+    form[method="POST"] { display: none !important; }
+
+    .main-content { margin-left: 0 !important; padding: 0 !important; }
+
+    body { background: white !important; }
+
+    .print-section {
+        display: block !important;
+        width: 100%;
+        margin: 0;
+        padding: 10px;
+    }
+
+    .print-header { text-align: center; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 2px solid #333; }
+    .print-header h2 { margin: 0; font-size: 18px; }
+    .print-header p { margin: 5px 0; font-size: 12px; font-weight: bold; }
+    .print-header div { font-size: 10px; }
+
+    table { width: 100%; font-size: 9px; border-collapse: collapse; }
+    table th, table td { padding: 2px; border: 1px solid #333; }
+    table th { background: #ddd !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; font-weight: bold; }
+    table tfoot td { background: #eee !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; font-weight: bold; }
+
+    .print-footer { margin-top: 15px; font-size: 9px; border-top: 1px solid #333; padding-top: 10px; }
+}
 </style>
 
 <script>

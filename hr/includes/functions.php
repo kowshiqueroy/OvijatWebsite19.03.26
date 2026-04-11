@@ -203,6 +203,16 @@ function buildEmployeeFilterSQL($filter, &$params, &$types) {
         $params[] = $filter['status'];
         $types .= "s";
     }
+    if (!empty($filter['search'])) {
+        $search = $filter['search'];
+        $sql .= " AND (emp_name LIKE ? OR office_code LIKE ? OR dept_code LIKE ? OR id LIKE ?)";
+        $searchParam = "%{$search}%";
+        $params[] = $searchParam;
+        $params[] = $searchParam;
+        $params[] = $searchParam;
+        $params[] = $searchParam;
+        $types .= "ssss";
+    }
     return $sql;
 }
 
@@ -352,6 +362,16 @@ function countSalarySheets($employeeId = null, $month = null, $filter = []) {
         $params[] = $filter['position'];
         $types .= "s";
     }
+    if (!empty($filter['search'])) {
+        $search = $filter['search'];
+        $sql .= " AND (e.emp_name LIKE ? OR e.office_code LIKE ? OR e.dept_code LIKE ? OR e.id LIKE ?)";
+        $searchParam = "%{$search}%";
+        $params[] = $searchParam;
+        $params[] = $searchParam;
+        $params[] = $searchParam;
+        $params[] = $searchParam;
+        $types .= "ssss";
+    }
 
     if (!empty($params)) {
         $stmt = $conn->prepare($sql);
@@ -409,6 +429,17 @@ function getSalarySheets($employeeId = null, $month = null, $filter = [], $limit
         $sql .= " AND e.position = ?";
         $params[] = $filter['position'];
         $types .= "s";
+    }
+
+    if (!empty($filter['search'])) {
+        $search = $filter['search'];
+        $sql .= " AND (e.emp_name LIKE ? OR e.office_code LIKE ? OR e.dept_code LIKE ? OR e.id LIKE ?)";
+        $searchParam = "%{$search}%";
+        $params[] = $searchParam;
+        $params[] = $searchParam;
+        $params[] = $searchParam;
+        $params[] = $searchParam;
+        $types .= "ssss";
     }
 
     $sql .= " ORDER BY ss.month DESC, e.emp_name ASC";
@@ -535,6 +566,7 @@ function adminLogin($username, $password) {
             $_SESSION['admin_id'] = $row['id'];
             $_SESSION['admin_username'] = $row['username'];
             $_SESSION['last_activity'] = time();
+            logActivity('login', 'user', $row['id'], 'User logged in');
             return true;
         }
     }
@@ -542,6 +574,9 @@ function adminLogin($username, $password) {
 }
 
 function adminLogout() {
+    $userId = $_SESSION['admin_id'] ?? 0;
+    $username = $_SESSION['admin_username'] ?? 'Unknown';
+    logActivity('logout', 'user', $userId, 'User logged out');
     session_unset();
     session_destroy();
     header('Location: login.php');
@@ -775,4 +810,109 @@ function getBatchBonusesForMonth(array $employeeIds, $month) {
     }
     $stmt->close();
     return $bonuses;
+}
+
+function logActivity($action, $entityType, $entityId = null, $details = '') {
+    $conn = getDBConnection();
+    $userId = $_SESSION['admin_id'] ?? 0;
+    $username = $_SESSION['admin_username'] ?? 'System';
+    $ipAddress = $_SERVER['REMOTE_ADDR'] ?? '';
+    
+    $stmt = $conn->prepare("INSERT INTO activity_logs (user_id, username, action, entity_type, entity_id, details, ip_address) VALUES (?, ?, ?, ?, ?, ?, ?)");
+    $stmt->bind_param("isssiss", $userId, $username, $action, $entityType, $entityId, $details, $ipAddress);
+    $stmt->execute();
+    $stmt->close();
+}
+
+function getActivityLogs($filters = [], $limit = 100, $offset = 0) {
+    $conn = getDBConnection();
+    $sql = "SELECT * FROM activity_logs WHERE 1=1";
+    $params = [];
+    $types = "";
+    
+    if (!empty($filters['user_id'])) {
+        $sql .= " AND user_id = ?";
+        $params[] = $filters['user_id'];
+        $types .= "i";
+    }
+    if (!empty($filters['action'])) {
+        $sql .= " AND action = ?";
+        $params[] = $filters['action'];
+        $types .= "s";
+    }
+    if (!empty($filters['entity_type'])) {
+        $sql .= " AND entity_type = ?";
+        $params[] = $filters['entity_type'];
+        $types .= "s";
+    }
+    if (!empty($filters['from_date'])) {
+        $sql .= " AND created_at >= ?";
+        $params[] = $filters['from_date'];
+        $types .= "s";
+    }
+    if (!empty($filters['to_date'])) {
+        $sql .= " AND created_at <= ?";
+        $params[] = $filters['to_date'] . ' 23:59:59';
+        $types .= "s";
+    }
+    
+    $sql .= " ORDER BY created_at DESC LIMIT ? OFFSET ?";
+    $params[] = $limit;
+    $params[] = $offset;
+    $types .= "ii";
+    
+    $stmt = $conn->prepare($sql);
+    $stmt->bind_param($types, ...$params);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    
+    $logs = [];
+    while ($row = $result->fetch_assoc()) {
+        $logs[] = $row;
+    }
+    $stmt->close();
+    return $logs;
+}
+
+function countActivityLogs($filters = []) {
+    $conn = getDBConnection();
+    $sql = "SELECT COUNT(*) as cnt FROM activity_logs WHERE 1=1";
+    $params = [];
+    $types = "";
+    
+    if (!empty($filters['user_id'])) {
+        $sql .= " AND user_id = ?";
+        $params[] = $filters['user_id'];
+        $types .= "i";
+    }
+    if (!empty($filters['action'])) {
+        $sql .= " AND action = ?";
+        $params[] = $filters['action'];
+        $types .= "s";
+    }
+    if (!empty($filters['entity_type'])) {
+        $sql .= " AND entity_type = ?";
+        $params[] = $filters['entity_type'];
+        $types .= "s";
+    }
+    if (!empty($filters['from_date'])) {
+        $sql .= " AND created_at >= ?";
+        $params[] = $filters['from_date'];
+        $types .= "s";
+    }
+    if (!empty($filters['to_date'])) {
+        $sql .= " AND created_at <= ?";
+        $params[] = $filters['to_date'] . ' 23:59:59';
+        $types .= "s";
+    }
+    
+    $stmt = $conn->prepare($sql);
+    if (!empty($params)) {
+        $stmt->bind_param($types, ...$params);
+    }
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $row = $result->fetch_assoc();
+    $stmt->close();
+    return (int)$row['cnt'];
 }

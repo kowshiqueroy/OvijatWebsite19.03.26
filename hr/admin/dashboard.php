@@ -94,7 +94,7 @@ require_once __DIR__ . '/../includes/header.php';
                 <div class="d-flex justify-content-between align-items-center">
                     <div>
                         <h6 class="text-muted mb-2">This Month Payroll</h6>
-                        <h3 class="mb-0">$<?php echo formatCurrency($currentSalaryStats['total_payable'] ?? 0); ?></h3>
+                        <h3 class="mb-0"><?php echo formatCurrency($currentSalaryStats['total_payable'] ?? 0); ?></h3>
                     </div>
                     <div class="bg-danger bg-opacity-10 p-3 rounded">
                         <i class="bi bi-currency-dollar text-danger fs-4"></i>
@@ -163,12 +163,12 @@ require_once __DIR__ . '/../includes/header.php';
             <div class="card-body">
                 <div class="mb-3">
                     <small class="text-muted">Total Payroll (All Time)</small>
-                    <h4 class="mb-0">$<?php echo formatCurrency($salaryStats['total_payable'] ?? 0); ?></h4>
+                    <h4 class="mb-0"><?php echo formatCurrency($salaryStats['total_payable'] ?? 0); ?></h4>
                 </div>
                 <hr>
                 <div class="mb-3">
                     <small class="text-muted">Total PF Collected</small>
-                    <h4 class="mb-0 text-success">$<?php echo formatCurrency($salaryStats['total_pf'] ?? 0); ?></h4>
+                    <h4 class="mb-0 text-success"><?php echo formatCurrency($salaryStats['total_pf'] ?? 0); ?></h4>
                 </div>
                 <hr>
                 <div class="mb-3">
