@@ -193,11 +193,6 @@ function buildEmployeeFilterSQL($filter, &$params, &$types) {
         $params[] = $filter['position'];
         $types .= "s";
     }
-    if (!empty($filter['employee_type'])) {
-        $sql .= " AND employee_type = ?";
-        $params[] = $filter['employee_type'];
-        $types .= "s";
-    }
     if (!empty($filter['status'])) {
         $sql .= " AND status = ?";
         $params[] = $filter['status'];
@@ -362,6 +357,11 @@ function countSalarySheets($employeeId = null, $month = null, $filter = []) {
         $params[] = $filter['position'];
         $types .= "s";
     }
+    if (isset($filter['confirmed_status']) && $filter['confirmed_status'] !== '') {
+        $sql .= " AND ss.confirmed = ?";
+        $params[] = $filter['confirmed_status'];
+        $types .= "i";
+    }
     if (!empty($filter['search'])) {
         $search = $filter['search'];
         $sql .= " AND (e.emp_name LIKE ? OR e.office_code LIKE ? OR e.dept_code LIKE ? OR e.id LIKE ?)";
@@ -430,7 +430,11 @@ function getSalarySheets($employeeId = null, $month = null, $filter = [], $limit
         $params[] = $filter['position'];
         $types .= "s";
     }
-
+    if (isset($filter['confirmed_status']) && $filter['confirmed_status'] !== '') {
+        $sql .= " AND ss.confirmed = ?";
+        $params[] = $filter['confirmed_status'];
+        $types .= "i";
+    }
     if (!empty($filter['search'])) {
         $search = $filter['search'];
         $sql .= " AND (e.emp_name LIKE ? OR e.office_code LIKE ? OR e.dept_code LIKE ? OR e.id LIKE ?)";
@@ -915,4 +919,27 @@ function countActivityLogs($filters = []) {
     $row = $result->fetch_assoc();
     $stmt->close();
     return (int)$row['cnt'];
+}
+
+function logEmploymentHistory($employeeId, $eventType, $date, $remarks = '') {
+    $conn = getDBConnection();
+    $stmt = $conn->prepare("INSERT INTO employment_history (employee_id, event_type, event_date, remarks) VALUES (?, ?, ?, ?)");
+    $stmt->bind_param("isss", $employeeId, $eventType, $date, $remarks);
+    $result = $stmt->execute();
+    $stmt->close();
+    return $result;
+}
+
+function getEmploymentHistory($employeeId) {
+    $conn = getDBConnection();
+    $stmt = $conn->prepare("SELECT * FROM employment_history WHERE employee_id = ? ORDER BY event_date DESC, id DESC");
+    $stmt->bind_param("i", $employeeId);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $history = [];
+    while ($row = $result->fetch_assoc()) {
+        $history[] = $row;
+    }
+    $stmt->close();
+    return $history;
 }

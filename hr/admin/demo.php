@@ -92,8 +92,8 @@ if (isset($_POST['add_demo'])) {
             office_name, office_code, department, dept_code,
             unit, position, emp_name, nid, dob,
             blood_group, sex, bank_name, bank_account,
-            basic_salary, pf_percentage, employee_type,
-            joining_date, status
+            basic_salary, pf_percentage,
+            joining_date, status, photo
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
         
         $nid = 'NID' . rand(100000000, 999999999);
@@ -105,14 +105,15 @@ if (isset($_POST['add_demo'])) {
         $pf = $pfPercentages[array_rand($pfPercentages)];
         $unit = (string)(rand(1, 3) . rand(1, 9) . rand(0, 9));
         $status = 'Active';
+        $photo = '';
         
         $stmt = $conn->prepare($sql);
-        $stmt->bind_param("sssssssssssssdsiss",
+        $stmt->bind_param("sssssssssssssddsss", 
             $office['name'], $office['code'], $dept['name'], $dept['code'],
             $unit, $position, $emp['name'], $nid, $dob,
             $bloodGroup, $sex, $bank, $bankAccount,
-            $emp['basic'], $pf, $emp['type'],
-            $joiningDate, $status
+            $emp['basic'], $pf,
+            $joiningDate, $status, $photo
         );
         
         if ($stmt->execute()) {

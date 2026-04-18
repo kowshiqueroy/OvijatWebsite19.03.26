@@ -142,7 +142,6 @@ $pageTitle = $employee ? $employee['emp_name'] : 'Employee Profile';
                                 <div class="info-item"><div class="info-label">Office</div><div class="info-value"><?php echo htmlspecialchars($employee['office_name']); ?></div></div>
                                 <div class="info-item"><div class="info-label">Department</div><div class="info-value"><?php echo htmlspecialchars($employee['department']); ?></div></div>
                                 <div class="info-item"><div class="info-label">Position</div><div class="info-value"><?php echo htmlspecialchars($employee['position']); ?></div></div>
-                                <div class="info-item"><div class="info-label">Type</div><div class="info-value"><?php echo $employee['employee_type']; ?></div></div>
                                 <div class="info-item"><div class="info-label">Joined</div><div class="info-value"><?php echo $employee['joining_date'] ? date('d M Y', strtotime($employee['joining_date'])) : '-'; ?></div></div>
                             </div>
                         </div>
@@ -181,6 +180,37 @@ $pageTitle = $employee ? $employee['emp_name'] : 'Employee Profile';
                     </div>
                 </div>
                 <?php endif; ?>
+                <?php if ($isLoggedIn): ?>
+                <div class="info-section">
+                    <h6><i class="bi bi-clock-history me-2"></i>Employment History</h6>
+                    <div class="table-responsive">
+                        <table class="table table-bordered salary-table">
+                            <thead><tr><th>Event</th><th>Date</th><th>Remarks</th></tr></thead>
+                            <tbody>
+                                <?php 
+                                $empHistory = getEmploymentHistory($employee['id']);
+                                if (empty($empHistory)): ?>
+                                    <tr><td colspan="3" class="text-center">No history records found</td></tr>
+                                <?php else: ?>
+                                    <?php foreach ($empHistory as $h): ?>
+                                    <tr>
+                                        <td>
+                                            <span class="badge bg-<?php 
+                                                echo $h['event_type'] === 'Joined' ? 'primary' : 
+                                                    ($h['event_type'] === 'Rejoined' ? 'success' : 'danger'); 
+                                            ?>"><?php echo $h['event_type']; ?></span>
+                                        </td>
+                                        <td><?php echo date('d M Y', strtotime($h['event_date'])); ?></td>
+                                        <td><small><?php echo htmlspecialchars($h['remarks']); ?></small></td>
+                                    </tr>
+                                    <?php endforeach; ?>
+                                <?php endif; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <?php endif; ?>
+
                 <?php if ($isLoggedIn && !empty($salaryHistory)): ?>
                 <div class="info-section">
                     <h6><i class="bi bi-clock-history me-2"></i>Salary (All)</h6>

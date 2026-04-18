@@ -18,7 +18,8 @@ $filter = [
     'office' => $_GET['office'] ?? '',
     'department' => $_GET['department'] ?? '',
     'unit' => $_GET['unit'] ?? '',
-    'position' => $_GET['position'] ?? ''
+    'position' => $_GET['position'] ?? '',
+    'search' => $_GET['search'] ?? ''
 ];
 
 $selectedMonth = $_GET['month'] ?? '';
@@ -54,6 +55,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             foreach ($employees as $emp) {
                 $employeeId = $emp['id'];
+                
+                // Use individual working days if provided, otherwise fallback to global
+                $workingDays = isset($_POST["working_days_{$employeeId}"]) 
+                    ? (int)$_POST["working_days_{$employeeId}"] 
+                    : (int)$_POST['working_days'];
+                
+                $workingDays = max(1, min(31, $workingDays)); // Enforce 1-31 days range
+
                 $presentDays = max(0, min(31, (int)($_POST["present_{$employeeId}"] ?? 0)));
                 $leaveDays   = max(0, min(31, (int)($_POST["leave_{$employeeId}"] ?? 0)));
 
@@ -111,7 +120,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         employee_id, month, working_days, present_days, absent_days, leave_days,
                         basic_salary, pf_percentage, pf_deduction, bonus, gross_salary, net_payable
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-                    $stmt->bind_param("isiiiddddddi",
+                    $stmt->bind_param("isiiiddddddd",
                         $employeeId, $month, $workingDays, $presentDays, $absentDays, $leaveDays,
                         $basicSalary, $pfPercentage, $calc['pf_deduction'],
                         $bonus, $calc['gross_salary'], $netWithBonus
@@ -147,7 +156,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
     
     if (isset($_POST['confirm_single'])) {
-        $salaryId = (int)$_POST['salary_id'];
+        $salaryId = (int)$_POST['confirm_single'];
         $adminId = $_SESSION['admin_id'];
         
         $stmt = $conn->prepare("UPDATE salary_sheets SET confirmed = 1, confirmed_by = ?, confirmed_at = NOW() WHERE id = ? AND confirmed = 0");
@@ -164,7 +173,7 @@ $employees = !empty($selectedMonth) ? getAllEmployees(array_merge($filter, ['sta
 $sheetsByEmployee = [];
 if (!empty($selectedMonth)) {
     $conn = getDBConnection();
-    $stmt = $conn->prepare("SELECT employee_id, confirmed, present_days, leave_days, basic_salary, pf_percentage, bonus FROM salary_sheets WHERE month = ?");
+    $stmt = $conn->prepare("SELECT id, employee_id, confirmed, working_days, present_days, leave_days, basic_salary, pf_percentage, bonus FROM salary_sheets WHERE month = ?");
     $stmt->bind_param("s", $selectedMonth);
     $stmt->execute();
     $result = $stmt->get_result();
@@ -204,10 +213,10 @@ require_once __DIR__ . '/../includes/header.php';
         <h5 class="mb-0"><i class="bi bi-funnel me-2"></i>Filter Employees</h5>
     </div>
     <div class="card-body">
-        <div class="row g-3">
-            <div class="col-md-3">
-                <label class="form-label">Month <span class="text-danger">*</span></label>
-                <select name="month" class="form-select" required>
+        <div class="row g-2">
+            <div class="col-md-2">
+                <label class="form-label small mb-1">Month <span class="text-danger">*</span></label>
+                <select name="month" class="form-select form-select-sm" required>
                     <option value="">-- Select Month --</option>
                     <?php $salaryMonths = getSalaryMonths(); ?>
                     <?php foreach (generateMonthOptions() as $opt): ?>
@@ -223,13 +232,13 @@ require_once __DIR__ . '/../includes/header.php';
                     <?php endforeach; ?>
                 </select>
             </div>
-            <div class="col-md-2">
-                <label class="form-label">Working Days</label>
-                <input type="number" name="working_days" class="form-control" value="<?php echo $selectedWorkingDays; ?>" min="1" max="31">
+            <div class="col-md-1">
+                <label class="form-label small mb-1">Working</label>
+                <input type="number" name="working_days" id="globalWorkingDays" class="form-control form-control-sm" value="<?php echo $selectedWorkingDays; ?>" min="1" max="31">
             </div>
-            <div class="col-md-3">
-                <label class="form-label">Office</label>
-                <select name="office" class="form-select filter-select">
+            <div class="col-md-2">
+                <label class="form-label small mb-1">Office</label>
+                <select name="office" class="form-select form-select-sm filter-select">
                     <option value="">All Offices</option>
                     <?php foreach ($offices as $off): ?>
                         <option value="<?php echo htmlspecialchars($off['office_name']); ?>"
@@ -239,9 +248,9 @@ require_once __DIR__ . '/../includes/header.php';
                     <?php endforeach; ?>
                 </select>
             </div>
-            <div class="col-md-3">
-                <label class="form-label">Department</label>
-                <select name="department" class="form-select filter-select">
+            <div class="col-md-2">
+                <label class="form-label small mb-1">Department</label>
+                <select name="department" class="form-select form-select-sm filter-select">
                     <option value="">All Departments</option>
                     <?php foreach ($departments as $dept): ?>
                         <option value="<?php echo htmlspecialchars($dept['department']); ?>"
@@ -252,9 +261,34 @@ require_once __DIR__ . '/../includes/header.php';
                 </select>
             </div>
             <div class="col-md-1">
-                <button type="submit" class="btn btn-primary w-100">
-                    <i class="bi bi-search"></i>
-                </button>
+                <label class="form-label small mb-1">Unit</label>
+                <select name="unit" class="form-select form-select-sm filter-select">
+                    <option value="">All</option>
+                    <?php foreach ($units as $u): ?>
+                        <option value="<?php echo htmlspecialchars($u); ?>" <?php echo $filter['unit'] === $u ? 'selected' : ''; ?>>
+                            <?php echo htmlspecialchars($u); ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small mb-1">Position</label>
+                <select name="position" class="form-select form-select-sm filter-select">
+                    <option value="">All Positions</option>
+                    <?php foreach ($positions as $p): ?>
+                        <option value="<?php echo htmlspecialchars($p); ?>" <?php echo $filter['position'] === $p ? 'selected' : ''; ?>>
+                            <?php echo htmlspecialchars($p); ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small mb-1">Search ID/Name</label>
+                <div class="input-group input-group-sm">
+                    <input type="text" name="search" class="form-control" placeholder="Search..." value="<?php echo htmlspecialchars($filter['search']); ?>">
+                    <button type="submit" class="btn btn-primary"><i class="bi bi-search"></i></button>
+                    <a href="salary-generate.php" class="btn btn-outline-secondary" title="Clear"><i class="bi bi-x-circle"></i></a>
+                </div>
             </div>
         </div>
     </div>
@@ -301,7 +335,21 @@ require_once __DIR__ . '/../includes/header.php';
         </div>
     <?php endif; ?>
 
-    <form method="POST" action="">
+    <?php
+    // Separate employees into Pending and Confirmed groups to show confirmed last
+    $pendingEmployees = [];
+    $confirmedEmployees = [];
+    foreach ($employees as $emp) {
+        if (isset($sheetsByEmployee[$emp['id']]) && $sheetsByEmployee[$emp['id']]['confirmed'] == 1) {
+            $confirmedEmployees[] = $emp;
+        } else {
+            $pendingEmployees[] = $emp;
+        }
+    }
+    $sortedEmployees = array_merge($pendingEmployees, $confirmedEmployees);
+    ?>
+
+    <form method="POST" action="" id="salaryForm">
         <?php echo csrfField(); ?>
         <input type="hidden" name="month" value="<?php echo $selectedMonth; ?>">
         <input type="hidden" name="working_days" value="<?php echo $selectedWorkingDays; ?>">
@@ -352,17 +400,21 @@ require_once __DIR__ . '/../includes/header.php';
                         </tr>
                     </thead>
                     <tbody>
-                        <?php foreach ($employees as $emp): ?>
+                        <?php foreach ($sortedEmployees as $emp): ?>
                             <?php
                             $sheetData = $sheetsByEmployee[$emp['id']] ?? null;
                             $isConfirmed = $sheetData && $sheetData['confirmed'] == 1;
+                            
+                            // Use stored working days if record exists, otherwise use global filter
+                            $rowWorkingDays = $sheetData ? (int)$sheetData['working_days'] : $selectedWorkingDays;
+                            
                             $present = isset($_POST["present_{$emp['id']}"]) 
                                 ? (int)$_POST["present_{$emp['id']}"] 
                                 : ($sheetData ? (int)$sheetData['present_days'] : 0);
                             $leave = isset($_POST["leave_{$emp['id']}"]) 
                                 ? (int)$_POST["leave_{$emp['id']}"] 
                                 : ($sheetData ? (int)$sheetData['leave_days'] : 0);
-                            $absent = $selectedWorkingDays - $present - $leave;
+                            $absent = $rowWorkingDays - $present - $leave;
                             if ($absent < 0) $absent = 0;
                             $salary = isset($_POST["salary_{$emp['id']}"]) && $_POST["salary_{$emp['id']}"] !== '' 
                                 ? (float)$_POST["salary_{$emp['id']}"] 
@@ -372,7 +424,7 @@ require_once __DIR__ . '/../includes/header.php';
                                 : ($sheetData ? (float)$sheetData['pf_percentage'] : ($emp['pf_percentage'] > 0 ? $emp['pf_percentage'] : 5.00));
                             
                             if ($present > 0 || $leave > 0) {
-                                $calc = calculateSalary($salary, $selectedWorkingDays, $present, $leave, $pf);
+                                $calc = calculateSalary($salary, $rowWorkingDays, $present, $leave, $pf);
                             } else {
                                 $calc = ['gross_salary' => 0, 'pf_deduction' => 0, 'net_payable' => 0];
                             }
@@ -405,8 +457,10 @@ require_once __DIR__ . '/../includes/header.php';
                                            value="<?php echo $absent; ?>" readonly>
                                 </td>
                                 <td style="width: 80px;">
-                                    <input type="number" class="form-control form-control-sm calc-working" 
-                                           value="<?php echo $selectedWorkingDays; ?>" readonly>
+                                    <input type="number" name="working_days_<?php echo $emp['id']; ?>"
+                                           class="form-control form-control-sm calc-working" 
+                                           value="<?php echo $rowWorkingDays; ?>" 
+                                           <?php echo $isConfirmed ? 'readonly' : ''; ?>>
                                 </td>
                                 <td style="width: 120px;">
                                     <input type="number" name="salary_<?php echo $emp['id']; ?>" 
@@ -444,7 +498,14 @@ require_once __DIR__ . '/../includes/header.php';
                                             <i class="bi bi-lock-fill me-1"></i>Confirmed
                                         </span>
                                     <?php else: ?>
-                                        <span class="badge bg-secondary">Pending</span>
+                                        <span class="badge bg-secondary mb-1 d-block">Pending</span>
+                                        <?php if ($sheetData): ?>
+                                            <button type="submit" name="confirm_single" value="<?php echo $sheetData['id']; ?>" 
+                                                    class="badge bg-danger border-0 d-block w-100 py-1" 
+                                                    style="cursor: pointer;" onclick="return confirm('Confirm this salary?');">
+                                                Confirm Now
+                                            </button>
+                                        <?php endif; ?>
                                     <?php endif; ?>
                                 </td>
                             </tr>
@@ -471,14 +532,10 @@ require_once __DIR__ . '/../includes/header.php';
 <?php endif; ?>
 
 <script>
-document.addEventListener('input', function(e) {
-    const calcClasses = ['calc-present','calc-leave','calc-salary','calc-pf','calc-bonus','calc-bonus-pct'];
-    if (!calcClasses.some(c => e.target.classList.contains(c))) return;
-
-    let row = e.target.closest('tr');
-    if (!row) return;
-
+function recalculateRow(row) {
     let workingInput  = row.querySelector('.calc-working');
+    if (!workingInput) return;
+    
     let presentInput  = row.querySelector('.calc-present');
     let leaveInput    = row.querySelector('.calc-leave');
     let absentInput   = row.querySelector('.calc-absent');
@@ -492,6 +549,80 @@ document.addEventListener('input', function(e) {
     let leave       = parseInt(leaveInput.value) || 0;
     let salary      = parseFloat(salaryInput.value) || 0;
     let pf          = parseFloat(pfInput.value) || 0;
+    let bonus       = parseFloat(bonusInput.value) || 0;
+
+    // Reset styles
+    [workingInput, presentInput, leaveInput].forEach(el => {
+        el.classList.remove('border-danger');
+        el.style.backgroundColor = '';
+    });
+
+    // Validate Max 31 Days
+    if (workingDays > 31) { workingInput.classList.add('border-danger'); workingInput.style.backgroundColor = '#ffd7d7'; }
+    if (present > 31) { presentInput.classList.add('border-danger'); presentInput.style.backgroundColor = '#ffd7d7'; }
+    if (leave > 31) { leaveInput.classList.add('border-danger'); leaveInput.style.backgroundColor = '#ffd7d7'; }
+
+    // Attendance
+    let totalDays = present + leave;
+    let absent = Math.max(0, workingDays - totalDays);
+    absentInput.value = absent;
+
+    // Highlight if attendance exceeds working days
+    if (totalDays > workingDays && workingDays > 0) {
+        presentInput.classList.add('border-danger');
+        leaveInput.classList.add('border-danger');
+    }
+
+    // Recalculate gross / net
+    if (workingDays > 0 && workingDays <= 31 && (present > 0 || leave > 0)) {
+        let gross       = (salary / workingDays) * (present + leave);
+        let pfDeduction = (gross * pf) / 100;
+        let net         = gross - pfDeduction + bonus;
+
+        let grossCell = row.cells[row.cells.length - 3];
+        let netCell   = row.cells[row.cells.length - 2];
+
+        if (grossCell) grossCell.textContent = gross.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        if (netCell)   netCell.textContent   = net.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    } else {
+        let grossCell = row.cells[row.cells.length - 3];
+        let netCell   = row.cells[row.cells.length - 2];
+        if (grossCell) grossCell.textContent = '0.00';
+        if (netCell)   netCell.textContent   = bonus.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    }
+}
+
+// Global working days listener
+const globalWorkingInput = document.getElementById('globalWorkingDays');
+if (globalWorkingInput) {
+    ['input', 'change'].forEach(evt => {
+        globalWorkingInput.addEventListener(evt, function() {
+            const val = this.value;
+            // Also update the hidden working_days in the salary form if it exists
+            const hiddenGlobal = document.querySelector('#salaryForm input[name="working_days"]');
+            if (hiddenGlobal) hiddenGlobal.value = val;
+
+            document.querySelectorAll('.calc-working').forEach(input => {
+                if (!input.readOnly) {
+                    input.value = val;
+                    recalculateRow(input.closest('tr'));
+                }
+            });
+        });
+    });
+}
+
+document.addEventListener('input', function(e) {
+    const calcClasses = ['calc-present','calc-leave','calc-salary','calc-pf','calc-bonus','calc-bonus-pct','calc-working'];
+    if (!calcClasses.some(c => e.target.classList.contains(c))) return;
+
+    let row = e.target.closest('tr');
+    if (!row) return;
+
+    let salaryInput   = row.querySelector('.calc-salary');
+    let bonusInput    = row.querySelector('.calc-bonus');
+    let bonusPctInput = row.querySelector('.calc-bonus-pct');
+    let salary        = parseFloat(salaryInput.value) || 0;
 
     // Bonus % <-> Bonus Amt bidirectional sync
     if (e.target.classList.contains('calc-bonus-pct')) {
@@ -501,52 +632,11 @@ document.addEventListener('input', function(e) {
         let amt = parseFloat(bonusInput.value) || 0;
         bonusPctInput.value = salary > 0 ? (amt / salary * 100).toFixed(2) : '0.00';
     } else if (e.target.classList.contains('calc-salary')) {
-        // When salary changes, keep bonus% and recalculate bonus amount
         let pct = parseFloat(bonusPctInput.value) || 0;
-        if (pct > 0) {
-            bonusInput.value = (salary * pct / 100).toFixed(2);
-        }
+        if (pct > 0) bonusInput.value = (salary * pct / 100).toFixed(2);
     }
 
-    let bonus = parseFloat(bonusInput.value) || 0;
-
-    // Attendance
-    let totalDays = present + leave;
-    let absent = Math.max(0, workingDays - totalDays);
-    absentInput.value = absent;
-
-    // Clear all validation styles
-    [presentInput, leaveInput, absentInput, salaryInput, pfInput, workingInput].forEach(el => {
-        el.classList.remove('border-warning', 'border-danger');
-        el.style.backgroundColor = '';
-    });
-
-    // Validate
-    if (present < 0 || present > 31)  presentInput.classList.add('border-warning');
-    if (leave < 0 || leave > 31)      leaveInput.classList.add('border-warning');
-    if (salary < 0)                   salaryInput.classList.add('border-warning');
-    if (pf < 0 || pf > 100)          pfInput.classList.add('border-warning');
-
-    if (totalDays > workingDays) {
-        presentInput.classList.add('border-warning');
-        leaveInput.classList.add('border-warning');
-        workingInput.classList.add('border-danger');
-        workingInput.style.backgroundColor = '#ffd7d7';
-    }
-
-    // Recalculate gross / net
-    if (workingDays > 0 && (present > 0 || leave > 0)) {
-        let gross       = (salary / workingDays) * (present + leave);
-        let pfDeduction = (gross * pf) / 100;
-        let net         = gross - pfDeduction + bonus;
-
-        // columns: [Employee, Present, Leave, Absent, Working, Basic, PF%, BonusPct, BonusAmt, Gross, Net, Status]
-        let grossCell = row.cells[row.cells.length - 3];
-        let netCell   = row.cells[row.cells.length - 2];
-
-        if (grossCell) grossCell.textContent = gross.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-        if (netCell)   netCell.textContent   = net.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-    }
+    recalculateRow(row);
 });
 </script>
 

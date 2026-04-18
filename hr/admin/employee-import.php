@@ -43,7 +43,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                     'unit' => -1, 'position' => -1, 'emp_name' => -1, 'nid' => -1,
                     'dob' => -1, 'blood_group' => -1, 'sex' => -1, 'bank_name' => -1,
                     'bank_account' => -1, 'basic_salary' => -1, 'pf_percentage' => -1,
-                    'employee_type' => -1, 'joining_date' => -1, 'status' => -1
+                    'joining_date' => -1, 'status' => -1
                 ];
                 
                 foreach ($headers as $index => $header) {
@@ -104,12 +104,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                         $basicSalary = !empty($data['basic_salary']) ? (float)$data['basic_salary'] : 0;
                         $pfPercentage = !empty($data['pf_percentage']) ? (float)$data['pf_percentage'] : 5;
                         
-                        $employeeType = 'Staff';
-                        $typeList = ['Staff', 'Worker', 'Intern', 'Contextual', 'Others'];
-                        if (!empty($data['employee_type']) && in_array(ucfirst($data['employee_type']), $typeList)) {
-                            $employeeType = ucfirst($data['employee_type']);
-                        }
-                        
                         $status = 'Active';
                         $statusList = ['Active', 'Inactive', 'Resigned', 'Terminated'];
                         if (!empty($data['status']) && in_array(ucfirst($data['status']), $statusList)) {
@@ -141,17 +135,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                             office_name, office_code, department, dept_code,
                             unit, position, emp_name, nid, dob,
                             blood_group, sex, bank_name, bank_account,
-                            basic_salary, pf_percentage, employee_type,
-                            joining_date, status
+                            basic_salary, pf_percentage,
+                            joining_date, status, photo
                         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
                         
+                        $photo = null;
                         $stmt = $conn->prepare($sql);
-                        $stmt->bind_param("sssssssssssssdsiss", 
+                        $stmt->bind_param("sssssssssssssddsss", 
                             $data['office_name'], $data['office_code'], $data['department'], $data['dept_code'],
                             $data['unit'], $data['position'], $data['emp_name'], $data['nid'], $dob,
                             $data['blood_group'], $data['sex'], $data['bank_name'], $data['bank_account'],
-                            $basicSalary, $pfPercentage, $employeeType,
-                            $joiningDate, $status
+                            $basicSalary, $pfPercentage,
+                            $joiningDate, $status, $photo
                         );
                         
                         try {
@@ -258,7 +253,6 @@ require_once __DIR__ . '/../includes/header.php';
                             <tr><td>bank_account</td><td>No</td><td>Account number</td></tr>
                             <tr><td>basic_salary</td><td>No</td><td>Numeric value</td></tr>
                             <tr><td>pf_percentage</td><td>No</td><td>PF % (default: 5)</td></tr>
-                            <tr><td>employee_type</td><td>No</td><td>Staff, Worker, Intern, Contextual, Others</td></tr>
                             <tr><td>joining_date</td><td>No</td><td>Date (YYYY-MM-DD)</td></tr>
                             <tr><td>status</td><td>No</td><td>Active, Inactive, Resigned, Terminated</td></tr>
                         </tbody>
@@ -317,7 +311,7 @@ require_once __DIR__ . '/../includes/header.php';
 
 <script>
 function downloadSampleCSV() {
-    const csvContent = `office_name,office_code,department,dept_code,unit,position,emp_name,nid,dob,blood_group,sex,bank_name,bank_account,basic_salary,pf_percentage,employee_type,joining_date,status
+    const csvContent = `office_name,office_code,department,dept_code,unit,position,emp_name,nid,dob,blood_group,sex,bank_name,bank_account,basic_salary,pf_percentage,joining_date,status
 Head Office,HQ,Information Technology,IT,Development,Software Engineer,John Doe,123456789,1990-05-15,A+,Male,City Bank,1234567890,50000,5,Staff,2020-01-15,Active
 Head Office,HQ,Human Resources,HR,Recruitment,HR Manager,Jane Smith,987654321,1985-08-20,B+,Female,Standard Bank,0987654321,60000,5,Staff,2019-03-10,Active
 Factory,FAC,Production,PROD,Assembly,Production Worker,Bob Wilson,456123789,1995-03-10,O+,Male,Workers Bank,5555555555,25000,5,Worker,2021-06-01,Active

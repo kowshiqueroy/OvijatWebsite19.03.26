@@ -19,8 +19,8 @@ $filter = [
     'department' => $_GET['department'] ?? '',
     'unit' => $_GET['unit'] ?? '',
     'position' => $_GET['position'] ?? '',
-    'employee_type' => $_GET['employee_type'] ?? '',
-    'status' => $_GET['status'] ?? ''
+    'status' => $_GET['status'] ?? '',
+    'search' => $_GET['search'] ?? ''
 ];
 
 $filterSubmitted = isset($_GET['office']);
@@ -49,7 +49,7 @@ if ($filterSubmitted && isset($_GET['export']) && $_GET['export'] === 'csv') {
     header('Content-Type: text/csv; charset=utf-8');
     header('Content-Disposition: attachment; filename="employees_' . date('Y-m-d') . '.csv"');
     $out = fopen('php://output', 'w');
-    fputcsv($out, ['Emp ID','Name','Office','Department','Unit','Position','Type','Basic Salary','PF %','Joining Date','Status','Loan Balance','PF Balance']);
+    fputcsv($out, ['Emp ID','Name','Office','Department','Unit','Position','Basic Salary','PF %','Joining Date','Status','Loan Balance','PF Balance']);
     foreach ($allEmployees as $emp) {
         $bal = $balances[$emp['id']] ?? ['loan_balance' => 0, 'pf_balance' => 0];
         fputcsv($out, [
@@ -59,7 +59,6 @@ if ($filterSubmitted && isset($_GET['export']) && $_GET['export'] === 'csv') {
             $emp['department'],
             $emp['unit'] ?? '',
             $emp['position'],
-            $emp['employee_type'],
             $emp['basic_salary'],
             $emp['pf_percentage'],
             $emp['joining_date'] ?? '',
@@ -77,34 +76,10 @@ $departments = getDepartmentList($filter['office']);
 $units = getUnitList($filter['department']);
 $positions = getPositionList($filter['department']);
 
-if (isset($_GET['delete'])) {
-    $id = (int)$_GET['delete'];
-    $conn = getDBConnection();
-    
-    $empStmt = $conn->prepare("SELECT * FROM employees WHERE id = ?");
-    $empStmt->bind_param("i", $id);
-    $empStmt->execute();
-    $empResult = $empStmt->get_result();
-    $empData = $empResult->fetch_assoc();
-    $empStmt->close();
-    
-    $empName = $empData['emp_name'] ?? 'Unknown';
-    $empDetails = json_encode($empData);
-    
-    $stmt = $conn->prepare("DELETE FROM employees WHERE id = ?");
-    $stmt->bind_param("i", $id);
-    if ($stmt->execute()) {
-        $stmt->close();
-        logActivity('delete', 'employee', $id, "Deleted: $empName | Data: " . $empDetails);
-        header('Location: employees.php?msg=deleted');
-        exit;
-    }
-}
-
 if (isset($_GET['msg'])) {
     $messages = [
-        'deleted' => 'Employee deleted successfully',
-        'updated' => 'Employee updated successfully'
+        'updated' => 'Employee updated successfully',
+        'rejoined' => 'Employee rejoined successfully'
     ];
     $msg = $messages[$_GET['msg']] ?? '';
 }
@@ -187,16 +162,6 @@ require_once __DIR__ . '/../includes/header.php';
                 </select>
             </div>
             <div class="col-md-4 col-lg-2">
-                <select name="employee_type" class="form-select">
-                    <option value="">All Types</option>
-                    <option value="Staff" <?php echo $filter['employee_type'] === 'Staff' ? 'selected' : ''; ?>>Staff</option>
-                    <option value="Worker" <?php echo $filter['employee_type'] === 'Worker' ? 'selected' : ''; ?>>Worker</option>
-                    <option value="Intern" <?php echo $filter['employee_type'] === 'Intern' ? 'selected' : ''; ?>>Intern</option>
-                    <option value="Contextual" <?php echo $filter['employee_type'] === 'Contextual' ? 'selected' : ''; ?>>Contextual</option>
-                    <option value="Others" <?php echo $filter['employee_type'] === 'Others' ? 'selected' : ''; ?>>Others</option>
-                </select>
-            </div>
-            <div class="col-md-4 col-lg-2">
                 <select name="status" class="form-select">
                     <option value="">All Status</option>
                     <option value="Active" <?php echo $filter['status'] === 'Active' ? 'selected' : ''; ?>>Active</option>
@@ -240,7 +205,6 @@ require_once __DIR__ . '/../includes/header.php';
                         <th>Office</th>
                         <th>Department</th>
                         <th>Position</th>
-                        <th>Type</th>
                         <th>Basic Salary</th>
                         <th>PF Balance</th>
                         <th>Loan Balance</th>
@@ -279,9 +243,6 @@ require_once __DIR__ . '/../includes/header.php';
                                 <td><?php echo htmlspecialchars($emp['office_name']); ?></td>
                                 <td><?php echo htmlspecialchars($emp['department']); ?></td>
                                 <td><?php echo htmlspecialchars($emp['position']); ?></td>
-                                <td>
-                                    <span class="badge bg-info"><?php echo $emp['employee_type']; ?></span>
-                                </td>
                                 <td><?php echo formatCurrency($emp['basic_salary']); ?></td>
                                 <?php $bal = $balances[$emp['id']] ?? ['pf_balance' => 0, 'loan_balance' => 0]; ?>
                                 <td class="text-success"><?php echo number_format($bal['pf_balance'], 2); ?></td>
@@ -299,14 +260,15 @@ require_once __DIR__ . '/../includes/header.php';
                                            class="btn btn-outline-primary" title="Edit">
                                             <i class="bi bi-pencil"></i>
                                         </a>
+                                        <?php if ($emp['status'] === 'Resigned' || $emp['status'] === 'Terminated'): ?>
+                                        <a href="employee-rejoin.php?id=<?php echo $emp['id']; ?>"
+                                           class="btn btn-outline-success" title="Rejoin">
+                                            <i class="bi bi-person-plus"></i>
+                                        </a>
+                                        <?php endif; ?>
                                         <a href="../public/profile.php?id=<?php echo $emp['id']; ?>"
                                            class="btn btn-outline-info" title="View Profile" target="_blank">
                                             <i class="bi bi-eye"></i>
-                                        </a>
-                                        <a href="employees.php?delete=<?php echo $emp['id']; ?>"
-                                           class="btn btn-outline-danger" title="Delete"
-                                           onclick="return confirm('Are you sure you want to delete this employee?');">
-                                            <i class="bi bi-trash"></i>
                                         </a>
                                     </div>
                                 </td>

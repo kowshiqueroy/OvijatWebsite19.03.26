@@ -103,7 +103,6 @@ function runSetup($reset = false) {
             bank_account VARCHAR(50),
             basic_salary DECIMAL(12,2) DEFAULT 0,
             pf_percentage DECIMAL(5,2) DEFAULT 5.00,
-            employee_type ENUM('Staff', 'Worker', 'Intern', 'Contextual', 'Others') DEFAULT 'Staff',
             joining_date DATE,
             photo VARCHAR(255),
             status ENUM('Active', 'Inactive', 'Resigned', 'Terminated') DEFAULT 'Active',
@@ -111,8 +110,7 @@ function runSetup($reset = false) {
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
             INDEX idx_office (office_name),
             INDEX idx_department (department),
-            INDEX idx_status (status),
-            INDEX idx_employee_type (employee_type)
+            INDEX idx_status (status)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
         ";
         

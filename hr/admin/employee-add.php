@@ -31,7 +31,7 @@ $employee = [
     'bank_account' => '',
     'basic_salary' => '',
     'pf_percentage' => getSetting('default_pf_percentage', '5.00'),
-    'employee_type' => 'Staff',
+    
     'joining_date' => date('Y-m-d'),
     'status' => 'Active',
     'photo' => ''
@@ -97,7 +97,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $unit = sanitize($_POST['unit'] ?? '');
     $position = sanitize($_POST['position'] ?? '');
     $emp_name = sanitize($_POST['emp_name'] ?? '');
-    $nid = sanitize($_POST['nid'] ?? '');
+    $nid = !empty($_POST['nid']) ? sanitize($_POST['nid']) : null;
     $dob = !empty($_POST['dob']) ? $_POST['dob'] : null;
     $blood_group = sanitize($_POST['blood_group'] ?? '');
     $sex = sanitize($_POST['sex'] ?? '');
@@ -105,7 +105,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $bank_account = sanitize($_POST['bank_account'] ?? '');
     $basic_salary = (float)($_POST['basic_salary'] ?? 0);
     $pf_percentage = (float)($_POST['pf_percentage'] ?? 5);
-    $employee_type = sanitize($_POST['employee_type'] ?? 'Staff');
     $joining_date = !empty($_POST['joining_date']) ? $_POST['joining_date'] : null;
     $status = sanitize($_POST['status'] ?? 'Active');
     
@@ -123,18 +122,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             office_name = ?, office_code = ?, department = ?, dept_code = ?,
             unit = ?, position = ?, emp_name = ?, nid = ?, dob = ?,
             blood_group = ?, sex = ?, bank_name = ?, bank_account = ?,
-            basic_salary = ?, pf_percentage = ?, employee_type = ?,
+            basic_salary = ?, pf_percentage = ?,
             joining_date = ?, status = ?, photo = ?
             WHERE id = ?";
         
         $empId = (int)$employee['id'];
         $stmt = $conn->prepare($sql);
         
-        $stmt->bind_param("sssssssssssssssddssi", 
+        $stmt->bind_param("sssssssssssssddsssi", 
             $office_name, $office_code, $department, $dept_code,
             $unit, $position, $emp_name, $nid, $dob,
             $blood_group, $sex, $bank_name, $bank_account,
-            $basic_salary, $pf_percentage, $employee_type,
+            $basic_salary, $pf_percentage,
             $joining_date, $status, $photo, $empId
         );
     } else {
@@ -142,16 +141,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             office_name, office_code, department, dept_code,
             unit, position, emp_name, nid, dob,
             blood_group, sex, bank_name, bank_account,
-            basic_salary, pf_percentage, employee_type,
+            basic_salary, pf_percentage,
             joining_date, status, photo
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
         
         $stmt = $conn->prepare($sql);
-        $stmt->bind_param("sssssssssssssssddss", 
+        $stmt->bind_param("sssssssssssssddsss", 
             $office_name, $office_code, $department, $dept_code,
             $unit, $position, $emp_name, $nid, $dob,
             $blood_group, $sex, $bank_name, $bank_account,
-            $basic_salary, $pf_percentage, $employee_type,
+            $basic_salary, $pf_percentage,
             $joining_date, $status, $photo
         );
     }
@@ -161,6 +160,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $action = $isEdit ? 'update' : 'create';
         
         if ($isEdit) {
+            // Check if status changed
+            if ($employee['status'] !== $status) {
+                logEmploymentHistory($empId, $status, date('Y-m-d'), "Status changed from {$employee['status']} to $status");
+            }
+            
             $getStmt = $conn->prepare("SELECT * FROM employees WHERE id = ?");
             $getStmt->bind_param("i", $empId);
             $getStmt->execute();
@@ -169,6 +173,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $getStmt->close();
             logActivity($action, 'employee', $empId, "Updated: " . sanitize($_POST['emp_name']) . " | Data: " . json_encode($empData));
         } else {
+            // Log joining history
+            logEmploymentHistory($empId, 'Joined', $joining_date, "Initial joining");
             logActivity($action, 'employee', $empId, "Created: " . sanitize($_POST['emp_name']) . " | ID: $empId");
         }
         
@@ -283,16 +289,7 @@ require_once __DIR__ . '/../includes/header.php';
                 </datalist>
             </div>
             
-            <div class="col-md-4">
-                <label class="form-label">Employee Type *</label>
-                <select name="employee_type" class="form-select" required>
-                    <option value="Staff" <?php echo $employee['employee_type'] === 'Staff' ? 'selected' : ''; ?>>Staff</option>
-                    <option value="Worker" <?php echo $employee['employee_type'] === 'Worker' ? 'selected' : ''; ?>>Worker</option>
-                    <option value="Intern" <?php echo $employee['employee_type'] === 'Intern' ? 'selected' : ''; ?>>Intern</option>
-                    <option value="Contextual" <?php echo $employee['employee_type'] === 'Contextual' ? 'selected' : ''; ?>>Contextual</option>
-                    <option value="Others" <?php echo $employee['employee_type'] === 'Others' ? 'selected' : ''; ?>>Others</option>
-                </select>
-            </div>
+            
             
             <div class="col-md-4">
                 <label class="form-label">Status *</label>

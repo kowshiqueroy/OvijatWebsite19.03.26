@@ -6,30 +6,28 @@ require_once __DIR__ . '/../includes/functions.php';
 
 requireLogin();
 
-$pageTitle   = 'Employee Report';
+$pageTitle   = 'Employee Service Report';
 $currentPage = 'employee-report';
 
 $conn = getDBConnection();
 
-$companyName = getSetting('company_name') ?? 'My Company';
+$companyName = getSetting('company_name') ?? 'HR Management';
 $companyTagline = getSetting('company_tagline') ?? '';
 $companyAddress = getSetting('company_address') ?? '';
 $companyPhone = getSetting('company_phone') ?? '';
-$companyEmail = getSetting('company_email') ?? '';
 $companyLogo = getSetting('company_logo') ?? '';
 
-// ── Load all active employees for the selector ────────────────────────────────
+// ── Load active employees ─────────────────────────────────────────────────────
 $allEmployees = getAllEmployees(['status' => 'Active']);
 
 // ── Defaults ──────────────────────────────────────────────────────────────────
-$defaultFrom = date('Y-m', strtotime('-11 months'));
+$defaultFrom = date('Y-m', strtotime('-5 months'));
 $defaultTo   = date('Y-m');
 
 $submitted = isset($_GET['emp_ids']);
 $empIds    = [];
 $fromMonth = $_GET['from_month'] ?? $defaultFrom;
 $toMonth   = $_GET['to_month']   ?? $defaultTo;
-$printOption = $_GET['print_option'] ?? 'full';
 
 if ($submitted && !empty($_GET['emp_ids'])) {
     foreach ((array)$_GET['emp_ids'] as $id) {
@@ -38,677 +36,480 @@ if ($submitted && !empty($_GET['emp_ids'])) {
     }
 }
 
-// ── Query helpers ─────────────────────────────────────────────────────────────
-$salaryRows  = [];
-$loanSummary = [];
-$pfSummary   = [];
-$bonusRows   = [];
-
+$reportData = [];
 if ($submitted && !empty($empIds)) {
-    $pl = implode(',', array_fill(0, count($empIds), '?'));
-    $ti = str_repeat('i', count($empIds));
+    foreach ($empIds as $eid) {
+        $emp = getEmployeeById($eid);
+        if (!$emp) continue;
 
-    // Salary sheets
-    $stmt = $conn->prepare(
-        "SELECT ss.*, e.emp_name, e.department, e.position, e.office_code, e.dept_code
-         FROM salary_sheets ss
-         JOIN employees e ON ss.employee_id = e.id
-         WHERE ss.employee_id IN ($pl) AND ss.month >= ? AND ss.month <= ?
-         ORDER BY e.emp_name ASC, ss.month DESC"
-    );
-    $params = array_merge($empIds, [$fromMonth, $toMonth]);
-    $stmt->bind_param($ti . 'ss', ...$params);
-    $stmt->execute();
-    $res = $stmt->get_result();
-    while ($row = $res->fetch_assoc()) $salaryRows[] = $row;
-    $stmt->close();
-
-    // Loan summary
-    if (tableExists('loan_transactions')) {
-        $stmt = $conn->prepare(
-            "SELECT lt.employee_id, e.emp_name,
-                    COALESCE(SUM(CASE WHEN lt.type='debit'  THEN lt.amount ELSE 0 END), 0) as total_debited,
-                    COALESCE(SUM(CASE WHEN lt.type='credit' THEN lt.amount ELSE 0 END), 0) as total_repaid
-             FROM loan_transactions lt
-             JOIN employees e ON lt.employee_id = e.id
-             WHERE lt.employee_id IN ($pl)
-             GROUP BY lt.employee_id, e.emp_name
-             ORDER BY e.emp_name ASC"
-        );
-        $stmt->bind_param($ti, ...$empIds);
+        // 1. Salaries
+        $salaries = [];
+        $stmt = $conn->prepare("SELECT * FROM salary_sheets WHERE employee_id = ? AND month >= ? AND month <= ? ORDER BY month DESC");
+        $stmt->bind_param("iss", $eid, $fromMonth, $toMonth);
         $stmt->execute();
         $res = $stmt->get_result();
-        while ($row = $res->fetch_assoc()) $loanSummary[$row['employee_id']] = $row;
+        while($r = $res->fetch_assoc()) $salaries[$r['month']] = $r;
         $stmt->close();
-    }
 
-    // PF summary
-    $stmt = $conn->prepare(
-        "SELECT ss.employee_id, e.emp_name,
-                COALESCE(SUM(CASE WHEN ss.confirmed=1 THEN ss.pf_deduction ELSE 0 END), 0) as pf_from_salary,
-                COALESCE(SUM(CASE WHEN ss.confirmed=0 THEN ss.pf_deduction ELSE 0 END), 0) as pf_pending
-         FROM salary_sheets ss
-         JOIN employees e ON ss.employee_id = e.id
-         WHERE ss.employee_id IN ($pl)
-         GROUP BY ss.employee_id, e.emp_name"
-    );
-    $stmt->bind_param($ti, ...$empIds);
-    $stmt->execute();
-    $res = $stmt->get_result();
-    while ($row = $res->fetch_assoc()) $pfSummary[$row['employee_id']] = $row;
-    $stmt->close();
-
-    // PF manual transactions
-    if (tableExists('pf_transactions')) {
-        $stmt = $conn->prepare(
-            "SELECT employee_id,
-                    COALESCE(SUM(CASE WHEN type='credit' THEN amount ELSE 0 END), 0) as manual_credit,
-                    COALESCE(SUM(CASE WHEN type='debit'  THEN amount ELSE 0 END), 0) as manual_debit
-             FROM pf_transactions WHERE employee_id IN ($pl) GROUP BY employee_id"
-        );
-        $stmt->bind_param($ti, ...$empIds);
-        $stmt->execute();
-        $res = $stmt->get_result();
-        while ($row = $res->fetch_assoc()) {
-            $eid = $row['employee_id'];
-            if (isset($pfSummary[$eid])) {
-                $pfSummary[$eid]['manual_credit'] = (float)$row['manual_credit'];
-                $pfSummary[$eid]['manual_debit']  = (float)$row['manual_debit'];
+        // 2. Bonuses
+        $bonuses = [];
+        $bonusList = [];
+        if (tableExists('bonus_sheets')) {
+            $stmt = $conn->prepare("SELECT * FROM bonus_sheets WHERE employee_id = ? AND month >= ? AND month <= ? ORDER BY month DESC");
+            $stmt->bind_param("iss", $eid, $fromMonth, $toMonth);
+            $stmt->execute();
+            $res = $stmt->get_result();
+            while($r = $res->fetch_assoc()) {
+                $bonuses[$r['month']][] = $r;
+                $bonusList[] = $r;
             }
+            $stmt->close();
         }
-        $stmt->close();
-    }
 
-    // Bonus sheets
-    if (tableExists('bonus_sheets')) {
-        $stmt = $conn->prepare(
-            "SELECT bs.*, e.emp_name
-             FROM bonus_sheets bs
-             JOIN employees e ON bs.employee_id = e.id
-             WHERE bs.employee_id IN ($pl) AND bs.month >= ? AND bs.month <= ?
-             ORDER BY e.emp_name ASC, bs.month DESC"
-        );
-        $params = array_merge($empIds, [$fromMonth, $toMonth]);
-        $stmt->bind_param($ti . 'ss', ...$params);
+        // 3. Loans
+        $loan = ['debited' => 0, 'repaid' => 0, 'balance' => 0, 'list' => []];
+        if (tableExists('loan_transactions')) {
+            $stmt = $conn->prepare("SELECT SUM(CASE WHEN type='debit' THEN amount ELSE 0 END) as d, SUM(CASE WHEN type='credit' THEN amount ELSE 0 END) as r FROM loan_transactions WHERE employee_id = ?");
+            $stmt->bind_param("i", $eid);
+            $stmt->execute();
+            $lSum = $stmt->get_result()->fetch_assoc();
+            $loan['debited'] = (float)$lSum['d'];
+            $loan['repaid'] = (float)$lSum['r'];
+            $loan['balance'] = $loan['debited'] - $loan['repaid'];
+            $stmt->close();
+
+            $stmt = $conn->prepare("SELECT * FROM loan_transactions WHERE employee_id = ? ORDER BY transaction_date DESC LIMIT 10");
+            $stmt->bind_param("i", $eid);
+            $stmt->execute();
+            $res = $stmt->get_result();
+            while($r = $res->fetch_assoc()) $loan['list'][] = $r;
+            $stmt->close();
+        }
+
+        // 4. PF
+        $pf = ['salary' => 0, 'manual' => 0, 'balance' => 0, 'list' => []];
+        $stmt = $conn->prepare("SELECT SUM(pf_deduction) as s FROM salary_sheets WHERE employee_id = ? AND confirmed = 1");
+        $stmt->bind_param("i", $eid);
         $stmt->execute();
-        $res = $stmt->get_result();
-        while ($row = $res->fetch_assoc()) $bonusRows[] = $row;
+        $pf['salary'] = (float)$stmt->get_result()->fetch_assoc()['s'];
         $stmt->close();
+
+        if (tableExists('pf_transactions')) {
+            $stmt = $conn->prepare("SELECT * FROM pf_transactions WHERE employee_id = ? ORDER BY transaction_date DESC LIMIT 10");
+            $stmt->bind_param("i", $eid);
+            $stmt->execute();
+            $res = $stmt->get_result();
+            while($r = $res->fetch_assoc()) {
+                $pf['list'][] = $r;
+                $pf['manual'] += ($r['type'] === 'credit' ? (float)$r['amount'] : -(float)$r['amount']);
+            }
+            $stmt->close();
+        }
+        $pf['balance'] = $pf['salary'] + $pf['manual'];
+
+        // 5. History
+        $history = [];
+        if (tableExists('employment_history')) {
+            $stmt = $conn->prepare("SELECT * FROM employment_history WHERE employee_id = ? ORDER BY event_date DESC");
+            $stmt->bind_param("i", $eid);
+            $stmt->execute();
+            $res = $stmt->get_result();
+            while($r = $res->fetch_assoc()) $history[] = $r;
+            $stmt->close();
+        }
+
+        $allMonths = array_unique(array_merge(array_keys($salaries), array_keys($bonuses)));
+        rsort($allMonths);
+
+        $reportData[$eid] = [
+            'info' => $emp,
+            'months' => $allMonths,
+            'salaries' => $salaries,
+            'bonuses' => $bonuses,
+            'bonus_list' => $bonusList,
+            'loan' => $loan,
+            'pf' => $pf,
+            'history' => $history
+        ];
     }
 }
 
-// ── Group salary rows by employee for subtotals ───────────────────────────────
-$salaryByEmp = [];
-foreach ($salaryRows as $row) {
-    $salaryByEmp[$row['employee_id']][] = $row;
-}
-
-$singleEmployee = count($empIds) === 1;
-$showPerEmployee = $_GET['view_mode'] ?? ($singleEmployee ? 'combined' : 'separate');
-$viewMode = $_GET['view_mode'] ?? 'combined';
-
-// ── Print Section ─────────────────────────────────────────────────────────
-$showSalary = $printOption === 'full' || $printOption === 'salary';
-$showBonus = $printOption === 'full' || $printOption === 'bonus';
-
-if ($submitted && !empty($empIds) && !empty($salaryRows) && $showSalary):
+require_once __DIR__ . '/../includes/header.php';
 ?>
-<div class="print-section">
-    <?php if ($showPerEmployee === 'combined' || $singleEmployee): ?>
-    <div class="print-header">
-        <div style="display:flex; align-items:center; justify-content:center; gap:15px; margin-bottom:10px;">
-            <?php if (!empty($companyLogo)): ?>
-                <img src="../uploads/<?php echo htmlspecialchars($companyLogo); ?>" style="height:50px;width:auto;">
-            <?php endif; ?>
-            <div>
-                <h2 style="margin:0;font-size:20px;"><?php echo htmlspecialchars($companyName); ?></h2>
-                <?php if (!empty($companyTagline)): ?>
-                    <p style="margin:0;font-size:12px;"><?php echo htmlspecialchars($companyTagline); ?></p>
-                <?php endif; ?>
-            </div>
-        </div>
-        <p style="font-size:14px;font-weight:bold;margin:5px 0;">SALARY REPORT</p>
-        <p style="font-size:11px;"><?php echo date('M Y', strtotime($fromMonth . '-01')); ?> - <?php echo date('M Y', strtotime($toMonth . '-01')); ?></p>
-        <div style="font-size:10px;">
-            <?php if (!empty($companyAddress)) echo htmlspecialchars($companyAddress); ?>
-            <?php if (!empty($companyPhone)) echo ' | Phone: ' . htmlspecialchars($companyPhone); ?>
-            <?php if (!empty($companyEmail)) echo ' | Email: ' . htmlspecialchars($companyEmail); ?>
-        </div>
-    </div>
-    <table class="Excel-style">
-        <thead>
-            <tr>
-                <th>Employee</th>
-                <th>Month</th>
-                <th>Basic</th>
-                <th>Present</th>
-                <th>Gross</th>
-                <th>PF</th>
-                <th>Bonus</th>
-                <th>Net</th>
-                <th>Status</th>
-            </tr>
-        </thead>
-        <tbody>
-            <?php foreach ($salaryByEmp as $empId => $rows): ?>
-                <?php foreach ($rows as $row): ?>
-            <tr>
-                <td><?php echo htmlspecialchars($row['emp_name']); ?></td>
-                <td><?php echo date('M y', strtotime($row['month'].'-01')); ?></td>
-                <td><?php echo formatCurrency($row['basic_salary']); ?></td>
-                <td><?php echo $row['present_days']; ?>/<?php echo $row['working_days']; ?></td>
-                <td><?php echo formatCurrency($row['gross_salary']); ?></td>
-                <td><?php echo formatCurrency($row['pf_deduction']); ?></td>
-                <td><?php echo formatCurrency($row['bonus']); ?></td>
-                <td><?php echo formatCurrency($row['net_payable']); ?></td>
-                <td><?php echo $row['confirmed'] ? 'C' : 'P'; ?></td>
-            </tr>
-                <?php endforeach; ?>
-            <?php endforeach; ?>
-        </tbody>
-    </table>
-    <?php else: ?>
-        <?php foreach ($salaryByEmp as $empId => $rows): ?>
-            <?php $empName = $rows[0]['emp_name']; $dept = $rows[0]['department']; ?>
-    <div class="print-header">
-        <div style="display:flex; align-items:center; justify-content:center; gap:15px; margin-bottom:10px;">
-            <?php if (!empty($companyLogo)): ?>
-                <img src="../uploads/<?php echo htmlspecialchars($companyLogo); ?>" style="height:50px;width:auto;">
-            <?php endif; ?>
-            <div>
-                <h2 style="margin:0;font-size:20px;"><?php echo htmlspecialchars($companyName); ?></h2>
-                <?php if (!empty($companyTagline)): ?>
-                    <p style="margin:0;font-size:12px;"><?php echo htmlspecialchars($companyTagline); ?></p>
-                <?php endif; ?>
-            </div>
-        </div>
-        <p style="font-size:14px;font-weight:bold;margin:5px 0;">SALARY REPORT - <?php echo htmlspecialchars($empName); ?></p>
-        <p style="font-size:11px;"><?php echo date('M Y', strtotime($fromMonth . '-01')); ?> - <?php echo date('M Y', strtotime($toMonth . '-01')); ?></p>
-    </div>
-    <table class="Excel-style">
-        <thead>
-            <tr>
-                <th>Month</th>
-                <th>Basic</th>
-                <th>Present</th>
-                <th>Gross</th>
-                <th>PF</th>
-                <th>Bonus</th>
-                <th>Net</th>
-                <th>Status</th>
-            </tr>
-        </thead>
-        <tbody>
-            <?php foreach ($rows as $row): ?>
-            <tr>
-                <td><?php echo date('M y', strtotime($row['month'].'-01')); ?></td>
-                <td><?php echo formatCurrency($row['basic_salary']); ?></td>
-                <td><?php echo $row['present_days']; ?>/<?php echo $row['working_days']; ?></td>
-                <td><?php echo formatCurrency($row['gross_salary']); ?></td>
-                <td><?php echo formatCurrency($row['pf_deduction']); ?></td>
-                <td><?php echo formatCurrency($row['bonus']); ?></td>
-                <td><?php echo formatCurrency($row['net_payable']); ?></td>
-                <td><?php echo $row['confirmed'] ? 'C' : 'P'; ?></td>
-            </tr>
-            <?php endforeach; ?>
-        </tbody>
-    </table>
-    <div class="print-footer" style="margin-top:15px;font-size:9px;border-top:1px solid #333;padding-top:10px;page-break-after:always;">
-        <div style="display:flex;justify-content:space-between;">
-            <span><strong>Prepared By:</strong> ____________________</span>
-            <span><strong>Approved By:</strong> ____________________</span>
-        </div>
-    </div>
-        <?php endforeach; ?>
-    <?php endif; ?>
-</div>
-<?php endif; ?>
-
-<?php require_once __DIR__ . '/../includes/header.php'; ?>
 
 <style>
-.print-section { display: none; }
+/* Modern UI Styles */
+:root { --report-border: #e2e8f0; --report-bg: #f8fafc; --report-text: #1e293b; --report-accent: #3b82f6; }
+.report-card { background: white; border: 1px solid var(--report-border); border-radius: 12px; padding: 25px; margin-bottom: 30px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
+.section-title { font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; border-bottom: 2px solid var(--report-accent); display: inline-block; margin-bottom: 15px; padding-bottom: 2px; }
+.stat-box { background: var(--report-bg); border-radius: 8px; padding: 12px; border: 1px solid var(--report-border); }
+.stat-label { font-size: 0.7rem; color: #64748b; text-transform: uppercase; }
+.stat-value { font-size: 1rem; font-weight: 700; color: var(--report-text); }
+.stat-value.danger { color: #ef4444; }
+.stat-value.success { color: #10b981; }
+
+.modern-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+.modern-table th { background: #f1f5f9; color: #475569; font-weight: 600; text-transform: uppercase; font-size: 0.7rem; padding: 10px 8px; text-align: center; border-bottom: 2px solid var(--report-border); }
+.modern-table td { padding: 10px 8px; border-bottom: 1px solid var(--report-border); vertical-align: middle; }
+.modern-table tr:last-child td { border-bottom: none; }
+.modern-table .text-end { text-align: right; }
+.modern-table .text-center { text-align: center; }
+
+.history-badge { padding: 4px 8px; border-radius: 6px; font-size: 0.65rem; font-weight: 700; text-transform: uppercase; }
+.badge-joined { background: #dcfce7; color: #15803d; }
+.badge-resigned { background: #fef9c3; color: #854d0e; }
+.badge-terminated { background: #fee2e2; color: #b91c1c; }
+.badge-rejoined { background: #dbeafe; color: #1d4ed8; }
+
+.print-only { display: none; }
+
 @media print {
-    .sidebar, .navbar, .page-header, .filter-card, .btn, .alert { display: none !important; }
-    .main-content { margin-left: 0 !important; padding: 0 !important; }
-    .card { box-shadow: none !important; border: 1px solid #dee2e6 !important; break-inside: avoid; }
-    .card:hover { transform: none !important; }
-    .section-break { page-break-before: always; }
-    body { background: #fff !important; print-color-adjust: exact; }
-    .print-section { display: block !important; width: 100%; margin: 0; padding: 10px; }
-    .print-header { text-align: center; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 2px solid #333; }
-    .print-header h2 { margin: 0; font-size: 18px; }
-    .print-header p { margin: 5px 0; font-size: 12px; font-weight: bold; }
-    table { width: 100%; font-size: 9px; border-collapse: collapse; }
-    table th, table td { padding: 2px; border: 1px solid #333; }
-    table th { background: #ddd !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; font-weight: bold; }
-}
-.table th { white-space: nowrap; }
-.table.Excel-style {
-    border-collapse: collapse;
-    width: 100%;
-}
-.table.Excel-style th,
-.table.Excel-style td {
-    border: 1px solid #000 !important;
-    padding: 6px 8px;
-}
-.table.Excel-style th {
-    background: #f0f0f0 !important;
-    font-weight: bold;
-}
-.table.Excel-style tbody tr:nth-child(even) {
-    background: #f9f9f9;
-}
-.table.Excel-style tbody tr:hover {
-    background: #e8f4ff;
+    @page { size: A4 portrait; margin: 10mm; }
+    
+    /* Hide ALL UI elements including sidebar and headers from templates */
+    .sidebar, .navbar, .no-print, .page-header, .card.no-print, footer { 
+        display: none !important; 
+    }
+    
+    .print-only { display: block !important; }
+    
+    /* Reset main content layout for print */
+    .main-content { 
+        margin-left: 0 !important; 
+        padding: 0 !important; 
+        width: 100% !important; 
+    }
+    
+    body { 
+        background: white !important; 
+        font-family: 'Inter', 'Segoe UI', sans-serif; 
+        color: black; 
+    }
+    
+    .report-card { 
+        box-shadow: none !important; 
+        border: none !important; 
+        padding: 0 !important; 
+        margin: 0 !important; 
+        border-radius: 0 !important;
+        page-break-after: always;
+    }
+    
+    .report-card:last-child {
+        page-break-after: auto;
+    }
+
+    .section-title { 
+        border-bottom: 1px solid #000; 
+        color: black; 
+        margin-top: 10px; 
+        margin-bottom: 8px;
+    }
+    
+    .stat-box { 
+        border: 1px solid #ddd; 
+        background: #fff; 
+        padding: 8px;
+    }
+    
+    .modern-table th { 
+        background: #eee !important; 
+        border-bottom: 1px solid #000; 
+        -webkit-print-color-adjust: exact; 
+        font-size: 8px;
+        padding: 4px;
+    }
+    
+    .modern-table td { 
+        border-bottom: 1px solid #eee; 
+        font-size: 8px;
+        padding: 4px;
+    }
+    
+    .report-header-print { 
+        text-align: center; 
+        margin-bottom: 15px; 
+        border-bottom: 2px solid #000; 
+        padding-bottom: 8px; 
+    }
+
+    /* Prevent sections from breaking awkwardly */
+    .row, .table-responsive, .stat-box {
+        break-inside: avoid;
+    }
 }
 </style>
 
-<div class="page-header d-flex justify-content-between align-items-center">
+<div class="page-header d-flex justify-content-between align-items-center no-print">
     <div>
-        <h4 class="mb-1"><i class="bi bi-file-earmark-spreadsheet me-2"></i>Employee Report</h4>
-        <small class="text-muted">Full HR data for selected employees — salary, PF, loans, bonuses</small>
+        <h4 class="mb-1"><i class="bi bi-person-lines-fill me-2"></i>Service Reports</h4>
+        <small class="text-muted">Dynamic employee history & financial summary</small>
     </div>
-    <?php if ($submitted && !empty($empIds)): ?>
-    <div class="d-flex gap-2 align-items-center">
-        <select name="view_mode" class="form-select form-select-sm" style="width:140px" onchange="this.form.submit()">
-            <option value="combined" <?php echo $viewMode === 'combined' ? 'selected' : ''; ?>>Combined Table</option>
-            <option value="separate" <?php echo $viewMode === 'separate' ? 'selected' : ''; ?>>Separate Tables</option>
-        </select>
-        <select name="print_option" class="form-select form-select-sm" style="width:120px" onchange="this.form.submit()">
-            <option value="full" <?php echo $printOption === 'full' ? 'selected' : ''; ?>>Full Print</option>
-            <option value="salary" <?php echo $printOption === 'salary' ? 'selected' : ''; ?>>Salary Only</option>
-            <option value="bonus" <?php echo $printOption === 'bonus' ? 'selected' : ''; ?>>Bonus Only</option>
-        </select>
-        <button onclick="window.print()" class="btn btn-success">
-            <i class="bi bi-printer me-1"></i> Print
-        </button>
-    </div>
+    <?php if (!empty($reportData)): ?>
+        <button onclick="window.print()" class="btn btn-primary shadow-sm"><i class="bi bi-printer me-2"></i>Print All</button>
     <?php endif; ?>
 </div>
 
-<div class="card mb-4 filter-card">
-    <div class="card-header"><h5 class="mb-0"><i class="bi bi-search me-2"></i>Search Employees</h5></div>
+<!-- Filter Form -->
+<div class="card mb-4 no-print border-0 shadow-sm">
     <div class="card-body">
         <form method="GET" action="">
-            <div class="row g-3">
+            <div class="row g-3 align-items-end">
                 <div class="col-md-5">
-                    <label class="form-label">Employees <span class="text-danger">*</span></label>
-                    <input type="text" id="empSearch" class="form-control form-control-sm mb-1" placeholder="Type to filter list...">
-                    <select name="emp_ids[]" id="empSelect" class="form-select" multiple size="6" required>
+                    <label class="form-label small fw-bold">1. Select Employee(s)</label>
+                    <input type="text" id="empSearch" class="form-control form-control-sm mb-2" placeholder="Start typing name...">
+                    <select name="emp_ids[]" id="empSelect" class="form-select shadow-none" multiple style="height: 120px;" required>
                         <?php foreach ($allEmployees as $emp): ?>
-                            <option value="<?php echo $emp['id']; ?>"
-                                <?php echo in_array($emp['id'], $empIds) ? 'selected' : ''; ?>>
-                                <?php echo htmlspecialchars($emp['emp_name']); ?> — <?php echo htmlspecialchars($emp['department']); ?>
+                            <option value="<?php echo $emp['id']; ?>" <?php echo in_array($emp['id'], $empIds) ? 'selected' : ''; ?>>
+                                <?php echo htmlspecialchars($emp['emp_name']); ?> (<?php echo $emp['office_code']; ?>)
                             </option>
                         <?php endforeach; ?>
                     </select>
-                    <small class="text-muted">Hold Ctrl/Cmd to select multiple</small>
-                    <div class="mt-1 d-flex gap-2">
-                        <button type="button" class="btn btn-outline-secondary btn-sm" onclick="selectAll()">Select All</button>
-                        <button type="button" class="btn btn-outline-secondary btn-sm" onclick="clearAll()">Clear</button>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label small fw-bold">2. Date Range</label>
+                    <div class="input-group input-group-sm">
+                        <span class="input-group-text">From</span>
+                        <input type="month" name="from_month" class="form-control" value="<?php echo $fromMonth; ?>">
+                    </div>
+                    <div class="input-group input-group-sm mt-2">
+                        <span class="input-group-text">To</span>
+                        <input type="month" name="to_month" class="form-control" value="<?php echo $toMonth; ?>">
                     </div>
                 </div>
-                <div class="col-md-3">
-                    <label class="form-label">From Month</label>
-                    <input type="month" name="from_month" class="form-control" value="<?php echo htmlspecialchars($fromMonth); ?>">
-                </div>
-                <div class="col-md-3">
-                    <label class="form-label">To Month</label>
-                    <input type="month" name="to_month" class="form-control" value="<?php echo htmlspecialchars($toMonth); ?>">
-                </div>
-                <div class="col-md-1 d-flex align-items-end">
-                    <button type="submit" class="btn btn-primary w-100"><i class="bi bi-search"></i></button>
+                <div class="col-md-2">
+                    <button type="submit" class="btn btn-dark w-100 btn-sm py-2"><i class="bi bi-funnel me-2"></i>Generate</button>
                 </div>
             </div>
         </form>
     </div>
 </div>
 
-<?php if ($submitted && empty($empIds)): ?>
-    <div class="alert alert-warning"><i class="bi bi-exclamation-triangle me-2"></i>Please select at least one employee.</div>
-<?php endif; ?>
+<?php if ($submitted && !empty($reportData)): ?>
+    <?php foreach ($reportData as $eid => $data): ?>
+    <div class="report-card <?php echo count($reportData) > 1 ? 'page-break' : ''; ?>">
+        
+        <!-- Print Header -->
+        <div class="print-only report-header-print">
+            <?php if (!empty($companyLogo)): ?>
+                <img src="../uploads/<?php echo htmlspecialchars($companyLogo); ?>" style="height:40px; margin-bottom:5px;">
+            <?php endif; ?>
+            <h3 class="mb-0"><?php echo htmlspecialchars($companyName); ?></h3>
+            <p class="small mb-0"><?php echo htmlspecialchars($companyAddress); ?></p>
+            <h5 class="mt-3 text-decoration-underline">EMPLOYEE SERVICE & FINANCIAL REPORT</h5>
+        </div>
 
-<?php if ($submitted && !empty($empIds)): ?>
-
-    <?php if ($showSalary && !empty($salaryRows)): ?>
-        <?php if ($viewMode === 'combined' || count($empIds) === 1): ?>
-            <div class="card mb-4">
-                <div class="card-header d-flex justify-content-between align-items-center" style="background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); color: white;">
-                    <div>
-                        <h5 class="mb-0"><i class="bi bi-currency-dollar me-2"></i>Salary History
-                            <span class="badge bg-light text-dark ms-2"><?php echo count($salaryRows); ?> records</span>
-                        </h5>
-                        <small><?php echo date('M Y', strtotime($fromMonth . '-01')); ?> – <?php echo date('M Y', strtotime($toMonth . '-01')); ?></small>
-                    </div>
-                    <div class="text-end">
-                        <small><?php echo count($empIds); ?> employee(s)</small>
-                    </div>
-                </div>
-                <div class="table-responsive">
-                    <table class="table table-sm table-hover mb-0 Excel-style">
-                        <thead class="table-dark">
-                            <tr>
-                                <th>Employee</th>
-                                <th>Month</th>
-                                <th class="text-end">Basic</th>
-                                <th class="text-center">Present</th>
-                                <th class="text-end">Gross</th>
-                                <th class="text-end">PF</th>
-                                <th class="text-end">Bonus</th>
-                                <th class="text-end">Net</th>
-                                <th class="text-center">Status</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php
-                            $grandTotals = ['gross' => 0, 'pf' => 0, 'bonus' => 0, 'net' => 0];
-                            $rowNum = 0;
-                            foreach ($salaryByEmp as $empId => $rows):
-                                $empTotals = ['gross' => 0, 'pf' => 0, 'bonus' => 0, 'net' => 0];
-                                foreach ($rows as $row):
-                                    $rowNum++;
-                                    $empTotals['gross'] += (float)$row['gross_salary'];
-                                    $empTotals['pf']    += (float)$row['pf_deduction'];
-                                    $empTotals['bonus'] += (float)$row['bonus'];
-                                    $empTotals['net']   += (float)$row['net_payable'];
-                            ?>
-                                <tr>
-                                    <td>
-                                        <strong><?php echo htmlspecialchars($row['emp_name']); ?></strong>
-                                        <br><small class="text-muted"><?php echo htmlspecialchars($row['department']); ?></small>
-                                    </td>
-                                    <td><?php echo date('M Y', strtotime($row['month'] . '-01')); ?></td>
-                                    <td class="text-end"><?php echo formatCurrency($row['basic_salary']); ?></td>
-                                    <td class="text-center"><?php echo $row['present_days']; ?>/<?php echo $row['working_days']; ?></td>
-                                    <td class="text-end"><?php echo formatCurrency($row['gross_salary']); ?></td>
-                                    <td class="text-end text-danger"><?php echo formatCurrency($row['pf_deduction']); ?></td>
-                                    <td class="text-end text-success"><?php echo formatCurrency($row['bonus']); ?></td>
-                                    <td class="text-end fw-bold"><?php echo formatCurrency($row['net_payable']); ?></td>
-                                    <td class="text-center">
-                                        <span class="badge <?php echo $row['confirmed'] ? 'bg-success' : 'bg-secondary'; ?>">
-                                            <?php echo $row['confirmed'] ? 'C' : 'P'; ?>
-                                        </span>
-                                    </td>
-                                </tr>
-                            <?php endforeach; ?>
-                                <tr class="table-active fw-bold">
-                                    <td colspan="2"><?php echo htmlspecialchars($rows[0]['emp_name']); ?> (<?php echo count($rows); ?> mo)</td>
-                                    <td class="text-end"><?php echo formatCurrency(array_sum(array_column($rows, 'basic_salary'))); ?></td>
-                                    <td></td>
-                                    <td class="text-end"><?php echo formatCurrency($empTotals['gross']); ?></td>
-                                    <td class="text-end text-danger"><?php echo formatCurrency($empTotals['pf']); ?></td>
-                                    <td class="text-end text-success"><?php echo formatCurrency($empTotals['bonus']); ?></td>
-                                    <td class="text-end"><?php echo formatCurrency($empTotals['net']); ?></td>
-                                    <td></td>
-                                </tr>
-                            <?php
-                                $grandTotals['gross'] += $empTotals['gross'];
-                                $grandTotals['pf']    += $empTotals['pf'];
-                                $grandTotals['bonus'] += $empTotals['bonus'];
-                                $grandTotals['net']   += $empTotals['net'];
-                            endforeach; 
-                            ?>
-                        </tbody>
-                        <tfoot class="table-dark fw-bold">
-                            <tr>
-                                <td colspan="4">Grand Total (<?php echo $rowNum; ?> records)</td>
-                                <td class="text-end"><?php echo formatCurrency($grandTotals['gross']); ?></td>
-                                <td class="text-end"><?php echo formatCurrency($grandTotals['pf']); ?></td>
-                                <td class="text-end"><?php echo formatCurrency($grandTotals['bonus']); ?></td>
-                                <td class="text-end"><?php echo formatCurrency($grandTotals['net']); ?></td>
-                                <td></td>
-                            </tr>
-                        </tfoot>
-                    </table>
+        <!-- Basic Info Banner -->
+        <div class="d-flex justify-content-between align-items-center mb-4 pb-3 border-bottom">
+            <div>
+                <h4 class="mb-0 fw-bold"><?php echo htmlspecialchars($data['info']['emp_name']); ?></h4>
+                <div class="text-muted small">
+                    <span class="badge bg-dark me-2"><?php echo generateEmployeeID($data['info']['id'], $data['info']['office_code'], $data['info']['dept_code']); ?></span>
+                    <?php echo htmlspecialchars($data['info']['position']); ?> | <?php echo htmlspecialchars($data['info']['department']); ?>
                 </div>
             </div>
-        <?php else: ?>
-            <?php foreach ($salaryByEmp as $empId => $rows): ?>
-                <div class="card mb-4">
-                    <div class="card-header d-flex justify-content-between align-items-center" style="background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); color: white;">
-                        <div>
-                            <h5 class="mb-0"><i class="bi bi-person me-2"></i><?php echo htmlspecialchars($rows[0]['emp_name']); ?>
-                                <span class="badge bg-light text-dark ms-2"><?php echo count($rows); ?> records</span>
-                            </h5>
-                            <small><?php echo htmlspecialchars($rows[0]['department']); ?> | <?php echo htmlspecialchars($rows[0]['position']); ?></small>
-                        </div>
-                        <div class="text-end">
-                            <small><?php echo date('M Y', strtotime($fromMonth . '-01')); ?> – <?php echo date('M Y', strtotime($toMonth . '-01')); ?></small>
+            <div class="text-end no-print">
+                <div class="small text-muted">Reporting Period</div>
+                <div class="fw-bold"><?php echo date('M Y', strtotime($fromMonth.'-01')); ?> - <?php echo date('M Y', strtotime($toMonth.'-01')); ?></div>
+            </div>
+        </div>
+
+        <!-- 1. Salary & Attendance -->
+        <div class="section-title">Salary & Attendance History</div>
+        <div class="table-responsive mb-4">
+            <table class="modern-table">
+                <thead>
+                    <tr>
+                        <th>Month</th>
+                        <th>W/P/L</th>
+                        <th class="text-end">Basic</th>
+                        <th class="text-end">Gross</th>
+                        <th class="text-end">PF Ded</th>
+                        <th class="text-end">Bonus</th>
+                        <th class="text-end">Net Pay</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php 
+                    $totals = ['basic'=>0, 'gross'=>0, 'pf'=>0, 'bonus'=>0, 'net'=>0];
+                    foreach ($data['months'] as $m): 
+                        $s = $data['salaries'][$m] ?? null;
+                        $mBonus = array_sum(array_column($data['bonuses'][$m] ?? [], 'bonus_amount'));
+                        if ($s) {
+                            $totals['basic'] += $s['basic_salary'];
+                            $totals['gross'] += $s['gross_salary'];
+                            $totals['pf']    += $s['pf_deduction'];
+                            $totals['net']   += $s['net_payable'];
+                        }
+                        $totals['bonus'] += $mBonus;
+                    ?>
+                    <tr>
+                        <td class="text-center fw-bold"><?php echo date('M Y', strtotime($m.'-01')); ?></td>
+                        <td class="text-center"><?php echo $s ? "{$s['working_days']} / {$s['present_days']} / {$s['leave_days']}" : '-'; ?></td>
+                        <td class="text-end"><?php echo $s ? number_format($s['basic_salary'],0) : '-'; ?></td>
+                        <td class="text-end"><?php echo $s ? number_format($s['gross_salary'],0) : '-'; ?></td>
+                        <td class="text-end text-danger"><?php echo $s ? number_format($s['pf_deduction'],0) : '-'; ?></td>
+                        <td class="text-end text-success"><?php echo $mBonus > 0 ? number_format($mBonus,0) : '-'; ?></td>
+                        <td class="text-end fw-bold"><?php echo number_format(($s ? $s['net_payable'] : 0) + $mBonus, 0); ?></td>
+                    </tr>
+                    <?php endforeach; ?>
+                </tbody>
+                <tfoot class="fw-bold" style="border-top: 2px solid #000;">
+                    <tr>
+                        <td colspan="2">PERIOD TOTALS</td>
+                        <td class="text-end"><?php echo number_format($totals['basic'],0); ?></td>
+                        <td class="text-end"><?php echo number_format($totals['gross'],0); ?></td>
+                        <td class="text-end"><?php echo number_format($totals['pf'],0); ?></td>
+                        <td class="text-end"><?php echo number_format($totals['bonus'],0); ?></td>
+                        <td class="text-end"><?php echo number_format($totals['net'] + $totals['bonus'], 0); ?></td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+
+        <!-- 2. Financial Breakdowns -->
+        <div class="row g-3 mb-4">
+            <div class="col-md-6">
+                <div class="section-title">Loan Summary</div>
+                <div class="row g-2 mb-2">
+                    <div class="col-4">
+                        <div class="stat-box">
+                            <div class="stat-label">Total Given</div>
+                            <div class="stat-value"><?php echo number_format($data['loan']['debited'],0); ?></div>
                         </div>
                     </div>
-                    <div class="table-responsive">
-                        <table class="table table-sm table-hover mb-0 Excel-style">
-                            <thead class="table-dark">
-                                <tr>
-                                    <th>Month</th>
-                                    <th class="text-end">Basic</th>
-                                    <th class="text-center">Present</th>
-                                    <th class="text-end">Gross</th>
-                                    <th class="text-end">PF</th>
-                                    <th class="text-end">Bonus</th>
-                                    <th class="text-end">Net</th>
-                                    <th class="text-center">Status</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php
-                                $empTotals = ['gross' => 0, 'pf' => 0, 'bonus' => 0, 'net' => 0];
-                                foreach ($rows as $row):
-                                    $empTotals['gross'] += (float)$row['gross_salary'];
-                                    $empTotals['pf']    += (float)$row['pf_deduction'];
-                                    $empTotals['bonus'] += (float)$row['bonus'];
-                                    $empTotals['net']   += (float)$row['net_payable'];
-                                ?>
-                                    <tr>
-                                        <td><?php echo date('M Y', strtotime($row['month'] . '-01')); ?></td>
-                                        <td class="text-end"><?php echo formatCurrency($row['basic_salary']); ?></td>
-                                        <td class="text-center"><?php echo $row['present_days']; ?>/<?php echo $row['working_days']; ?></td>
-                                        <td class="text-end"><?php echo formatCurrency($row['gross_salary']); ?></td>
-                                        <td class="text-end text-danger"><?php echo formatCurrency($row['pf_deduction']); ?></td>
-                                        <td class="text-end text-success"><?php echo formatCurrency($row['bonus']); ?></td>
-                                        <td class="text-end fw-bold"><?php echo formatCurrency($row['net_payable']); ?></td>
-                                        <td class="text-center">
-                                            <span class="badge <?php echo $row['confirmed'] ? 'bg-success' : 'bg-secondary'; ?>">
-                                                <?php echo $row['confirmed'] ? 'Confirmed' : 'Pending'; ?>
-                                            </span>
-                                        </td>
-                                    </tr>
-                                <?php endforeach; ?>
-                            </tbody>
-                            <tfoot class="table-dark fw-bold">
-                                <tr>
-                                    <td>Total (<?php echo count($rows); ?> mo)</td>
-                                    <td class="text-end"><?php echo formatCurrency(array_sum(array_column($rows, 'basic_salary'))); ?></td>
-                                    <td></td>
-                                    <td class="text-end"><?php echo formatCurrency($empTotals['gross']); ?></td>
-                                    <td class="text-end"><?php echo formatCurrency($empTotals['pf']); ?></td>
-                                    <td class="text-end"><?php echo formatCurrency($empTotals['bonus']); ?></td>
-                                    <td class="text-end"><?php echo formatCurrency($empTotals['net']); ?></td>
-                                    <td></td>
-                                </tr>
-                            </tfoot>
-                        </table>
+                    <div class="col-4">
+                        <div class="stat-box">
+                            <div class="stat-label">Total Repaid</div>
+                            <div class="stat-value success"><?php echo number_format($data['loan']['repaid'],0); ?></div>
+                        </div>
+                    </div>
+                    <div class="col-4">
+                        <div class="stat-box">
+                            <div class="stat-label">Outstanding</div>
+                            <div class="stat-value danger"><?php echo number_format($data['loan']['balance'],0); ?></div>
+                        </div>
                     </div>
                 </div>
-            <?php endforeach; ?>
-        <?php endif; ?>
-    <?php endif; ?>
-
-    <div class="card mb-4">
-        <div class="card-header">
-            <h5 class="mb-0"><i class="bi bi-cash-stack me-2"></i>Loan Summary</h5>
-        </div>
-        <div class="table-responsive">
-            <table class="table table-sm mb-0 Excel-style">
-                <thead class="table-light">
-                    <tr>
-                        <th>Employee</th>
-                        <th class="text-end">Total Debited (Loan Given)</th>
-                        <th class="text-end">Total Repaid</th>
-                        <th class="text-end">Outstanding Balance</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php
-                    $loanGrandDebit = $loanGrandRepaid = $loanGrandBal = 0;
-                    foreach ($empIds as $eid):
-                        $emp = null;
-                        foreach ($allEmployees as $e) { if ($e['id'] == $eid) { $emp = $e; break; } }
-                        $loan = $loanSummary[$eid] ?? ['total_debited' => 0, 'total_repaid' => 0];
-                        $bal  = (float)$loan['total_debited'] - (float)$loan['total_repaid'];
-                        $loanGrandDebit  += (float)$loan['total_debited'];
-                        $loanGrandRepaid += (float)$loan['total_repaid'];
-                        $loanGrandBal    += $bal;
-                    ?>
-                    <tr>
-                        <td><strong><?php echo htmlspecialchars($emp ? $emp['emp_name'] : "Employee #$eid"); ?></strong>
-                            <?php if ($emp): ?><br><small class="text-muted"><?php echo htmlspecialchars($emp['department']); ?></small><?php endif; ?>
-                        </td>
-                        <td class="text-end"><?php echo number_format((float)$loan['total_debited'], 2); ?></td>
-                        <td class="text-end text-success"><?php echo number_format((float)$loan['total_repaid'], 2); ?></td>
-                        <td class="text-end fw-bold <?php echo $bal > 0 ? 'text-danger' : 'text-success'; ?>">
-                            <?php echo number_format($bal, 2); ?>
-                        </td>
-                    </tr>
-                    <?php endforeach; ?>
-                </tbody>
-                <tfoot class="table-light fw-bold">
-                    <tr>
-                        <td>Total</td>
-                        <td class="text-end"><?php echo number_format($loanGrandDebit, 2); ?></td>
-                        <td class="text-end"><?php echo number_format($loanGrandRepaid, 2); ?></td>
-                        <td class="text-end <?php echo $loanGrandBal > 0 ? 'text-danger' : 'text-success'; ?>">
-                            <?php echo number_format($loanGrandBal, 2); ?>
-                        </td>
-                    </tr>
-                </tfoot>
-            </table>
-        </div>
-    </div>
-
-    <div class="card mb-4">
-        <div class="card-header">
-            <h5 class="mb-0"><i class="bi bi-piggy-bank me-2"></i>PF Summary</h5>
-        </div>
-        <div class="table-responsive">
-            <table class="table table-sm mb-0 Excel-style">
-                <thead class="table-light">
-                    <tr>
-                        <th>Employee</th>
-                        <th class="text-end">From Salary (Confirmed)</th>
-                        <th class="text-end">Manual Credits</th>
-                        <th class="text-end">Manual Debits</th>
-                        <th class="text-end">Net PF Balance</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php
-                    $pfGrandSal = $pfGrandCr = $pfGrandDr = $pfGrandNet = 0;
-                    foreach ($empIds as $eid):
-                        $emp = null;
-                        foreach ($allEmployees as $e) { if ($e['id'] == $eid) { $emp = $e; break; } }
-                        $pf       = $pfSummary[$eid] ?? ['pf_from_salary' => 0, 'manual_credit' => 0, 'manual_debit' => 0];
-                        $fromSal  = (float)($pf['pf_from_salary'] ?? 0);
-                        $manCr    = (float)($pf['manual_credit'] ?? 0);
-                        $manDr    = (float)($pf['manual_debit']  ?? 0);
-                        $netPF    = $fromSal + $manCr - $manDr;
-                        $pfGrandSal += $fromSal; $pfGrandCr += $manCr; $pfGrandDr += $manDr; $pfGrandNet += $netPF;
-                    ?>
-                    <tr>
-                        <td><strong><?php echo htmlspecialchars($emp ? $emp['emp_name'] : "Employee #$eid"); ?></strong>
-                            <?php if ($emp): ?><br><small class="text-muted"><?php echo htmlspecialchars($emp['department']); ?></small><?php endif; ?>
-                        </td>
-                        <td class="text-end"><?php echo number_format($fromSal, 2); ?></td>
-                        <td class="text-end text-success"><?php echo number_format($manCr, 2); ?></td>
-                        <td class="text-end text-danger"><?php echo number_format($manDr, 2); ?></td>
-                        <td class="text-end fw-bold"><?php echo number_format($netPF, 2); ?></td>
-                    </tr>
-                    <?php endforeach; ?>
-                </tbody>
-                <tfoot class="table-light fw-bold">
-                    <tr>
-                        <td>Total</td>
-                        <td class="text-end"><?php echo number_format($pfGrandSal, 2); ?></td>
-                        <td class="text-end"><?php echo number_format($pfGrandCr, 2); ?></td>
-                        <td class="text-end"><?php echo number_format($pfGrandDr, 2); ?></td>
-                        <td class="text-end"><?php echo number_format($pfGrandNet, 2); ?></td>
-                    </tr>
-                </tfoot>
-            </table>
-        </div>
-    </div>
-
-    <div class="card mb-4">
-        <div class="card-header">
-            <h5 class="mb-0"><i class="bi bi-gift me-2"></i>Bonus History
-                <span class="badge bg-secondary ms-2"><?php echo count($bonusRows); ?> records</span>
-            </h5>
-        </div>
-        <div class="table-responsive">
-            <table class="table table-sm mb-0 Excel-style">
-                <thead class="table-light">
-                    <tr>
-                        <th>Employee</th>
-                        <th>Month</th>
-                        <th>Type</th>
-                        <th class="text-end">Basic</th>
-                        <th class="text-end">Bonus %</th>
-                        <th class="text-end">Bonus Amount</th>
-                        <th>Description</th>
-                        <th class="text-center">Status</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php if (empty($bonusRows)): ?>
-                        <tr><td colspan="8" class="text-center text-muted py-3">No bonus records found</td></tr>
-                    <?php else: ?>
-                        <?php
-                        $bonusGrandTotal = 0;
-                        foreach ($bonusRows as $b):
-                            $bonusGrandTotal += (float)$b['bonus_amount'];
-                        ?>
+                <?php if(!empty($data['loan']['list'])): ?>
+                <table class="modern-table" style="font-size: 0.7rem;">
+                    <thead><tr><th>Date</th><th>Type</th><th>Amt</th><th>Note</th></tr></thead>
+                    <tbody>
+                        <?php foreach(array_slice($data['loan']['list'], 0, 5) as $l): ?>
                         <tr>
-                            <td><strong><?php echo htmlspecialchars($b['emp_name']); ?></strong></td>
-                            <td><?php echo date('M Y', strtotime($b['month'] . '-01')); ?></td>
-                            <td><span class="badge bg-info text-dark"><?php echo htmlspecialchars($b['bonus_type']); ?></span></td>
-                            <td class="text-end"><?php echo number_format($b['basic_salary'], 2); ?></td>
-                            <td class="text-end"><?php echo number_format($b['bonus_pct'], 2); ?>%</td>
-                            <td class="text-end fw-bold"><?php echo number_format($b['bonus_amount'], 2); ?></td>
-                            <td><?php echo htmlspecialchars($b['description'] ?? ''); ?></td>
-                            <td class="text-center">
-                                <span class="badge <?php echo $b['confirmed'] ? 'bg-success' : 'bg-secondary'; ?>">
-                                    <?php echo $b['confirmed'] ? 'Confirmed' : 'Pending'; ?>
-                                </span>
-                            </td>
+                            <td><?php echo date('d M y', strtotime($l['transaction_date'])); ?></td>
+                            <td><?php echo $l['type']; ?></td>
+                            <td class="text-end"><?php echo number_format($l['amount'], 0); ?></td>
+                            <td><small class="text-muted"><?php echo htmlspecialchars($l['description']); ?></small></td>
                         </tr>
                         <?php endforeach; ?>
-                    <?php endif; ?>
-                </tbody>
-                <?php if (!empty($bonusRows)): ?>
-                <tfoot class="table-light fw-bold">
-                    <tr>
-                        <td colspan="5" class="text-end">Total Bonus:</td>
-                        <td class="text-end"><?php echo number_format($bonusGrandTotal, 2); ?></td>
-                        <td colspan="2"></td>
-                    </tr>
-                </tfoot>
+                    </tbody>
+                </table>
                 <?php endif; ?>
-            </table>
+            </div>
+            
+            <div class="col-md-6">
+                <div class="section-title">Provident Fund Summary</div>
+                <div class="row g-2 mb-2">
+                    <div class="col-4">
+                        <div class="stat-box">
+                            <div class="stat-label">From Salary</div>
+                            <div class="stat-value"><?php echo number_format($data['pf']['salary'],0); ?></div>
+                        </div>
+                    </div>
+                    <div class="col-4">
+                        <div class="stat-box">
+                            <div class="stat-label">Manual/Other</div>
+                            <div class="stat-value"><?php echo number_format($data['pf']['manual'],0); ?></div>
+                        </div>
+                    </div>
+                    <div class="col-4">
+                        <div class="stat-box">
+                            <div class="stat-label">Net Balance</div>
+                            <div class="stat-value success"><?php echo number_format($data['pf']['balance'],0); ?></div>
+                        </div>
+                    </div>
+                </div>
+                <?php if(!empty($data['pf']['list'])): ?>
+                <table class="modern-table" style="font-size: 0.7rem;">
+                    <thead><tr><th>Date</th><th>Type</th><th>Amt</th><th>Note</th></tr></thead>
+                    <tbody>
+                        <?php foreach(array_slice($data['pf']['list'], 0, 5) as $p): ?>
+                        <tr>
+                            <td><?php echo date('d M y', strtotime($p['transaction_date'])); ?></td>
+                            <td><?php echo $p['type']; ?></td>
+                            <td class="text-end"><?php echo number_format($p['amount'], 0); ?></td>
+                            <td><small class="text-muted"><?php echo htmlspecialchars($p['description']); ?></small></td>
+                        </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+                <?php endif; ?>
+            </div>
         </div>
-    </div>
 
+        <!-- 3. Service History & Bonuses -->
+        <div class="row g-3">
+            <div class="col-md-5">
+                <div class="section-title">Service History</div>
+                <?php if (!empty($data['history'])): ?>
+                <table class="modern-table">
+                    <thead><tr><th>Date</th><th>Event</th><th>Note</th></tr></thead>
+                    <tbody>
+                        <?php foreach ($data['history'] as $h): ?>
+                        <tr>
+                            <td><?php echo date('d M y', strtotime($h['event_date'])); ?></td>
+                            <td><span class="history-badge badge-<?php echo strtolower($h['event_type']); ?>"><?php echo $h['event_type']; ?></span></td>
+                            <td><small class="text-muted"><?php echo htmlspecialchars($h['remarks']); ?></small></td>
+                        </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+                <?php else: ?>
+                    <p class="text-muted small">No history records found.</p>
+                <?php endif; ?>
+            </div>
+            
+            <div class="col-md-7">
+                <div class="section-title">Recent Bonuses</div>
+                <?php if (!empty($data['bonus_list'])): ?>
+                <table class="modern-table">
+                    <thead><tr><th>Month</th><th>Type</th><th>Amt</th><th>Description</th></tr></thead>
+                    <tbody>
+                        <?php foreach (array_slice($data['bonus_list'],0,5) as $b): ?>
+                        <tr>
+                            <td><?php echo date('M Y', strtotime($b['month'].'-01')); ?></td>
+                            <td class="fw-bold"><?php echo htmlspecialchars($b['bonus_type']); ?></td>
+                            <td class="text-end"><?php echo number_format($b['bonus_amount'], 0); ?></td>
+                            <td><small class="text-muted"><?php echo htmlspecialchars($b['description'] ?? ''); ?></small></td>
+                        </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+                <?php else: ?>
+                    <p class="text-muted small">No bonus records in this period.</p>
+                <?php endif; ?>
+            </div>
+        </div>
+
+        <!-- Signatures -->
+        <div class="print-only mt-5 pt-4">
+            <div class="d-flex justify-content-between text-center">
+                <div style="width: 150px; border-top: 1px solid #000; font-size: 10px; padding-top: 5px;">Report Prepared By</div>
+                <div style="width: 150px; border-top: 1px solid #000; font-size: 10px; padding-top: 5px;">Accounts In-charge</div>
+                <div style="width: 150px; border-top: 1px solid #000; font-size: 10px; padding-top: 5px;">Approved By (MD)</div>
+            </div>
+        </div>
+
+    </div>
+    <?php endforeach; ?>
 <?php else: ?>
-
-    <div class="card">
-        <div class="card-body text-center text-muted py-5">
-            <i class="bi bi-file-earmark-spreadsheet fs-1 d-block mb-3"></i>
-            <h5>Select employees and date range</h5>
-            <p>Choose one or more employees above to generate a full HR report</p>
+    <div class="card border-0 shadow-sm">
+        <div class="card-body text-center py-5">
+            <i class="bi bi-file-earmark-person fs-1 text-muted opacity-25 d-block mb-3"></i>
+            <h5 class="text-muted">Select an employee and date range to see the report</h5>
         </div>
     </div>
-
 <?php endif; ?>
 
 <script>
@@ -718,16 +519,6 @@ document.getElementById('empSearch').addEventListener('input', function() {
         opt.style.display = opt.text.toLowerCase().includes(q) ? '' : 'none';
     });
 });
-
-function selectAll() {
-    Array.from(document.getElementById('empSelect').options).forEach(opt => {
-        if (opt.style.display !== 'none') opt.selected = true;
-    });
-}
-
-function clearAll() {
-    Array.from(document.getElementById('empSelect').options).forEach(opt => opt.selected = false);
-}
 </script>
 
 <?php require_once __DIR__ . '/../includes/footer.php'; ?>
