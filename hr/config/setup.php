@@ -58,6 +58,7 @@ function runSetup($reset = false) {
     try {
         if ($reset) {
             $steps[] = ['status' => 'info', 'message' => 'Dropping existing tables...'];
+            $conn->query("SET FOREIGN_KEY_CHECKS = 0");
             $conn->query("DROP TABLE IF EXISTS bonus_sheets");
             $conn->query("DROP TABLE IF EXISTS bonuses");
             $conn->query("DROP TABLE IF EXISTS loan_transactions");
@@ -66,6 +67,8 @@ function runSetup($reset = false) {
             $conn->query("DROP TABLE IF EXISTS employees");
             $conn->query("DROP TABLE IF EXISTS settings");
             $conn->query("DROP TABLE IF EXISTS admin");
+            $conn->query("DROP TABLE IF EXISTS activity_logs");
+            $conn->query("SET FOREIGN_KEY_CHECKS = 1");
             $steps[] = ['status' => 'success', 'message' => 'Existing tables dropped'];
         }
         
@@ -95,6 +98,8 @@ function runSetup($reset = false) {
             unit VARCHAR(100),
             position VARCHAR(100) NOT NULL,
             emp_name VARCHAR(150) NOT NULL,
+            official_phone VARCHAR(20),
+            personal_phone VARCHAR(20),
             nid VARCHAR(50) UNIQUE,
             dob DATE,
             blood_group VARCHAR(5),

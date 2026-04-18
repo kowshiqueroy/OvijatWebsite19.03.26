@@ -634,50 +634,74 @@ function formatCurrency($amount) {
     return $symbol . ' ' . number_format($amount, 2);
 }
 
-function getEmployeeCount($status = null) {
+function getEmployeeCount($status = null, $office = null) {
     $conn = getDBConnection();
+    $sql = "SELECT COUNT(*) as cnt FROM employees";
+    $params = [];
+    $types = "";
 
-    if ($status) {
-        $stmt = $conn->prepare("SELECT COUNT(*) as cnt FROM employees WHERE status = ?");
-        $stmt->bind_param("s", $status);
+    if ($status || $office) {
+        $conditions = [];
+        if ($status) {
+            $conditions[] = "status = ?";
+            $params[] = $status;
+            $types .= "s";
+        }
+        if ($office) {
+            $conditions[] = "office_name = ?";
+            $params[] = $office;
+            $types .= "s";
+        }
+        $sql .= " WHERE " . implode(" AND ", $conditions);
+    }
+
+    if ($params) {
+        $stmt = $conn->prepare($sql);
+        $stmt->bind_param($types, ...$params);
         $stmt->execute();
         $result = $stmt->get_result();
     } else {
-        $result = $conn->query("SELECT COUNT(*) as cnt FROM employees");
+        $result = $conn->query($sql);
     }
 
     $row = $result->fetch_assoc();
     return $row['cnt'];
 }
 
-function getSalaryStats($month = null) {
+function getSalaryStats($month = null, $office = null) {
     $conn = getDBConnection();
 
-    if ($month) {
-        $stmt = $conn->prepare("
-            SELECT
-                COUNT(*) as total_employees,
-                SUM(net_payable) as total_payable,
-                SUM(gross_salary) as total_gross,
-                SUM(pf_deduction) as total_pf
-            FROM salary_sheets
-            WHERE month = ?
-        ");
+    if ($office) {
+        $sql = "SELECT COUNT(DISTINCT ss.employee_id) as total_employees, SUM(ss.net_payable) as total_payable, SUM(ss.gross_salary) as total_gross, SUM(ss.pf_deduction) as total_pf FROM salary_sheets ss JOIN employees e ON ss.employee_id = e.id WHERE e.office_name = ?";
+        $params = [$office];
+        $types = "s";
+        
+        if ($month) {
+            $sql .= " AND ss.month = ?";
+            $params[] = $month;
+            $types .= "s";
+        }
+        
+        $stmt = $conn->prepare($sql);
+        $stmt->bind_param($types, ...$params);
+        $stmt->execute();
+        $result = $stmt->get_result();
+    } elseif ($month) {
+        $stmt = $conn->prepare("SELECT COUNT(*) as total_employees, SUM(net_payable) as total_payable, SUM(gross_salary) as total_gross, SUM(pf_deduction) as total_pf FROM salary_sheets WHERE month = ?");
         $stmt->bind_param("s", $month);
         $stmt->execute();
         $result = $stmt->get_result();
     } else {
-        $result = $conn->query("
-            SELECT
-                COUNT(*) as total_employees,
-                SUM(net_payable) as total_payable,
-                SUM(gross_salary) as total_gross,
-                SUM(pf_deduction) as total_pf
-            FROM salary_sheets
-        ");
+        $result = $conn->query("SELECT COUNT(*) as total_employees, SUM(net_payable) as total_payable, SUM(gross_salary) as total_gross, SUM(pf_deduction) as total_pf FROM salary_sheets");
     }
 
-    return $result->fetch_assoc();
+    $row = $result->fetch_assoc();
+    return [
+        'total_employees' => $row['total_employees'] ?? 0,
+        'total_payable' => $row['total_payable'] ?? 0,
+        'total_gross' => $row['total_gross'] ?? 0,
+        'total_pf' => $row['total_pf'] ?? 0
+    ];
 }
 
 function getSetting($key, $default = '') {

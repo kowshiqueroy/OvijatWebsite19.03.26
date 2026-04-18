@@ -23,6 +23,8 @@ $employee = [
     'unit' => '',
     'position' => '',
     'emp_name' => '',
+    'official_phone' => '',
+    'personal_phone' => '',
     'nid' => '',
     'dob' => '',
     'blood_group' => '',
@@ -97,15 +99,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $unit = sanitize($_POST['unit'] ?? '');
     $position = sanitize($_POST['position'] ?? '');
     $emp_name = sanitize($_POST['emp_name'] ?? '');
-    $nid = !empty($_POST['nid']) ? sanitize($_POST['nid']) : null;
-    $dob = !empty($_POST['dob']) ? $_POST['dob'] : null;
+    $official_phone = sanitize($_POST['official_phone'] ?? '');
+    $personal_phone = sanitize($_POST['personal_phone'] ?? '');
+    $nid = !empty($_POST['nid']) ? sanitize($_POST['nid']) : '';
+    $dob = !empty($_POST['dob']) ? $_POST['dob'] : '';
     $blood_group = sanitize($_POST['blood_group'] ?? '');
     $sex = sanitize($_POST['sex'] ?? '');
     $bank_name = sanitize($_POST['bank_name'] ?? '');
     $bank_account = sanitize($_POST['bank_account'] ?? '');
     $basic_salary = (float)($_POST['basic_salary'] ?? 0);
     $pf_percentage = (float)($_POST['pf_percentage'] ?? 5);
-    $joining_date = !empty($_POST['joining_date']) ? $_POST['joining_date'] : null;
+    $joining_date = !empty($_POST['joining_date']) ? $_POST['joining_date'] : '';
     $status = sanitize($_POST['status'] ?? 'Active');
     
     $currentPhoto = $employee['photo'] ?? '';
@@ -117,21 +121,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $photo = $currentPhoto;
     }
     
-    if ($isEdit) {
+if ($isEdit) {
         $sql = "UPDATE employees SET 
             office_name = ?, office_code = ?, department = ?, dept_code = ?,
-            unit = ?, position = ?, emp_name = ?, nid = ?, dob = ?,
+            unit = ?, position = ?, emp_name = ?, official_phone = ?,
+            personal_phone = ?, nid = ?, dob = ?,
             blood_group = ?, sex = ?, bank_name = ?, bank_account = ?,
             basic_salary = ?, pf_percentage = ?,
             joining_date = ?, status = ?, photo = ?
             WHERE id = ?";
         
         $empId = (int)$employee['id'];
-        $stmt = $conn->prepare($sql);
         
-        $stmt->bind_param("sssssssssssssddsssi", 
+$stmt = $conn->prepare($sql);
+        $stmt->bind_param("sssssssssssssssssssddi", 
             $office_name, $office_code, $department, $dept_code,
-            $unit, $position, $emp_name, $nid, $dob,
+            $unit, $position, $emp_name, $official_phone,
+            $personal_phone, $nid, $dob,
             $blood_group, $sex, $bank_name, $bank_account,
             $basic_salary, $pf_percentage,
             $joining_date, $status, $photo, $empId
@@ -139,16 +145,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } else {
         $sql = "INSERT INTO employees (
             office_name, office_code, department, dept_code,
-            unit, position, emp_name, nid, dob,
-            blood_group, sex, bank_name, bank_account,
+            unit, position, emp_name, official_phone, personal_phone,
+            nid, dob, blood_group, sex, bank_name, bank_account,
             basic_salary, pf_percentage,
             joining_date, status, photo
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
         
         $stmt = $conn->prepare($sql);
-        $stmt->bind_param("sssssssssssssddsss", 
+        $stmt->bind_param("sssssssssssssssssssdds",
             $office_name, $office_code, $department, $dept_code,
-            $unit, $position, $emp_name, $nid, $dob,
+            $unit, $position, $emp_name, $official_phone,
+            $personal_phone, $nid, $dob,
             $blood_group, $sex, $bank_name, $bank_account,
             $basic_salary, $pf_percentage,
             $joining_date, $status, $photo
@@ -313,6 +320,18 @@ require_once __DIR__ . '/../includes/header.php';
                     <label class="form-label">Full Name *</label>
                     <input type="text" name="emp_name" class="form-control" 
                            value="<?php echo htmlspecialchars($employee['emp_name']); ?>" required>
+                </div>
+                
+                <div class="col-md-4">
+                    <label class="form-label">Official Phone</label>
+                    <input type="tel" name="official_phone" class="form-control" 
+                           value="<?php echo htmlspecialchars($employee['official_phone'] ?? ''); ?>">
+                </div>
+                
+                <div class="col-md-4">
+                    <label class="form-label">Personal Phone</label>
+                    <input type="tel" name="personal_phone" class="form-control" 
+                           value="<?php echo htmlspecialchars($employee['personal_phone'] ?? ''); ?>">
                 </div>
                 
                 <div class="col-md-4">

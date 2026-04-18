@@ -6,9 +6,10 @@
 ?>
 
 <?php if (defined('IS_ADMIN_PAGE') && IS_ADMIN_PAGE): ?>
-        <footer class="text-center text-muted py-4 mt-4">
+        <?php // Footer disabled - uncomment to enable?>
+        <!-- <footer class="text-center text-muted py-4 mt-4">
             <small>&copy; <?php echo date('Y'); ?> HR Management System. All rights reserved.</small>
-        </footer>
+        </footer> -->
     </div>
 <?php endif; ?>
 

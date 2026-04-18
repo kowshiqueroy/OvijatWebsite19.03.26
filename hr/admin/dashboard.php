@@ -1,9 +1,4 @@
 <?php
-/**
- * Admin Dashboard
- * Core PHP Employee Management System
- */
-
 define('IS_ADMIN_PAGE', true);
 session_start();
 require_once __DIR__ . '/../config/db.php';
@@ -14,25 +9,43 @@ requireLogin();
 $pageTitle = 'Dashboard';
 $currentPage = 'dashboard';
 
-$totalEmployees = getEmployeeCount();
-$activeEmployees = getEmployeeCount('Active');
-$inactiveEmployees = getEmployeeCount('Inactive');
-$salaryStats = getSalaryStats();
-$recentEmployees = getAllEmployees();
-$recentEmployees = array_slice($recentEmployees, 0, 5);
+$selectedOffice = $_GET['office'] ?? '';
+$allOffices = getOfficeList();
+
+$totalEmployees = getEmployeeCount(null, $selectedOffice ?: null);
+$activeEmployees = getEmployeeCount('Active', $selectedOffice ?: null);
+$inactiveEmployees = getEmployeeCount('Inactive', $selectedOffice ?: null);
+
 $monthList = getSalaryMonths();
 $currentMonth = date('Y-m');
-$currentSalaryStats = getSalaryStats($currentMonth);
+$currentSalaryStats = getSalaryStats($currentMonth, $selectedOffice ?: null);
+$allTimeSalaryStats = getSalaryStats(null, $selectedOffice ?: null);
+
+$recentFilter = [];
+if ($selectedOffice) {
+    $recentFilter['office_name'] = $selectedOffice;
+}
+$recentEmployees = getAllEmployees($recentFilter, 5);
 
 require_once __DIR__ . '/../includes/header.php';
 ?>
 
-<div class="page-header d-flex justify-content-between align-items-center">
+<div class="page-header d-flex justify-content-between align-items-center flex-wrap gap-3">
     <div>
         <h4 class="mb-1">Dashboard</h4>
         <small class="text-muted">Welcome back, <?php echo htmlspecialchars($_SESSION['admin_username']); ?>!</small>
     </div>
-    <div>
+    <div class="d-flex align-items-center gap-3">
+        <form method="GET" class="d-flex gap-2">
+            <select name="office" class="form-select" onchange="this.form.submit()" style="width: 200px;">
+                <option value="">All Offices</option>
+                <?php foreach ($allOffices as $office): ?>
+                    <option value="<?php echo htmlspecialchars($office['office_name']); ?>" <?php echo ($selectedOffice === $office['office_name']) ? 'selected' : ''; ?>>
+                        <?php echo htmlspecialchars($office['office_name']); ?>
+                    </option>
+                <?php endforeach; ?>
+            </select>
+        </form>
         <a href="employee-add.php" class="btn btn-primary">
             <i class="bi bi-plus-lg me-1"></i> Add Employee
         </a>
@@ -109,8 +122,8 @@ require_once __DIR__ . '/../includes/header.php';
     <div class="col-lg-8">
         <div class="card">
             <div class="card-header d-flex justify-content-between align-items-center">
-                <h5 class="mb-0"><i class="bi bi-people me-2"></i>Recent Employees</h5>
-                <a href="employees.php" class="btn btn-sm btn-outline-primary">View All</a>
+                <h5 class="mb-0"><i class="bi bi-people me-2"></i>Recent Employees<?php echo $selectedOffice ? ' - ' . htmlspecialchars($selectedOffice) : ''; ?></h5>
+                <a href="employees.php<?php echo $selectedOffice ? '?office=' . urlencode($selectedOffice) : ''; ?>" class="btn btn-sm btn-outline-primary">View All</a>
             </div>
             <div class="card-body p-0">
                 <div class="table-responsive">
@@ -158,22 +171,22 @@ require_once __DIR__ . '/../includes/header.php';
     <div class="col-lg-4">
         <div class="card">
             <div class="card-header">
-                <h5 class="mb-0"><i class="bi bi-cash-stack me-2"></i>Quick Stats</h5>
+                <h5 class="mb-0"><i class="bi bi-cash-stack me-2"></i>Quick Stats<?php echo $selectedOffice ? ' - ' . htmlspecialchars($selectedOffice) : ''; ?></h5>
             </div>
             <div class="card-body">
                 <div class="mb-3">
                     <small class="text-muted">Total Payroll (All Time)</small>
-                    <h4 class="mb-0"><?php echo formatCurrency($salaryStats['total_payable'] ?? 0); ?></h4>
+                    <h4 class="mb-0"><?php echo formatCurrency($allTimeSalaryStats['total_payable'] ?? 0); ?></h4>
                 </div>
                 <hr>
                 <div class="mb-3">
                     <small class="text-muted">Total PF Collected</small>
-                    <h4 class="mb-0 text-success"><?php echo formatCurrency($salaryStats['total_pf'] ?? 0); ?></h4>
+                    <h4 class="mb-0 text-success"><?php echo formatCurrency($allTimeSalaryStats['total_pf'] ?? 0); ?></h4>
                 </div>
                 <hr>
                 <div class="mb-3">
                     <small class="text-muted">Employees Processed</small>
-                    <h4 class="mb-0"><?php echo $salaryStats['total_employees'] ?? 0; ?></h4>
+                    <h4 class="mb-0"><?php echo $allTimeSalaryStats['total_employees'] ?? 0; ?></h4>
                 </div>
             </div>
         </div>

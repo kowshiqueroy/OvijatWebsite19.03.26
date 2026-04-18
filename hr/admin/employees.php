@@ -205,6 +205,8 @@ require_once __DIR__ . '/../includes/header.php';
                         <th>Office</th>
                         <th>Department</th>
                         <th>Position</th>
+                        <th>Official Phone</th>
+                        <th>Personal Phone</th>
                         <th>Basic Salary</th>
                         <th>PF Balance</th>
                         <th>Loan Balance</th>
@@ -243,6 +245,8 @@ require_once __DIR__ . '/../includes/header.php';
                                 <td><?php echo htmlspecialchars($emp['office_name']); ?></td>
                                 <td><?php echo htmlspecialchars($emp['department']); ?></td>
                                 <td><?php echo htmlspecialchars($emp['position']); ?></td>
+                                <td><?php echo htmlspecialchars($emp['official_phone'] ?? '-'); ?></td>
+                                <td><?php echo htmlspecialchars($emp['personal_phone'] ?? '-'); ?></td>
                                 <td><?php echo formatCurrency($emp['basic_salary']); ?></td>
                                 <?php $bal = $balances[$emp['id']] ?? ['pf_balance' => 0, 'loan_balance' => 0]; ?>
                                 <td class="text-success"><?php echo number_format($bal['pf_balance'], 2); ?></td>

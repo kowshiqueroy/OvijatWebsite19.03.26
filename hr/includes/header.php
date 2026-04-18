@@ -12,13 +12,15 @@
     <title><?php echo isset($pageTitle) ? $pageTitle . ' - HR System' : 'HR System'; ?></title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <style>
-        :root {
+    :root {
             --sidebar-width: 260px;
         }
-        body {
+        html, body {
             min-height: 100vh;
             background-color: #f5f7fa;
+            overflow-x: hidden;
         }
         .sidebar {
             width: var(--sidebar-width);
@@ -66,6 +68,12 @@
             margin-left: var(--sidebar-width);
             padding: 20px;
             transition: all 0.3s;
+            overflow-x: hidden;
+        }
+        @media (max-width: 768px) {
+            .main-content {
+                overflow-x: visible;
+            }
         }
         .card {
             border: none;
@@ -86,7 +94,11 @@
         .stat-card.danger { border-left-color: #dc3545; }
         .table-responsive {
             border-radius: 8px;
-            overflow: hidden;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+        .table-responsive table {
+            min-width: 600px;
         }
         .btn {
             border-radius: 8px;
@@ -132,22 +144,60 @@
         .badge-inactive { background: #f8d7da; color: #842029; }
         .badge-resigned { background: #fff3cd; color: #664d03; }
         .badge-terminated { background: #f8d7da; color: #842029; }
+        .site-footer {
+            display: none !important;
+        }
+        @media print {
+            .site-footer {
+                display: none !important;
+            }
+        }
         @media (max-width: 768px) {
+            html, body {
+                overflow-x: hidden;
+            }
+            .table-responsive {
+                overflow-x: scroll !important;
+                -webkit-overflow-scrolling: touch;
+            }
             .sidebar {
-                margin-left: -100%;
+                display: none;
+                position: fixed !important;
+                top: 0 !important;
+                left: 0 !important;
+                width: 260px;
+                height: 100vh;
+                z-index: 1050;
             }
             .sidebar.show {
-                margin-left: 0;
+                display: block !important;
+            }
+            .sidebar .nav-link {
+                pointer-events: auto;
+                cursor: pointer;
             }
             .main-content {
                 margin-left: 0;
+            }
+            .sidebar-overlay {
+                display: none;
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background: rgba(0,0,0,0.5);
+                z-index: 1040;
+            }
+            .sidebar-overlay.show {
+                display: block;
             }
         }
     </style>
 </head>
 <body>
     <?php if (defined('IS_ADMIN_PAGE') && IS_ADMIN_PAGE): ?>
-    <nav class="sidebar d-none d-md-block">
+    <nav class="sidebar d-none d-md-block" id="sidebarNav">
         <div class="p-4 text-center border-bottom border-secondary">
             <h5 class="text-white mb-0">
                 <i class="bi bi-building"></i> HR System
@@ -237,14 +287,45 @@
             </li>
         </ul>
     </nav>
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
     
     <div class="main-content">
         <nav class="navbar navbar-expand-lg navbar-light bg-white d-md-none mb-4 rounded">
             <div class="container-fluid">
-                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#sidebarNav">
+                <button class="navbar-toggler" type="button">
                     <span class="navbar-toggler-icon"></span>
                 </button>
                 <span class="navbar-brand mb-0 h5">HR System</span>
             </div>
         </nav>
+        <script>
+            document.addEventListener('DOMContentLoaded', function() {
+                var sidebar = document.getElementById('sidebarNav');
+                var overlay = document.getElementById('sidebarOverlay');
+                var toggler = document.querySelector('.navbar-toggler');
+                
+                if (toggler && sidebar) {
+                    toggler.addEventListener('click', function() {
+                        sidebar.classList.toggle('show');
+                        overlay.classList.toggle('show');
+                    });
+                    
+                    if (overlay) {
+                        overlay.addEventListener('click', function() {
+                            sidebar.classList.remove('show');
+                            overlay.classList.remove('show');
+                        });
+                    }
+                    
+                    document.querySelectorAll('#sidebarNav .nav-link').forEach(function(link) {
+                        link.addEventListener('click', function() {
+                            if (window.innerWidth < 768) {
+                                sidebar.classList.remove('show');
+                                overlay.classList.remove('show');
+                            }
+                        });
+                    });
+                }
+            });
+        </script>
     <?php endif; ?>
