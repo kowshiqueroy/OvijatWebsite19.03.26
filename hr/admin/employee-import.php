@@ -140,6 +140,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
                         
                         $photo = null;
+                        if (!empty($data['photo'])) {
+                            $checkP = $conn->prepare("SELECT id FROM employees WHERE photo = ?");
+                            $pName = basename($data['photo']);
+                            $checkP->bind_param("s", $pName);
+                            $checkP->execute();
+                            if ($checkP->get_result()->num_rows === 0 && file_exists(__DIR__ . '/../uploads/photos/' . $pName)) {
+                                $photo = $pName;
+                            }
+                            $checkP->close();
+                        }
+                        
                         $stmt = $conn->prepare($sql);
                         $stmt->bind_param("sssssssssssssddsss", 
                             $data['office_name'], $data['office_code'], $data['department'], $data['dept_code'],

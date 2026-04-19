@@ -18,11 +18,12 @@ function getDBConnection() {
         try {
             $conn = new mysqli(DB_HOST, DB_USER, DB_PASS, DB_NAME);
             if ($conn->connect_error) {
-                throw new Exception("Connection failed: " . $conn->connect_error);
+                // If database doesn't exist, we don't die here so setup.php can handle it
+                return null;
             }
             $conn->set_charset("utf8mb4");
         } catch (Exception $e) {
-            die("Database connection error: " . $e->getMessage());
+            return null;
         }
     }
     return $conn;

@@ -105,7 +105,26 @@ if (isset($_POST['add_demo'])) {
         $pf = $pfPercentages[array_rand($pfPercentages)];
         $unit = (string)(rand(1, 3) . rand(1, 9) . rand(0, 9));
         $status = 'Active';
+        
+        // Find an unconnected photo
         $photo = '';
+        $uploadDir = __DIR__ . '/../uploads/photos/';
+        $allPhotos = glob($uploadDir . '*.*');
+        if (!empty($allPhotos)) {
+            shuffle($allPhotos);
+            foreach ($allPhotos as $p) {
+                $pName = basename($p);
+                $pCheck = $conn->prepare("SELECT id FROM employees WHERE photo = ?");
+                $pCheck->bind_param("s", $pName);
+                $pCheck->execute();
+                if ($pCheck->get_result()->num_rows === 0) {
+                    $photo = $pName;
+                    $pCheck->close();
+                    break;
+                }
+                $pCheck->close();
+            }
+        }
         
         $stmt = $conn->prepare($sql);
         $stmt->bind_param("sssssssssssssddsss", 

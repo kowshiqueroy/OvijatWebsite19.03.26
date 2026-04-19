@@ -20,10 +20,12 @@ $filter = [
     'unit' => $_GET['unit'] ?? '',
     'position' => $_GET['position'] ?? '',
     'status' => $_GET['status'] ?? '',
+    'bank_name' => $_GET['bank_name'] ?? '',
+    'blood_group' => $_GET['blood_group'] ?? '',
     'search' => $_GET['search'] ?? ''
 ];
 
-$filterSubmitted = isset($_GET['office']);
+$filterSubmitted = isset($_GET['office']) || isset($_GET['search']);
 
 $perPage = 50;
 $pageNum = max(1, (int)($_GET['page'] ?? 1));
@@ -75,6 +77,8 @@ $offices = getOfficeList();
 $departments = getDepartmentList($filter['office']);
 $units = getUnitList($filter['department']);
 $positions = getPositionList($filter['department']);
+$banks = getBankList();
+$bloodGroups = getBloodGroupList();
 
 if (isset($_GET['msg'])) {
     $messages = [
@@ -113,12 +117,13 @@ require_once __DIR__ . '/../includes/header.php';
 
 <div class="card mb-4">
     <div class="card-header">
-        <h5 class="mb-0"><i class="bi bi-funnel me-2"></i>Filters</h5>
+        <h5 class="mb-0"><i class="bi bi-funnel me-2"></i>Filter Employees</h5>
     </div>
     <div class="card-body">
-        <form method="GET" action="" class="row g-3">
-            <div class="col-md-4 col-lg-2">
-                <select name="office" class="form-select filter-select" data-target="department">
+        <form method="GET" action="" class="row g-2">
+            <div class="col-md-2">
+                <label class="form-label small mb-1">Office</label>
+                <select name="office" class="form-select form-select-sm filter-select" data-target="department">
                     <option value="">All Offices</option>
                     <?php foreach ($offices as $off): ?>
                         <option value="<?php echo htmlspecialchars($off['office_name']); ?>" 
@@ -128,8 +133,9 @@ require_once __DIR__ . '/../includes/header.php';
                     <?php endforeach; ?>
                 </select>
             </div>
-            <div class="col-md-4 col-lg-2">
-                <select name="department" class="form-select filter-select">
+            <div class="col-md-2">
+                <label class="form-label small mb-1">Department</label>
+                <select name="department" class="form-select form-select-sm filter-select">
                     <option value="">All Departments</option>
                     <?php foreach ($departments as $dept): ?>
                         <option value="<?php echo htmlspecialchars($dept['department']); ?>"
@@ -139,19 +145,21 @@ require_once __DIR__ . '/../includes/header.php';
                     <?php endforeach; ?>
                 </select>
             </div>
-            <div class="col-md-4 col-lg-2">
-                <select name="unit" class="form-select filter-select">
-                    <option value="">All Units</option>
-                    <?php foreach ($units as $unit): ?>
-                        <option value="<?php echo htmlspecialchars($unit); ?>"
-                            <?php echo $filter['unit'] === $unit ? 'selected' : ''; ?>>
-                            <?php echo htmlspecialchars($unit); ?>
+            <div class="col-md-1">
+                <label class="form-label small mb-1">Unit</label>
+                <select name="unit" class="form-select form-select-sm filter-select">
+                    <option value="">All</option>
+                    <?php foreach ($units as $u): ?>
+                        <option value="<?php echo htmlspecialchars($u); ?>"
+                            <?php echo $filter['unit'] === $u ? 'selected' : ''; ?>>
+                            <?php echo htmlspecialchars($u); ?>
                         </option>
                     <?php endforeach; ?>
                 </select>
             </div>
-            <div class="col-md-4 col-lg-2">
-                <select name="position" class="form-select filter-select">
+            <div class="col-md-2">
+                <label class="form-label small mb-1">Position</label>
+                <select name="position" class="form-select form-select-sm filter-select">
                     <option value="">All Positions</option>
                     <?php foreach ($positions as $pos): ?>
                         <option value="<?php echo htmlspecialchars($pos); ?>"
@@ -161,22 +169,47 @@ require_once __DIR__ . '/../includes/header.php';
                     <?php endforeach; ?>
                 </select>
             </div>
-            <div class="col-md-4 col-lg-2">
-                <select name="status" class="form-select">
-                    <option value="">All Status</option>
-                    <option value="Active" <?php echo $filter['status'] === 'Active' ? 'selected' : ''; ?>>Active</option>
-                    <option value="Inactive" <?php echo $filter['status'] === 'Inactive' ? 'selected' : ''; ?>>Inactive</option>
-                    <option value="Resigned" <?php echo $filter['status'] === 'Resigned' ? 'selected' : ''; ?>>Resigned</option>
-                    <option value="Terminated" <?php echo $filter['status'] === 'Terminated' ? 'selected' : ''; ?>>Terminated</option>
+            <div class="col-md-1">
+                <label class="form-label small mb-1">Status</label>
+                <select name="status" class="form-select form-select-sm">
+                    <option value="">All</option>
+                    <?php $statuses = ['Active', 'Inactive', 'Resigned', 'Terminated']; ?>
+                    <?php foreach ($statuses as $s): ?>
+                        <option value="<?php echo $s; ?>" <?php echo $filter['status'] === $s ? 'selected' : ''; ?>>
+                            <?php echo $s; ?>
+                        </option>
+                    <?php endforeach; ?>
                 </select>
             </div>
-            <div class="col-12">
-                <button type="submit" class="btn btn-primary">
-                    <i class="bi bi-search me-1"></i> Filter
-                </button>
-                <a href="employees.php" class="btn btn-outline-secondary">
-                    <i class="bi bi-x-circle me-1"></i> Clear
-                </a>
+            <div class="col-md-1">
+                <label class="form-label small mb-1">Bank</label>
+                <select name="bank_name" class="form-select form-select-sm">
+                    <option value="">All</option>
+                    <?php foreach ($banks as $b): ?>
+                        <option value="<?php echo htmlspecialchars($b); ?>" <?php echo $filter['bank_name'] === $b ? 'selected' : ''; ?>>
+                            <?php echo htmlspecialchars($b); ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <div class="col-md-1">
+                <label class="form-label small mb-1">Blood</label>
+                <select name="blood_group" class="form-select form-select-sm">
+                    <option value="">All</option>
+                    <?php foreach ($bloodGroups as $bg): ?>
+                        <option value="<?php echo htmlspecialchars($bg); ?>" <?php echo $filter['blood_group'] === $bg ? 'selected' : ''; ?>>
+                            <?php echo htmlspecialchars($bg); ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small mb-1">Search Name/ID</label>
+                <div class="input-group input-group-sm">
+                    <input type="text" name="search" class="form-control" placeholder="Search..." value="<?php echo htmlspecialchars($filter['search']); ?>">
+                    <button type="submit" class="btn btn-primary"><i class="bi bi-search"></i></button>
+                    <a href="employees.php" class="btn btn-outline-secondary" title="Clear All"><i class="bi bi-x-circle"></i></a>
+                </div>
             </div>
         </form>
     </div>

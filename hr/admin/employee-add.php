@@ -115,13 +115,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $currentPhoto = $employee['photo'] ?? '';
     $selectedPhoto = sanitize($_POST['photo_select'] ?? '');
     
+    $photo = $currentPhoto;
     if (!empty($selectedPhoto)) {
-        $photo = $selectedPhoto;
-    } else {
-        $photo = $currentPhoto;
+        // Validate if photo is already used by someone else
+        $checkPhotoStmt = $conn->prepare("SELECT id FROM employees WHERE photo = ? AND id != ?");
+        $empIdForCheck = $isEdit ? (int)$employee['id'] : 0;
+        $checkPhotoStmt->bind_param("si", $selectedPhoto, $empIdForCheck);
+        $checkPhotoStmt->execute();
+        if ($checkPhotoStmt->get_result()->num_rows > 0) {
+            $message = "Error: This photo is already assigned to another employee.";
+            $messageType = "danger";
+            $photo = $currentPhoto; // Revert to current
+        } else {
+            $photo = $selectedPhoto;
+        }
+        $checkPhotoStmt->close();
     }
     
-if ($isEdit) {
+    if ($messageType !== 'danger') {
+        if ($isEdit) {
         $sql = "UPDATE employees SET 
             office_name = ?, office_code = ?, department = ?, dept_code = ?,
             unit = ?, position = ?, emp_name = ?, official_phone = ?,
@@ -134,32 +146,32 @@ if ($isEdit) {
         $empId = (int)$employee['id'];
         
 $stmt = $conn->prepare($sql);
-        $stmt->bind_param("sssssssssssssssssssddi", 
-            $office_name, $office_code, $department, $dept_code,
-            $unit, $position, $emp_name, $official_phone,
-            $personal_phone, $nid, $dob,
-            $blood_group, $sex, $bank_name, $bank_account,
-            $basic_salary, $pf_percentage,
-            $joining_date, $status, $photo, $empId
-        );
-    } else {
-        $sql = "INSERT INTO employees (
-            office_name, office_code, department, dept_code,
-            unit, position, emp_name, official_phone, personal_phone,
-            nid, dob, blood_group, sex, bank_name, bank_account,
-            basic_salary, pf_percentage,
-            joining_date, status, photo
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
-        
-        $stmt = $conn->prepare($sql);
-        $stmt->bind_param("sssssssssssssssssssdds",
-            $office_name, $office_code, $department, $dept_code,
-            $unit, $position, $emp_name, $official_phone,
-            $personal_phone, $nid, $dob,
-            $blood_group, $sex, $bank_name, $bank_account,
-            $basic_salary, $pf_percentage,
-            $joining_date, $status, $photo
-        );
+$stmt->bind_param("sssssssssssssssddsssi", 
+    $office_name, $office_code, $department, $dept_code,
+    $unit, $position, $emp_name, $official_phone,
+    $personal_phone, $nid, $dob,
+    $blood_group, $sex, $bank_name, $bank_account,
+    $basic_salary, $pf_percentage,
+    $joining_date, $status, $photo, $empId
+);
+} else {
+$sql = "INSERT INTO employees (
+    office_name, office_code, department, dept_code,
+    unit, position, emp_name, official_phone, personal_phone,
+    nid, dob, blood_group, sex, bank_name, bank_account,
+    basic_salary, pf_percentage,
+    joining_date, status, photo
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+
+$stmt = $conn->prepare($sql);
+$stmt->bind_param("sssssssssssssssddsss",
+    $office_name, $office_code, $department, $dept_code,
+    $unit, $position, $emp_name, $official_phone,
+    $personal_phone, $nid, $dob,
+    $blood_group, $sex, $bank_name, $bank_account,
+    $basic_salary, $pf_percentage,
+    $joining_date, $status, $photo
+);
     }
     
     if ($stmt->execute()) {
@@ -196,7 +208,10 @@ $stmt = $conn->prepare($sql);
         $message = 'Error: ' . $conn->error;
         $messageType = 'danger';
     }
-    $stmt->close();
+    if (isset($stmt) && $stmt) {
+        $stmt->close();
+    }
+}
 }
 
 if (isset($_GET['msg']) && $_GET['msg'] === 'added') {
@@ -360,14 +375,18 @@ require_once __DIR__ . '/../includes/header.php';
                         foreach ($existingPhotos as $photo):
                             $photoName = basename($photo);
                             $empInfo = $photoEmployeeMap[$photoName] ?? null;
-                            $displayLabel = $photoName;
-                            if ($empInfo) {
-                                $empID = generateEmployeeID($empInfo['id'], $empInfo['office_code'], $empInfo['dept_code']);
-                                $displayLabel = $empID . ' - ' . $empInfo['emp_name'];
+                            
+                            $isCurrentPhoto = ($employee['photo'] ?? '') === $photoName;
+                            
+                            // Skip if connected to another employee
+                            if ($empInfo && !$isCurrentPhoto) {
+                                continue;
                             }
+                            
+                            $displayLabel = $photoName;
                         ?>
                             <option value="<?php echo htmlspecialchars($photoName); ?>"
-                                <?php echo ($employee['photo'] ?? '') === $photoName ? 'selected' : ''; ?>
+                                <?php echo $isCurrentPhoto ? 'selected' : ''; ?>
                                 data-preview="<?php echo htmlspecialchars($photoName); ?>">
                                 <?php echo htmlspecialchars($displayLabel); ?>
                             </option>

@@ -171,6 +171,26 @@ function getPositionList($department = '') {
     return $positions;
 }
 
+function getBankList() {
+    $conn = getDBConnection();
+    $result = $conn->query("SELECT DISTINCT bank_name FROM employees WHERE bank_name IS NOT NULL AND bank_name != '' ORDER BY bank_name");
+    $banks = [];
+    while ($row = $result->fetch_assoc()) {
+        $banks[] = $row['bank_name'];
+    }
+    return $banks;
+}
+
+function getBloodGroupList() {
+    $conn = getDBConnection();
+    $result = $conn->query("SELECT DISTINCT blood_group FROM employees WHERE blood_group IS NOT NULL AND blood_group != '' ORDER BY blood_group");
+    $groups = [];
+    while ($row = $result->fetch_assoc()) {
+        $groups[] = $row['blood_group'];
+    }
+    return $groups;
+}
+
 function buildEmployeeFilterSQL($filter, &$params, &$types) {
     $sql = '';
     if (!empty($filter['office'])) {
@@ -196,6 +216,16 @@ function buildEmployeeFilterSQL($filter, &$params, &$types) {
     if (!empty($filter['status'])) {
         $sql .= " AND status = ?";
         $params[] = $filter['status'];
+        $types .= "s";
+    }
+    if (!empty($filter['bank_name'])) {
+        $sql .= " AND bank_name = ?";
+        $params[] = $filter['bank_name'];
+        $types .= "s";
+    }
+    if (!empty($filter['blood_group'])) {
+        $sql .= " AND blood_group = ?";
+        $params[] = $filter['blood_group'];
         $types .= "s";
     }
     if (!empty($filter['search'])) {

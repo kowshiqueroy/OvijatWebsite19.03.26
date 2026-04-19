@@ -270,11 +270,6 @@
                     <i class="bi bi-camera"></i> Photos
                 </a>
             </li>
-            <li class="nav-item">
-                <a class="nav-link <?php echo ($currentPage ?? '') === 'demo' ? 'active' : ''; ?>" href="demo.php">
-                    <i class="bi bi-magic"></i> Demo Data
-                </a>
-            </li>
             <li class="nav-item mt-4">
                 <a class="nav-link" href="../public/profile.php" target="_blank">
                     <i class="bi bi-person-badge"></i> Public Profile
