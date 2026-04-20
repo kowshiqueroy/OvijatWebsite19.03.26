@@ -1,8 +1,17 @@
+# Disable Directory Listing
+Options -Indexes
+
+# Protect sensitive files
+<FilesMatch "^\.|\.(md|sql|log|sh|bak)$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
 # Enable RewriteEngine
 RewriteEngine On
 
 # Rewrite /pf/8 to /public/profile.php?id=8
-RewriteRule ^pf/(\d+)$ public/profile.php?id=$1 [L,QSA]
+RewriteRule ^pf/([A-Za-z0-9-]+)$ public/profile.php?id=$1 [L,QSA]
 
 # Rewrite /pf to public profile without id
 RewriteRule ^pf/?$ public/profile.php [L,QSA]

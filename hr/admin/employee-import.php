@@ -85,9 +85,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                         $data = [];
                         foreach ($headerMap as $field => $index) {
                             if ($index !== -1 && isset($row[$index])) {
-                                $data[$field] = trim($row[$index]);
+                                $val = trim($row[$index]);
+                                if ($val === '') {
+                                    $data[$field] = in_array($field, ['nid', 'dob', 'joining_date', 'photo', 'blood_group', 'sex', 'bank_name', 'bank_account', 'unit']) ? null : '';
+                                } else {
+                                    $data[$field] = $val;
+                                }
                             } else {
-                                $data[$field] = '';
+                                $data[$field] = in_array($field, ['nid', 'dob', 'joining_date', 'photo', 'blood_group', 'sex', 'bank_name', 'bank_account', 'unit']) ? null : '';
                             }
                         }
                         

@@ -134,9 +134,9 @@ $pageTitle = $employee ? $employee['emp_name'] : 'Employee Profile';
 
     <div class="header-actions">
         <?php if ($isLoggedIn): ?>
-            <a href="../admin/logout.php" class="btn btn-outline-light btn-sm"><i class="bi bi-box-arrow-right me-1"></i> Logout</a>
+            <a href="../admin/dashboard.php" class="btn btn-outline-light btn-sm"><i class="bi bi-speedometer2 me-1"></i> Go to Admin</a>
         <?php else: ?>
-            <a href="../admin/login.php" class="btn btn-light btn-sm"><i class="bi bi-box-arrow-right me-1"></i> Login</a>
+            <a href="../admin/login.php" class="btn btn-light btn-sm"><i class="bi bi-box-arrow-in-right me-1"></i> Login</a>
         <?php endif; ?>
     </div>
 

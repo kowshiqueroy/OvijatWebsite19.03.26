@@ -25,9 +25,10 @@ $filter = [
     'search' => $_GET['search'] ?? ''
 ];
 
-$filterSubmitted = isset($_GET['office']) || isset($_GET['search']);
+$isFiltered = !empty(array_filter($filter));
+$filterSubmitted = true; 
 
-$perPage = 50;
+$perPage = $isFiltered ? 50 : 5;
 $pageNum = max(1, (int)($_GET['page'] ?? 1));
 $totalEmployees = 0;
 $totalPages = 1;
@@ -97,7 +98,7 @@ require_once __DIR__ . '/../includes/header.php';
         <small class="text-muted">Manage employee records</small>
     </div>
     <div class="d-flex gap-2">
-        <?php if ($filterSubmitted && !empty($employees)): ?>
+        <?php if (!empty($employees)): ?>
         <a href="employees.php?<?php echo http_build_query(array_filter($filter)); ?>&export=csv" class="btn btn-outline-success">
             <i class="bi bi-download me-1"></i> Download CSV
         </a>
@@ -215,17 +216,11 @@ require_once __DIR__ . '/../includes/header.php';
     </div>
 </div>
 
-<?php if (!$filterSubmitted): ?>
-<div class="card">
-    <div class="card-body text-center py-5 text-muted">
-        <i class="bi bi-funnel fs-1 d-block mb-3"></i>
-        <p class="mb-0">Select filters above and click <strong>Filter</strong> to view employees.</p>
-    </div>
-</div>
-<?php else: ?>
 <div class="card">
     <div class="card-header d-flex justify-content-between align-items-center">
-        <h5 class="mb-0">Employee Records (<?php echo $totalEmployees; ?>)</h5>
+        <h5 class="mb-0">
+            <?php echo !$isFiltered ? 'Latest 5 ' : ''; ?>Employee Records (<?php echo $totalEmployees; ?>)
+        </h5>
     </div>
     <div class="card-body p-0">
         <div class="table-responsive">
@@ -325,6 +320,5 @@ require_once __DIR__ . '/../includes/header.php';
     </div>
     <?php endif; ?>
 </div>
-<?php endif; ?>
 
 <?php require_once __DIR__ . '/../includes/footer.php'; ?>

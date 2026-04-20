@@ -236,6 +236,11 @@
                 </a>
             </li>
             <li class="nav-item">
+                <a class="nav-link <?php echo ($currentPage ?? '') === 'pf-report' ? 'active' : ''; ?>" href="pf-report.php">
+                    <i class="bi bi-file-earmark-bar-graph"></i> PF Balance Report
+                </a>
+            </li>
+            <li class="nav-item">
                 <a class="nav-link <?php echo ($currentPage ?? '') === 'bonuses' ? 'active' : ''; ?>" href="bonuses.php">
                     <i class="bi bi-gift"></i> Bonuses
                 </a>
@@ -243,6 +248,11 @@
             <li class="nav-item">
                 <a class="nav-link <?php echo ($currentPage ?? '') === 'employee-report' ? 'active' : ''; ?>" href="employee-report.php">
                     <i class="bi bi-file-earmark-spreadsheet"></i> Employee Report
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link <?php echo ($currentPage ?? '') === 'financial-report' ? 'active' : ''; ?>" href="financial-report.php">
+                    <i class="bi bi-file-earmark-medical"></i> Financial Report
                 </a>
             </li>
             <li class="nav-item">

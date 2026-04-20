@@ -230,13 +230,14 @@ function buildEmployeeFilterSQL($filter, &$params, &$types) {
     }
     if (!empty($filter['search'])) {
         $search = $filter['search'];
-        $sql .= " AND (emp_name LIKE ? OR office_code LIKE ? OR dept_code LIKE ? OR id LIKE ?)";
+        $sql .= " AND (emp_name LIKE ? OR office_code LIKE ? OR dept_code LIKE ? OR id LIKE ? OR nid LIKE ?)";
         $searchParam = "%{$search}%";
         $params[] = $searchParam;
         $params[] = $searchParam;
         $params[] = $searchParam;
         $params[] = $searchParam;
-        $types .= "ssss";
+        $params[] = $searchParam;
+        $types .= "sssss";
     }
     return $sql;
 }

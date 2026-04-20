@@ -101,15 +101,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $emp_name = sanitize($_POST['emp_name'] ?? '');
     $official_phone = sanitize($_POST['official_phone'] ?? '');
     $personal_phone = sanitize($_POST['personal_phone'] ?? '');
-    $nid = !empty($_POST['nid']) ? sanitize($_POST['nid']) : '';
-    $dob = !empty($_POST['dob']) ? $_POST['dob'] : '';
+    $nid = !empty($_POST['nid']) ? sanitize($_POST['nid']) : null;
+    $dob = !empty($_POST['dob']) ? $_POST['dob'] : null;
     $blood_group = sanitize($_POST['blood_group'] ?? '');
     $sex = sanitize($_POST['sex'] ?? '');
     $bank_name = sanitize($_POST['bank_name'] ?? '');
     $bank_account = sanitize($_POST['bank_account'] ?? '');
     $basic_salary = (float)($_POST['basic_salary'] ?? 0);
     $pf_percentage = (float)($_POST['pf_percentage'] ?? 5);
-    $joining_date = !empty($_POST['joining_date']) ? $_POST['joining_date'] : '';
+    $joining_date = !empty($_POST['joining_date']) ? $_POST['joining_date'] : null;
     $status = sanitize($_POST['status'] ?? 'Active');
     
     $currentPhoto = $employee['photo'] ?? '';
