@@ -246,6 +246,11 @@
                 </a>
             </li>
             <li class="nav-item">
+                <a class="nav-link <?php echo ($currentPage ?? '') === 'pf-funds' ? 'active' : ''; ?>" href="pf-funds.php">
+                    <i class="bi bi-wallet2"></i> PF Funds
+                </a>
+            </li>
+            <li class="nav-item">
                 <a class="nav-link <?php echo ($currentPage ?? '') === 'employee-report' ? 'active' : ''; ?>" href="employee-report.php">
                     <i class="bi bi-file-earmark-spreadsheet"></i> Employee Report
                 </a>

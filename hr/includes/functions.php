@@ -561,6 +561,17 @@ function getBonusMonths() {
     return $months;
 }
 
+function getPfFundMonths() {
+    $conn = getDBConnection();
+    $result = $conn->query("SELECT DISTINCT month FROM pf_funds ORDER BY month DESC");
+    if (!$result) return [];
+    $months = [];
+    while ($row = $result->fetch_assoc()) {
+        $months[] = $row['month'];
+    }
+    return $months;
+}
+
 function tableExists($tableName) {
     $conn = getDBConnection();
     $result = $conn->query("SHOW TABLES LIKE '" . $conn->real_escape_string($tableName) . "'");
