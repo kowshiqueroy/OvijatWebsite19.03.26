@@ -1,20 +1,47 @@
 <?php
 session_start();
 require_once 'db.php';
-header('Content-Type: application/json');
-
-if (!isLoggedIn()) { echo json_encode(['error' => 'Not logged in']); exit; }
+if (!isLoggedIn()) { 
+    echo json_encode(['error' => 'Not logged in']); 
+    exit; 
+}
 
 $action = $_GET['action'] ?? '';
 $myId = $_SESSION['user_id'];
+error_log("API called: action=$action, myId=$myId");
 
 try {
 
 if ($action === 'conversations') {
     header('Content-Type: text/html');
-    $users = getConnectedUsers($myId);
-    $searchQuery = '';
-    $isSearching = false;
+    $myId = (int)$myId;
+    $q = sanitize($_GET['q'] ?? '');
+    $isSearching = !empty($q);
+    
+    if ($isSearching) {
+        $users = searchNewUsers($myId, $q);
+    } else {
+        $users = getConnectedUsers($myId);
+    }
+    
+    if ($isSearching): ?>
+        <div class="section-title">Search Results</div>
+        <?php if (empty($users)): ?>
+            <div class="empty">
+                <div class="empty-icon">🔍</div>
+                <p>No results for "<?= sanitize($q) ?>"</p>
+            </div>
+        <?php endif; ?>
+    <?php else: ?>
+        <div class="section-title">Recent Chats</div>
+        <?php if (empty($users)): ?>
+            <div class="empty">
+                <div class="empty-icon">💬</div>
+                <p>No chats yet. Start a conversation!</p>
+            </div>
+        <?php endif; ?>
+    <?php endif;
+
     foreach ($users as $u): 
         $lastActive = $u['last_active'] ?? 0;
         $isOnline = (time() - $lastActive < 60);
@@ -35,7 +62,7 @@ if ($action === 'conversations') {
         }
         ?>
         <div class="user" onclick="location.href='chat.php?user=<?= $u['id'] ?>'">
-            <div class="avatar">
+            <div class="avatar-box">
                 <?= !empty($u['avatar_emoji']) ? $u['avatar_emoji'] : '👤' ?>
                 <?php if ($isOnline): ?><div class="status-dot"></div><?php else: ?><div class="status-dot offline"></div><?php endif; ?>
             </div>
@@ -73,100 +100,33 @@ if ($action === 'update_viewing') {
     exit;
 }
 
-if ($action === 'group_members') {
-    $groupId = (int)($_GET['group'] ?? 0);
-    if (!$groupId) { echo json_encode(['error' => 'No group']); exit; }
-    $members = getGroupMembers($groupId);
-    $viewTarget = "g$groupId";
-    $result = [];
-    foreach ($members as $m) {
-        $isOnline = (time() - $m['last_active'] < 60);
-        $location = 'Offline';
-        $color = '#888';
-        if ($isOnline) {
-            if ($m['viewing_target'] === $viewTarget) {
-                $location = 'In this chat';
-                $color = '#25D366';
-            } else if (!empty($m['viewing_target'])) {
-                $location = 'In other chat';
-                $color = '#f0ad4e';
-            } else {
-                $location = 'Online';
-                $color = '#25D366';
-            }
-        }
-        $result[] = [
-            'id' => $m['id'],
-            'name' => $m['group_nickname'] ?: $m['display_name'],
-            'emoji' => $m['avatar_emoji'],
-            'online' => $isOnline,
-            'location' => $location,
-            'color' => $color
-        ];
-    }
-    echo json_encode(['members' => $result]);
-    exit;
-}
-
-if ($action === 'search_users') {
-    $q = sanitize($_GET['q'] ?? '');
-    $groupId = (int)($_GET['group'] ?? 0);
-    if (strlen($q) < 2) { echo json_encode([]); exit; }
-    $pdo = getDB();
-    $params = ["%$q%", "%$q%", $myId];
-    $sql = "SELECT id, display_name, avatar_emoji FROM users WHERE (display_name LIKE ? OR username LIKE ?) AND id != ?";
-    if ($groupId) {
-        $sql .= " AND id NOT IN (SELECT user_id FROM group_members WHERE group_id = ?)";
-        $params[] = $groupId;
-    }
-    $sql .= " LIMIT 10";
-    $stmt = $pdo->prepare($sql);
-    $stmt->execute($params);
-    echo json_encode($stmt->fetchAll());
-    exit;
-}
-
-if ($action === 'group_actions') {
-    $groupId = (int)($_POST['group_id'] ?? 0);
-    $subAction = $_POST['sub_action'] ?? '';
-    if (!$groupId) { echo json_encode(['error' => 'No group']); exit; }
-    $pdo = getDB();
-    if ($subAction === 'add') {
-        $userId = (int)($_POST['user_id'] ?? 0);
-        if ($userId) {
-            addGroupMember($groupId, $userId, 'member');
-            echo json_encode(['success' => true]);
-        }
-    } else if ($subAction === 'remove') {
-        $userId = (int)($_POST['user_id'] ?? 0);
-        if ($userId && isGroupAdmin($groupId, $myId)) {
-            removeGroupMember($groupId, $userId);
-            echo json_encode(['success' => true]);
-        }
-    } else if ($subAction === 'nickname') {
-        $userId = (int)($_POST['user_id'] ?? 0);
-        $nickname = sanitize($_POST['nickname'] ?? '');
-        setGroupNickname($groupId, $userId, $nickname);
-        echo json_encode(['success' => true]);
-    } else if ($subAction === 'leave') {
-        removeGroupMember($groupId, $myId);
-        echo json_encode(['success' => true]);
-    }
-    exit;
-}
-
 if ($action === 'status') {
     $userId = (int)($_GET['user'] ?? 0);
     if ($userId) {
         $u = getUserById($userId);
         if ($u) {
-            echo json_encode(['status' => getDetailedStatus($u, "u$myId")]);
+            $isOnline = (time() - $u['last_active'] < 60);
+            $status = getDetailedStatus($u, "u$myId");
+            $color = '#6c757d'; // Default offline color
+            
+            if ($isOnline) {
+                if ($status === 'In this chat') $color = '#007bff';
+                else if ($status === 'In other chat') $color = '#fd7e14';
+                else $color = '#28a745';
+            }
+            
+            echo json_encode([
+                'status' => $status,
+                'is_online' => $isOnline,
+                'color' => $color
+            ]);
         }
     }
     exit;
 }
 
 if ($action === 'messages') {
+    cleanupExpiredMessages();
     $chatWithId = (int)($_GET['user'] ?? 0);
     $lastId = (int)($_GET['last_id'] ?? 0);
     $pdo = getDB();
@@ -174,8 +134,8 @@ if ($action === 'messages') {
 
     if ($chatWithId) {
         markMessagesAsRead($myId, $chatWithId);
-        $stmt = $pdo->prepare("SELECT * FROM messages WHERE ((sender_id = ? AND receiver_id = ?) OR (sender_id = ? AND receiver_id = ?)) AND id > ? ORDER BY id ASC");
-        $stmt->execute([$myId, $chatWithId, $chatWithId, $myId, $lastId]);
+        $stmt = $pdo->prepare("SELECT * FROM messages WHERE ((sender_id = ? AND receiver_id = ?) OR (sender_id = ? AND receiver_id = ?)) AND id > ? AND (delete_at = 0 OR delete_at > ?) ORDER BY id ASC");
+        $stmt->execute([$myId, $chatWithId, $chatWithId, $myId, $lastId, $now]);
     } else {
         echo json_encode(['error' => 'Invalid target']); exit;
     }
@@ -197,6 +157,7 @@ if ($action === 'messages') {
             'original' => $m['original'],
             'type' => $m['type'],
             'is_read' => $m['is_read'],
+            'delete_at' => $m['delete_at'],
             'reply_to' => $m['reply_to'],
             'reply_content' => $replyContent,
             'time' => date('g:i A', strtotime($m['created_at']))
@@ -215,6 +176,21 @@ if ($action === 'markread') {
     exit;
 }
 
+if ($action === 'view_message') {
+    $msgId = (int)($_GET['id'] ?? 0);
+    if ($msgId) {
+        // Mark as blue tick AND set deletion timer
+        getDB()->prepare("UPDATE messages SET is_read = 2, delete_at = CASE WHEN delete_at = 0 THEN ? ELSE delete_at END WHERE id = ?")->execute([time() + 30, $msgId]);
+        echo json_encode(['success' => true]);
+    }
+    exit;
+}
+
+if ($action === 'refresh_msgs') {
+    echo json_encode(['success' => true]);
+    exit;
+}
+
 if ($action === 'typing') {
     $chatWithId = (int)($_GET['user'] ?? 0);
     if ($chatWithId) echo json_encode(['typing' => getTypingStatus($myId, $chatWithId)]);
@@ -225,11 +201,27 @@ if ($action === 'read_status') {
     $chatWithId = (int)($_GET['user'] ?? 0);
     if (!$chatWithId) { echo json_encode([]); exit; }
     $pdo = getDB();
-    $pdo->prepare("UPDATE messages SET is_read = 2 WHERE sender_id = ? AND receiver_id = ? AND is_read < 2")->execute([$chatWithId, $myId]);
-    $stmt = $pdo->prepare("SELECT id FROM messages WHERE sender_id = ? AND receiver_id = ? AND is_read > 0 ORDER BY id ASC");
+    
+    // Just mark as received (is_read=1) if it was unread (is_read=0)
+    $pdo->prepare("UPDATE messages SET is_read = 1 WHERE sender_id = ? AND receiver_id = ? AND is_read = 0")->execute([$chatWithId, $myId]);
+    
+    $stmt = $pdo->prepare("SELECT id, delete_at, is_read FROM messages WHERE sender_id = ? AND receiver_id = ? ORDER BY id ASC");
     $stmt->execute([$chatWithId, $myId]);
-    $ids = $stmt->fetchAll(PDO::FETCH_COLUMN);
-    echo json_encode(['read_ids' => $ids]);
+    $rows = $stmt->fetchAll();
+    
+    // Also get messages I sent
+    $stmt2 = $pdo->prepare("SELECT id, delete_at, is_read FROM messages WHERE sender_id = ? AND receiver_id = ? ORDER BY id ASC");
+    $stmt2->execute([$myId, $chatWithId]);
+    $rows2 = $stmt2->fetchAll();
+
+    $read_data = [];
+    foreach(array_merge($rows, $rows2) as $r) {
+        if ($r['is_read'] >= 1) {
+            $read_data[] = ['id' => $r['id'], 'delete_at' => $r['delete_at'], 'is_read' => $r['is_read']];
+        }
+    }
+
+    echo json_encode(['read_messages' => $read_data]);
     exit;
 }
 
@@ -263,6 +255,7 @@ if ($action === 'send_message') {
 }
 
 if ($action === 'send_image') {
+    if (!verifyCsrfToken($_POST['csrf_token'] ?? '')) { echo json_encode(['error' => 'Invalid token']); exit; }
     if (isset($_FILES['image']) && $_FILES['image']['error'] === UPLOAD_ERR_OK) {
         $tmpName = $_FILES['image']['tmp_name'];
         $name = basename($_FILES['image']['name']);

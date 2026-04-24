@@ -12,9 +12,6 @@ function getDB() {
         
         $pdo->exec("CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, username TEXT UNIQUE, password TEXT, display_name TEXT, pin TEXT DEFAULT '', theme TEXT DEFAULT 'blue', last_active INTEGER DEFAULT 0, avatar_emoji TEXT DEFAULT '', viewing_target TEXT DEFAULT '')");
         $pdo->exec("CREATE TABLE IF NOT EXISTS messages (id INTEGER PRIMARY KEY, sender_id INTEGER, receiver_id INTEGER, message TEXT, original TEXT, type TEXT DEFAULT 'text', reply_to INTEGER DEFAULT 0, is_read INTEGER DEFAULT 0, delete_at INTEGER DEFAULT 0, created_at DATETIME DEFAULT CURRENT_TIMESTAMP)");
-        $pdo->exec("CREATE TABLE IF NOT EXISTS messages_read (message_id INTEGER, user_id INTEGER, PRIMARY KEY(message_id, user_id))");
-        $pdo->exec("CREATE TABLE IF NOT EXISTS groups (id INTEGER PRIMARY KEY, name TEXT, created_by INTEGER, avatar_emoji TEXT DEFAULT '👥', created_at DATETIME DEFAULT CURRENT_TIMESTAMP)");
-        $pdo->exec("CREATE TABLE IF NOT EXISTS group_members (group_id INTEGER, user_id INTEGER, role TEXT DEFAULT 'member', nickname TEXT DEFAULT '', PRIMARY KEY(group_id, user_id))");
         $pdo->exec("CREATE TABLE IF NOT EXISTS unlock (id INTEGER PRIMARY KEY, user_id INTEGER, chat_with INTEGER, expires_at INTEGER)");
         $pdo->exec("CREATE TABLE IF NOT EXISTS typing (user_id INTEGER, chat_with INTEGER, expires_at INTEGER, PRIMARY KEY(user_id, chat_with))");
         $pdo->exec("CREATE TABLE IF NOT EXISTS nicknames (user_id INTEGER, contact_id INTEGER, nickname TEXT, PRIMARY KEY(user_id, contact_id))");
@@ -23,8 +20,6 @@ function getDB() {
         try { $pdo->exec("ALTER TABLE users ADD COLUMN last_active INTEGER DEFAULT 0"); } catch (Exception $e) {}
         try { $pdo->exec("ALTER TABLE users ADD COLUMN avatar_emoji TEXT DEFAULT ''"); } catch (Exception $e) {}
         try { $pdo->exec("ALTER TABLE users ADD COLUMN viewing_target TEXT DEFAULT ''"); } catch (Exception $e) {}
-        try { $pdo->exec("ALTER TABLE messages ADD COLUMN group_id INTEGER DEFAULT 0"); } catch (Exception $e) {}
-        try { $pdo->exec("ALTER TABLE group_members ADD COLUMN nickname TEXT DEFAULT ''"); } catch (Exception $e) {}
     }
     return $pdo;
 }
@@ -71,27 +66,67 @@ function setNickname($userId, $contactId, $nickname) {
 
 function getConnectedUsers($userId) {
     $pdo = getDB();
+    $userId = (int)$userId;
+    
+    // Get all users who have exchanged messages with current user (either direction)
     $stmt = $pdo->prepare("
-        SELECT u.id, u.username, u.display_name, u.avatar_emoji, u.last_active, u.viewing_target, 
-        (SELECT message FROM messages WHERE ((sender_id = u.id AND receiver_id = ?) OR (sender_id = ? AND receiver_id = u.id)) ORDER BY id DESC LIMIT 1) as last_msg,
-        (SELECT type FROM messages WHERE ((sender_id = u.id AND receiver_id = ?) OR (sender_id = ? AND receiver_id = u.id)) ORDER BY id DESC LIMIT 1) as last_type,
-        (SELECT sender_id FROM messages WHERE ((sender_id = u.id AND receiver_id = ?) OR (sender_id = ? AND receiver_id = u.id)) ORDER BY id DESC LIMIT 1) as last_sender,
-        (SELECT is_read FROM messages WHERE ((sender_id = u.id AND receiver_id = ?) OR (sender_id = ? AND receiver_id = u.id)) ORDER BY id DESC LIMIT 1) as last_read,
-        (SELECT COUNT(*) FROM messages WHERE sender_id = u.id AND receiver_id = ? AND is_read = 0) as unread_count,
-        (SELECT created_at FROM messages WHERE ((sender_id = u.id AND receiver_id = ?) OR (sender_id = ? AND receiver_id = u.id)) ORDER BY id DESC LIMIT 1) as last_msg_time
-        FROM users u 
-        WHERE id IN (
-            SELECT receiver_id FROM messages WHERE sender_id = ?
-            UNION 
-            SELECT sender_id FROM messages WHERE receiver_id = ?
-        )
-        ORDER BY last_msg_time DESC
+        SELECT DISTINCT CASE 
+            WHEN sender_id = ? THEN receiver_id 
+            ELSE sender_id 
+        END as other_id
+        FROM messages 
+        WHERE sender_id = ? OR receiver_id = ?
     ");
-    $stmt->execute([$userId, $userId, $userId, $userId, $userId, $userId, $userId, $userId, $userId, $userId, $userId, $userId]);
-    $users = $stmt->fetchAll();
-    foreach ($users as &$u) {
-        $u['display_name'] = getNickname($userId, $u['id']) ?: $u['display_name'];
+    $stmt->execute([$userId, $userId, $userId]);
+    $rows = $stmt->fetchAll();
+    
+    if (empty($rows)) {
+        return [];
     }
+    
+    $userIds = array_column($rows, 'other_id');
+    $placeholders = implode(',', array_fill(0, count($userIds), '?'));
+    
+    // Get users with their last message info
+    $sql = "SELECT id, username, display_name, avatar_emoji, last_active, viewing_target FROM users WHERE id IN ($placeholders)";
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute($userIds);
+    $users = $stmt->fetchAll();
+    
+    foreach ($users as &$u) {
+        $uid = $u['id'];
+        
+        // Get last message between these two users
+        $msgStmt = $pdo->prepare("
+            SELECT message, type, sender_id, is_read, created_at 
+            FROM messages 
+            WHERE (sender_id = ? AND receiver_id = ?) OR (sender_id = ? AND receiver_id = ?)
+            ORDER BY id DESC LIMIT 1
+        ");
+        $msgStmt->execute([$userId, $uid, $uid, $userId]);
+        $msg = $msgStmt->fetch();
+        
+        if ($msg) {
+            $u['last_msg'] = $msg['message'];
+            $u['last_type'] = $msg['type'];
+            $u['last_sender'] = $msg['sender_id'];
+            $u['last_read'] = $msg['is_read'];
+            $u['last_msg_time'] = $msg['created_at'];
+        }
+        
+        // Get unread count
+        $unreadStmt = $pdo->prepare("SELECT COUNT(*) FROM messages WHERE sender_id = ? AND receiver_id = ? AND is_read = 0");
+        $unreadStmt->execute([$uid, $userId]);
+        $u['unread_count'] = $unreadStmt->fetchColumn();
+        
+        $u['display_name'] = getNickname($userId, $uid) ?: $u['display_name'];
+    }
+    
+    // Sort by last_msg_time descending
+    usort($users, function($a, $b) {
+        return strcmp($b['last_msg_time'] ?? '', $a['last_msg_time'] ?? '');
+    });
+    
     return $users;
 }
 
@@ -183,6 +218,23 @@ function markMessagesAsRead($userId, $chatWithId) {
     $pdo->prepare("UPDATE messages SET is_read = 1 WHERE sender_id = ? AND receiver_id = ? AND is_read = 0")->execute([$chatWithId, $userId]);
 }
 
+function markMessageViewed($msgId, $viewerId) {
+    $pdo = getDB();
+    $pdo->prepare("UPDATE messages SET delete_at = ? WHERE id = ? AND delete_at = 0")->execute([time() + 30, $msgId]);
+}
+
+function cleanupExpiredMessages() {
+    $pdo = getDB();
+    $now = time();
+    $stmt = $pdo->prepare("SELECT message, type FROM messages WHERE delete_at > 0 AND delete_at <= ?");
+    $stmt->execute([$now]);
+    $toDelete = $stmt->fetchAll();
+    foreach ($toDelete as $m) {
+        if ($m['type'] === 'image' && file_exists($m['message'])) @unlink($m['message']);
+    }
+    $pdo->prepare("DELETE FROM messages WHERE delete_at > 0 AND delete_at <= ?")->execute([$now]);
+}
+
 function saveMessage($senderId, $receiverId, $message, $type = 'text', $replyTo = 0) {
     $pdo = getDB();
     $fake = ($type === 'text') ? camouflage($message) : $message;
@@ -226,8 +278,43 @@ function deleteMyMessages($userId, $imagesOnly = false) {
     }
 }
 
+function cleanupGlobalOldMessages() {
+    $pdo = getDB();
+    $sevenDaysAgo = date('Y-m-d H:i:s', strtotime('-7 days'));
+    
+    // Find images to delete
+    $stmt = $pdo->prepare("SELECT message FROM messages WHERE type = 'image' AND created_at < ?");
+    $stmt->execute([$sevenDaysAgo]);
+    $imgs = $stmt->fetchAll(PDO::FETCH_COLUMN);
+    foreach ($imgs as $img) if (file_exists($img)) @unlink($img);
+    
+    // Delete messages
+    $pdo->prepare("DELETE FROM messages WHERE created_at < ?")->execute([$sevenDaysAgo]);
+}
+
 function camouflage($msg) {
-    $phrases = ["Sounds good, let me know.", "I'll check on that later.", "Not sure yet, will tell you.", "Okay, noted.", "Thanks for the update.", "I'll get back to you soon.", "That works for me.", "Can we discuss this tomorrow?", "Send me the details please.", "I'm on it.", "Just finished the task.", "Wait, I am checking.", "Yes, that is fine.", "No problem at all.", "I'll be there in 10 minutes.", "Call me when you're free.", "Did you see the email?", "I'm busy right now, talk later.", "Have a great day!", "Let's meet at the usual place.", "I've already sent it.", "Looking forward to it.", "Everything is under control.", "Do you need any help?", "I'll handle it.", "Let me double check.", "Right, I see.", "Got it, thanks.", "Perfect, thanks.", "I'll call you back.", "No, not today.", "Maybe next week.", "I'm heading out now."];
+    $phrases = [
+        "How can I assist you with your query today?",
+        "I'm analyzing the data you provided. One moment.",
+        "That's an interesting perspective. Could you elaborate?",
+        "I have processed your request. Here are the findings.",
+        "Based on my current training data, here is the answer.",
+        "I'm sorry, I didn't quite catch that. Could you rephrase?",
+        "Would you like me to generate a summary of this topic?",
+        "I am here to help. What else would you like to know?",
+        "The system is currently operating at optimal capacity.",
+        "I've updated the logs with your recent interaction.",
+        "Let me check my internal database for more information.",
+        "I can help you with coding, writing, or analysis.",
+        "That sounds like a complex task. Let me break it down.",
+        "I'm learning from this conversation to improve my responses.",
+        "Please provide more context for a more accurate response.",
+        "My knowledge cutoff for this specific topic is recent.",
+        "I've synthesized the information you requested below.",
+        "Is there anything else you'd like to explore today?",
+        "I'm ready to help you with your next project.",
+        "Generating a response based on your specific parameters..."
+    ];
     return $phrases[array_rand($phrases)];
 }
 

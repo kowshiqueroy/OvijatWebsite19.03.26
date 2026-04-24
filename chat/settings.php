@@ -76,36 +76,136 @@ if ($action) {
 <html>
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Settings</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>kotha.sohojweb.com - Settings</title>
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: -apple-system, sans-serif; background: #ECE5DD; color: #333; }
-        .header { background: #128C7E; color: #fff; padding: 15px; display: flex; align-items: center; position: sticky; top: 0; z-index: 100; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
-        .header h1 { font-size: 20px; flex: 1; text-align: center; }
-        .container { padding: 20px; padding-bottom: 100px; max-width: 500px; margin: 0 auto; }
-        .msg { background: #d1ecf1; color: #0c5460; padding: 15px; border-radius: 12px; margin-bottom: 20px; font-size: 14px; border-left: 5px solid #128C7E; }
-        .card { background: #fff; padding: 20px; border-radius: 15px; margin-bottom: 20px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
-        h2 { color: #128C7E; margin-bottom: 20px; font-size: 16px; text-transform: uppercase; letter-spacing: 1px; font-weight: 700; }
+        * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; 
+            background: #f4f7fb; 
+            color: #1a1a1a;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        .header { 
+            background: #fff; 
+            color: #1a1a1a; 
+            padding: 16px 20px; 
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+            position: sticky; 
+            top: 0; 
+            z-index: 100; 
+            border-bottom: 1px solid #e0e6ed;
+        }
+        .header h1 { font-size: 18px; font-weight: 800; color: #007bff; letter-spacing: -0.5px; }
+
+        .container { padding: 16px; padding-bottom: 100px; max-width: 500px; margin: 0 auto; }
+        
+        .msg { 
+            background: #e7f3ff; 
+            color: #007bff; 
+            padding: 14px; 
+            border-radius: 16px; 
+            margin-bottom: 20px; 
+            font-size: 13px; 
+            font-weight: 600;
+            border: 1px solid #cce5ff;
+        }
+
+        .card { 
+            background: #fff; 
+            padding: 24px; 
+            border-radius: 20px; 
+            margin-bottom: 20px; 
+            box-shadow: 0 4px 12px rgba(0,0,0,0.03); 
+        }
+
+        h2 { color: #1a1a1a; margin-bottom: 20px; font-size: 15px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+        h2::before { content: ""; display: block; width: 4px; height: 16px; background: #007bff; border-radius: 2px; }
+
         .form-group { margin-bottom: 20px; }
-        .form-group label { display: block; margin-bottom: 8px; font-size: 14px; font-weight: 600; color: #667781; }
-        .form-group input { width: 100%; padding: 12px 15px; border: 1px solid #ddd; border-radius: 10px; font-size: 15px; outline: none; transition: 0.2s; }
-        .form-group input:focus { border-color: #128C7E; }
+        .form-group label { display: block; margin-bottom: 8px; font-size: 13px; font-weight: 600; color: #6c757d; }
+        .form-group input { 
+            width: 100%; 
+            padding: 12px 16px; 
+            border: 1px solid #e0e6ed; 
+            border-radius: 12px; 
+            font-size: 14px; 
+            outline: none; 
+            background: #f8f9fa;
+            transition: all 0.2s;
+        }
+        .form-group input:focus { 
+            background: #fff; 
+            border-color: #007bff; 
+            box-shadow: 0 0 0 3px rgba(0,123,255,0.1); 
+        }
+
         .emoji-picker { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-top: 10px; }
-        .emoji-item { display: flex; align-items: center; justify-content: center; font-size: 28px; padding: 12px; border: 2px solid #f0f0f0; border-radius: 12px; cursor: pointer; transition: 0.2s; }
-        .emoji-item.active { border-color: #128C7E; background: #e7f3f1; }
-        .btn { padding: 14px; background: #128C7E; color: #fff; border: none; border-radius: 12px; cursor: pointer; width: 100%; font-size: 15px; font-weight: 700; transition: 0.2s; }
-        .btn.danger { background: #dc3545; }
-        .tab-bar { position: fixed; bottom: 0; left: 0; right: 0; background: #fff; display: flex; border-top: 1px solid #ddd; z-index: 100; padding: 10px 0; box-shadow: 0 -2px 10px rgba(0,0,0,0.05); }
-        .tab-item { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; color: #667781; cursor: pointer; text-decoration: none; }
-        .tab-item.active { color: #128C7E; }
-        .tab-icon { font-size: 24px; }
-        .tab-label { font-size: 11px; font-weight: 600; }
+        .emoji-item { 
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+            font-size: 24px; 
+            padding: 12px; 
+            border: 1.5px solid #f0f2f5; 
+            border-radius: 14px; 
+            cursor: pointer; 
+            transition: all 0.2s; 
+        }
+        .emoji-item.active { border-color: #007bff; background: #e7f3ff; }
+
+        .btn { 
+            padding: 14px; 
+            background: #007bff; 
+            color: #fff; 
+            border: none; 
+            border-radius: 14px; 
+            cursor: pointer; 
+            width: 100%; 
+            font-size: 15px; 
+            font-weight: 700; 
+            transition: all 0.2s; 
+            box-shadow: 0 4px 12px rgba(0,123,255,0.2);
+        }
+        .btn:active { transform: scale(0.97); }
+        .btn.danger { background: #fff0f0; color: #e03131; border: 1px solid #ffe3e3; box-shadow: none; font-size: 13px; }
+        .btn.danger:active { background: #ffe3e3; }
+
+        .tab-bar { 
+            position: fixed; 
+            bottom: 0; 
+            left: 0; 
+            right: 0; 
+            background: #fff; 
+            display: flex; 
+            border-top: 1px solid #e0e6ed; 
+            z-index: 100; 
+            padding: 8px 0; 
+            padding-bottom: calc(8px + env(safe-area-inset-bottom)); 
+        }
+        .tab-item { 
+            flex: 1; 
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            gap: 4px; 
+            color: #6c757d; 
+            cursor: pointer; 
+            text-decoration: none; 
+            transition: 0.2s; 
+        }
+        .tab-item.active { color: #007bff; }
+        .tab-icon { font-size: 20px; }
+        .tab-label { font-size: 10px; font-weight: 600; }
     </style>
 </head>
 <body>
     <div class="header">
-        <h1>Settings</h1>
+        <h1>kotha.sohojweb.com</h1>
     </div>
     
     <div class="container">

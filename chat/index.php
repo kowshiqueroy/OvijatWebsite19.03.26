@@ -39,6 +39,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             
             $user = getUserByUsername($username);
             if ($user && verifyPassword($user, $password)) {
+                cleanupGlobalOldMessages();
                 session_regenerate_id(true);
                 $_SESSION['user_id'] = $user['id'];
                 header('Location: users.php'); exit;
@@ -55,71 +56,161 @@ $userCount = getDB()->query("SELECT COUNT(*) FROM users")->fetchColumn();
 <html>
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>kotha.SohojWeb.com</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>kotha.sohojweb.com - AI Assistant</title>
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #ECE5DD; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
-        .container { background: #fff; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); width: 90%; max-width: 350px; padding: 30px; }
-        h1 { color: #128C7E; text-align: center; margin-bottom: 5px; }
-        p.sub { text-align: center; color: #667781; margin-bottom: 20px; font-size: 14px; }
-        .error { background: #f8d7da; color: #721c24; padding: 10px; border-radius: 5px; margin-bottom: 15px; font-size: 14px; }
-        .form-group { margin-bottom: 15px; }
-        .form-group label { display: block; margin-bottom: 5px; font-weight: 500; font-size: 14px; }
-        .form-group input { width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 5px; font-size: 14px; }
-        .btn { width: 100%; padding: 12px; background: #128C7E; color: #fff; border: none; border-radius: 5px; font-size: 14px; cursor: pointer; }
-        .btn:hover { background: #25D366; }
-        .link { text-align: center; margin-top: 15px; font-size: 14px; }
-        .link a { color: #128C7E; text-decoration: none; }
+        * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; 
+            background: #f4f7fb; 
+            color: #1a1a1a;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container { 
+            background: #fff; 
+            width: 100%; 
+            max-width: 360px; 
+            padding: 32px; 
+            border-radius: 24px; 
+            box-shadow: 0 10px 30px rgba(0,0,0,0.05); 
+            text-align: center;
+        }
+
+        .logo { 
+            font-size: 32px; 
+            margin-bottom: 8px; 
+            color: #007bff;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+        }
+
+        h1 { font-size: 20px; font-weight: 700; margin-bottom: 4px; color: #1a1a1a; }
+        p.sub { font-size: 14px; color: #6c757d; margin-bottom: 24px; }
+
+        .error { 
+            background: #fff0f0; 
+            color: #e03131; 
+            padding: 12px; 
+            border-radius: 12px; 
+            margin-bottom: 20px; 
+            font-size: 13px; 
+            font-weight: 500;
+            border: 1px solid #ffe3e3;
+        }
+
+        .form-group { margin-bottom: 16px; text-align: left; }
+        .form-group label { 
+            display: block; 
+            margin-bottom: 6px; 
+            font-size: 13px; 
+            font-weight: 600; 
+            color: #495057; 
+        }
+        .form-group input { 
+            width: 100%; 
+            padding: 12px 16px; 
+            border: 1px solid #e0e6ed; 
+            border-radius: 12px; 
+            font-size: 14px; 
+            outline: none; 
+            background: #f8f9fa;
+            transition: all 0.2s;
+        }
+        .form-group input:focus { 
+            background: #fff; 
+            border-color: #007bff; 
+            box-shadow: 0 0 0 3px rgba(0,123,255,0.1); 
+        }
+
+        .btn { 
+            width: 100%; 
+            padding: 14px; 
+            background: #007bff; 
+            color: #fff; 
+            border: none; 
+            border-radius: 14px; 
+            font-size: 15px; 
+            font-weight: 700; 
+            cursor: pointer; 
+            transition: all 0.2s;
+            box-shadow: 0 4px 12px rgba(0,123,255,0.2);
+        }
+        .btn:active { transform: scale(0.97); }
+
+        .link { margin-top: 20px; font-size: 14px; color: #6c757d; }
+        .link a { color: #007bff; text-decoration: none; font-weight: 600; }
+
+        hr { border: none; border-top: 1px solid #e0e6ed; margin: 24px 0; }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>kotha.SohojWeb.com</h1>
-        <p class="sub">Secure messaging</p>
+        <div class="logo">💬</div>
+        <h1>kotha.sohojweb.com</h1>
+        <p class="sub">AI-Powered Secure Messaging</p>
         
         <?php if ($error): ?>
             <div class="error"><?= $error ?></div>
         <?php endif; ?>
         
-        <form method="POST">
-            <input type="hidden" name="csrf_token" value="<?= generateCsrfToken() ?>">
-            <input type="hidden" name="action" value="login">
-            <div class="form-group">
-                <label>Username</label>
-                <input type="text" name="username" required placeholder="Username">
-            </div>
-            <div class="form-group">
-                <label>Password</label>
-                <input type="password" name="password" required placeholder="Password">
-            </div>
-            <button type="submit" class="btn">Login</button>
-        </form>
+        <div id="login-form">
+            <form method="POST">
+                <input type="hidden" name="csrf_token" value="<?= generateCsrfToken() ?>">
+                <input type="hidden" name="action" value="login">
+                <div class="form-group">
+                    <label>Username</label>
+                    <input type="text" name="username" required placeholder="Enter username">
+                </div>
+                <div class="form-group">
+                    <label>Password</label>
+                    <input type="password" name="password" required placeholder="••••••••">
+                </div>
+                <button type="submit" class="btn">Sign In</button>
+            </form>
+            <p class="link">New here? <a href="#" onclick="showRegister()">Create Account</a></p>
+        </div>
         
-        <p class="link"><a href="#" onclick="document.getElementById('register').style.display='block';this.style.display='none'">Create Account</a></p>
-        
-        <form method="POST" id="register" style="display:<?= $userCount==0?'block':'none' ?>;">
-            <hr style="margin:20px 0;border:none;border-top:1px solid #ddd;">
-            <input type="hidden" name="csrf_token" value="<?= generateCsrfToken() ?>">
-            <input type="hidden" name="action" value="register">
-            <div class="form-group">
-                <label>Username</label>
-                <input type="text" name="username" required placeholder="Username">
-            </div>
-            <div class="form-group">
-                <label>Display Name</label>
-                <input type="text" name="display" required placeholder="Your name">
-            </div>
-            <div class="form-group">
-                <label>Password</label>
-                <input type="password" name="password" required placeholder="Password">
-            </div>
-            <div class="form-group">
-                <label>Confirm</label>
-                <input type="password" name="confirm" required placeholder="Confirm password">
-            </div>
-            <button type="submit" class="btn">Create Account</button>
-        </form>
+        <div id="register-form" style="display:<?= $userCount==0?'block':'none' ?>;">
+            <?php if ($userCount > 0): ?><hr><?php endif; ?>
+            <form method="POST">
+                <input type="hidden" name="csrf_token" value="<?= generateCsrfToken() ?>">
+                <input type="hidden" name="action" value="register">
+                <div class="form-group">
+                    <label>Username</label>
+                    <input type="text" name="username" required placeholder="Choose username">
+                </div>
+                <div class="form-group">
+                    <label>Display Name</label>
+                    <input type="text" name="display" required placeholder="Your name">
+                </div>
+                <div class="form-group">
+                    <label>Password</label>
+                    <input type="password" name="password" required placeholder="••••••••">
+                </div>
+                <div class="form-group">
+                    <label>Confirm Password</label>
+                    <input type="password" name="confirm" required placeholder="••••••••">
+                </div>
+                <button type="submit" class="btn" style="background:#28a745; box-shadow: 0 4px 12px rgba(40,167,69,0.2);">Create Account</button>
+            </form>
+            <p class="link">Already have an account? <a href="#" onclick="showLogin()">Sign In</a></p>
+        </div>
     </div>
+
+    <script>
+    function showRegister() {
+        document.getElementById('login-form').style.display = 'none';
+        document.getElementById('register-form').style.display = 'block';
+    }
+    function showLogin() {
+        document.getElementById('login-form').style.display = 'block';
+        document.getElementById('register-form').style.display = 'none';
+    }
+    </script>
 </body>
 </html>
