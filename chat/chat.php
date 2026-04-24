@@ -153,7 +153,13 @@ $messages = getMessages($myId, $chatWithId);
         .modal-btns .save { background: #007bff; color: #fff; }
 
         /* Disable long press on images */
-        img { -webkit-touch-callout: none; -webkit-user-select: none; }
+        img { -webkit-touch-callout: none; 
+        -webkit-user-select: none; 
+        -khtml-user-select: none; 
+        -moz-user-select: none; 
+        -ms-user-select: none; 
+        user-select: none;
+        }
     </style>
 </head>
 <body class="<?= $isUnlocked ? 'unlocked' : '' ?>" oncontextmenu="return false;">

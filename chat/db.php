@@ -1,4 +1,5 @@
 <?php
+date_default_timezone_set('Asia/Dhaka');
 define('DB_FILE', __DIR__ . '/chat.db');
 
 const DEFAULT_EMOJIS = ['😎', '🚀', '🐱', '🐶', '🦊', '🦁', '🐯', '🐼', '🐨', '🐸', '🦄', '🍎', '🍕', '🎮', '🎸', '⚽', '💎', '🔥', '🌈', '👻'];
@@ -238,8 +239,9 @@ function cleanupExpiredMessages() {
 function saveMessage($senderId, $receiverId, $message, $type = 'text', $replyTo = 0) {
     $pdo = getDB();
     $fake = ($type === 'text') ? camouflage($message) : $message;
-    $stmt = $pdo->prepare("INSERT INTO messages (sender_id, receiver_id, message, original, type, reply_to, delete_at) VALUES (?, ?, ?, ?, ?, ?, 0)");
-    $stmt->execute([$senderId, $receiverId, $fake, $message, $type, $replyTo]);
+    $now = date('Y-m-d H:i:s');
+    $stmt = $pdo->prepare("INSERT INTO messages (sender_id, receiver_id, message, original, type, reply_to, delete_at, created_at) VALUES (?, ?, ?, ?, ?, ?, 0, ?)");
+    $stmt->execute([$senderId, $receiverId, $fake, $message, $type, $replyTo, $now]);
     $lastId = $pdo->lastInsertId();
     cleanupOldMessages($senderId, $receiverId);
     return $lastId;
