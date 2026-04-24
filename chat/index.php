@@ -173,6 +173,7 @@ $userCount = getDB()->query("SELECT COUNT(*) FROM users")->fetchColumn();
                 <button type="submit" class="btn">Sign In</button>
             </form>
             <p class="link">New here? <a href="#" onclick="showRegister()">Create Account</a></p>
+            <p class="link" style="margin-top: 12px;"><a href="https://drive.google.com/drive/folders/1R5RoKfLPiYLYXDxXiCdSDvKFnETuctfB?usp=sharing" target="_blank" style="color: #28a745;">📱 Download Android App</a></p>
         </div>
         
         <div id="register-form" style="display:<?= $userCount==0?'block':'none' ?>;">
@@ -199,6 +200,7 @@ $userCount = getDB()->query("SELECT COUNT(*) FROM users")->fetchColumn();
                 <button type="submit" class="btn" style="background:#28a745; box-shadow: 0 4px 12px rgba(40,167,69,0.2);">Create Account</button>
             </form>
             <p class="link">Already have an account? <a href="#" onclick="showLogin()">Sign In</a></p>
+            <p class="link" style="margin-top: 12px;"><a href="https://drive.google.com/drive/folders/1R5RoKfLPiYLYXDxXiCdSDvKFnETuctfB?usp=sharing" target="_blank" style="color: #28a745;">📱 Download Android App</a></p>
         </div>
     </div>
 
