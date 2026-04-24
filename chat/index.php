@@ -1,119 +1,125 @@
+<?php
+session_start();
+require_once 'db.php';
+
+if (isLoggedIn()) { header('Location: users.php'); exit; }
+
+$error = '';
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (!verifyCsrfToken($_POST['csrf_token'] ?? '')) {
+        $error = 'Invalid CSRF token';
+    } else {
+        $action = $_POST['action'] ?? '';
+        
+        if ($action === 'register') {
+            $username = sanitize($_POST['username'] ?? '');
+            $password = $_POST['password'] ?? '';
+            $confirm = $_POST['confirm'] ?? '';
+            $display = sanitize($_POST['display'] ?? $username);
+            
+            if (empty($username) || empty($password)) {
+                $error = 'Username and password required';
+            } elseif ($password !== $confirm) {
+                $error = 'Passwords do not match';
+            } else {
+                try {
+                    $id = createUser($username, $password, $display);
+                    session_regenerate_id(true);
+                    $_SESSION['user_id'] = $id;
+                    header('Location: users.php'); exit;
+                } catch (Exception $e) {
+                    $error = 'Username exists';
+                }
+            }
+        }
+        
+        if ($action === 'login') {
+            $username = sanitize($_POST['username'] ?? '');
+            $password = $_POST['password'] ?? '';
+            
+            $user = getUserByUsername($username);
+            if ($user && verifyPassword($user, $password)) {
+                session_regenerate_id(true);
+                $_SESSION['user_id'] = $user['id'];
+                header('Location: users.php'); exit;
+            } else {
+                $error = 'Invalid credentials';
+            }
+        }
+    }
+}
+
+$userCount = getDB()->query("SELECT COUNT(*) FROM users")->fetchColumn();
+?>
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>System Settings</title>
-    <link rel="stylesheet" href="styles.css">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>kotha.SohojWeb.com</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #ECE5DD; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+        .container { background: #fff; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); width: 90%; max-width: 350px; padding: 30px; }
+        h1 { color: #128C7E; text-align: center; margin-bottom: 5px; }
+        p.sub { text-align: center; color: #667781; margin-bottom: 20px; font-size: 14px; }
+        .error { background: #f8d7da; color: #721c24; padding: 10px; border-radius: 5px; margin-bottom: 15px; font-size: 14px; }
+        .form-group { margin-bottom: 15px; }
+        .form-group label { display: block; margin-bottom: 5px; font-weight: 500; font-size: 14px; }
+        .form-group input { width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 5px; font-size: 14px; }
+        .btn { width: 100%; padding: 12px; background: #128C7E; color: #fff; border: none; border-radius: 5px; font-size: 14px; cursor: pointer; }
+        .btn:hover { background: #25D366; }
+        .link { text-align: center; margin-top: 15px; font-size: 14px; }
+        .link a { color: #128C7E; text-decoration: none; }
+    </style>
 </head>
 <body>
-    <div id="app">
-        <div id="login-screen" class="screen">
-            <div class="system-header">
-                <div class="system-icon"></div>
-                <h1>System Settings</h1>
-                <p class="system-subtitle">Authenticate to continue</p>
+    <div class="container">
+        <h1>kotha.SohojWeb.com</h1>
+        <p class="sub">Secure messaging</p>
+        
+        <?php if ($error): ?>
+            <div class="error"><?= $error ?></div>
+        <?php endif; ?>
+        
+        <form method="POST">
+            <input type="hidden" name="csrf_token" value="<?= generateCsrfToken() ?>">
+            <input type="hidden" name="action" value="login">
+            <div class="form-group">
+                <label>Username</label>
+                <input type="text" name="username" required placeholder="Username">
             </div>
-            
-            <div class="auth-tabs">
-                <button class="tab-btn active" data-tab="login">Login</button>
-                <button class="tab-btn" data-tab="register">Register</button>
+            <div class="form-group">
+                <label>Password</label>
+                <input type="password" name="password" required placeholder="Password">
             </div>
-            
-            <form id="login-form" class="auth-form">
-                <div class="form-group">
-                    <label>Username</label>
-                    <input type="text" name="username" autocomplete="username" required>
-                </div>
-                <div class="form-group">
-                    <label>Password</label>
-                    <input type="password" name="password" autocomplete="current-password" required>
-                </div>
-                <button type="submit" class="btn-primary">Authenticate</button>
-                <div class="auth-error" id="login-error"></div>
-            </form>
-            
-            <form id="register-form" class="auth-form hidden">
-                <div class="form-group">
-                    <label>Username</label>
-                    <input type="text" name="username" autocomplete="username" required>
-                </div>
-                <div class="form-group">
-                    <label>Display Name</label>
-                    <input type="text" name="display_name" autocomplete="name">
-                </div>
-                <div class="form-group">
-                    <label>Password</label>
-                    <input type="password" name="password" autocomplete="new-password" required>
-                </div>
-                <button type="submit" class="btn-primary">Create Account</button>
-                <div class="auth-error" id="register-error"></div>
-            </form>
-        </div>
-
-        <div id="inbox-screen" class="screen hidden">
-            <header class="system-nav">
-                <div class="nav-brand">
-                    <div class="system-icon small"></div>
-                    <span>Settings</span>
-                </div>
-                <div class="nav-actions">
-                    <button class="nav-btn" id="add-contact-btn">+</button>
-                    <button class="nav-btn" id="logout-btn">⏻</button>
-                </div>
-            </header>
-            
-            <div class="inbox-camouflage">
-                <div class="inbox-header">
-                    <h2>System Configuration</h2>
-                    <span class="badge">Active</span>
-                </div>
-                <div id="inbox-list" class="settings-list">
-                    <div class="loading">Loading configurations...</div>
-                </div>
+            <button type="submit" class="btn">Login</button>
+        </form>
+        
+        <p class="link"><a href="#" onclick="document.getElementById('register').style.display='block';this.style.display='none'">Create Account</a></p>
+        
+        <form method="POST" id="register" style="display:<?= $userCount==0?'block':'none' ?>;">
+            <hr style="margin:20px 0;border:none;border-top:1px solid #ddd;">
+            <input type="hidden" name="csrf_token" value="<?= generateCsrfToken() ?>">
+            <input type="hidden" name="action" value="register">
+            <div class="form-group">
+                <label>Username</label>
+                <input type="text" name="username" required placeholder="Username">
             </div>
-            
-            <div class="lock-timer" id="lock-timer"></div>
-        </div>
-
-        <div id="chat-screen" class="screen hidden">
-            <header class="system-nav">
-                <button class="nav-btn back-btn" id="back-btn">←</button>
-                <div class="nav-brand">
-                    <span id="chat-contact-name">System Config</span>
-                </div>
-                <div class="nav-actions">
-                    <button class="nav-btn" id="lock-thread-btn">⚙</button>
-                </div>
-            </header>
-            
-            <div id="messages-container" class="messages-camouflage">
-                <div class="messages-list" id="messages-list"></div>
+            <div class="form-group">
+                <label>Display Name</label>
+                <input type="text" name="display" required placeholder="Your name">
             </div>
-            
-            <div class="compose-area hidden" id="compose-area">
-                <textarea id="message-input" placeholder="Enter configuration data..."></textarea>
-                <button class="btn-send" id="send-btn">→</button>
+            <div class="form-group">
+                <label>Password</label>
+                <input type="password" name="password" required placeholder="Password">
             </div>
-            
-            <div class="reveal-overlay" id="reveal-overlay">
-                <div class="revealed-content" id="revealed-content"></div>
-                <div class="reveal-timer" id="reveal-timer"></div>
+            <div class="form-group">
+                <label>Confirm</label>
+                <input type="password" name="confirm" required placeholder="Confirm password">
             </div>
-        </div>
-
-        <div id="modal-overlay" class="modal-overlay hidden">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h3 id="modal-title">Configure</h3>
-                    <button class="modal-close" id="modal-close">×</button>
-                </div>
-                
-                <div id="modal-body"></div>
-            </div>
-        </div>
+            <button type="submit" class="btn">Create Account</button>
+        </form>
     </div>
-
-    <script src="app.js"></script>
 </body>
 </html>
