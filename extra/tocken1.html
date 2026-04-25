@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Individual Token Generator</title>
+    <link href="https://fonts.googleapis.com/css2?family=Tiro+Bangla:ital@0;1&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary-color: #1a1a1a;
+            --border-color: #444;
+            --bg-color: #f4f7f6;
+        }
+
+        body {
+            font-family: 'Tiro Bangla', serif;
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg-color);
+            color: var(--primary-color);
+        }
+
+        /* --- Controls Section (Hidden during print) --- */
+        #controls {
+            background: white;
+            padding: 25px;
+            margin: 20px auto;
+            max-width: 850px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+
+        #controls h2 {
+            margin-top: 0;
+            text-align: center;
+            font-size: 22px;
+            color: #2c3e50;
+        }
+
+        .form-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+
+        .form-group.full-width { grid-column: span 2; }
+
+        label {
+            font-weight: bold;
+            margin-bottom: 6px;
+            display: block;
+            font-size: 14px;
+        }
+
+        input {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #cbd5e1;
+            border-radius: 5px;
+            font-family: 'Tiro Bangla', serif;
+            font-size: 15px;
+            box-sizing: border-box;
+            background-color: #f8fafc;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 15px;
+            margin-top: 25px;
+            justify-content: center;
+        }
+
+        button {
+            padding: 12px 25px;
+            font-size: 16px;
+            font-family: 'Tiro Bangla', serif;
+            font-weight: bold;
+            color: white;
+            background-color: #3b82f6;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+
+        button:hover { background-color: #2563eb; }
+        button.print-btn { background-color: #10b981; }
+        button.print-btn:hover { background-color: #059669; }
+
+        /* --- Printable Area --- */
+        #printable-area {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+        }
+
+        /* Strict A4 Page Wrapper */
+        .a4-page {
+            width: 210mm;
+            height: 297mm;
+            background: white;
+            padding: 10mm; /* Printable safety margin */
+            box-sizing: border-box;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            
+            /* The Magic Grid: Exactly 5 rows, 2 columns */
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            grid-template-rows: repeat(5, 1fr);
+            gap: 4mm; /* Spacing between tokens */
+            
+            page-break-after: always; /* Force new page in print */
+        }
+
+        /* Individual Token Styling */
+        .token {
+            border: 1.5px dashed var(--border-color); /* Dashed indicates cutting */
+            border-radius: 8px;
+            position: relative;
+            padding: 5mm;
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            overflow: hidden;
+            background-color: #fff;
+        }
+
+        /* Center Logo Watermark */
+        .watermark {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 100px;
+            height: 100px;
+            opacity: 0.12;
+            pointer-events: none;
+            z-index: 1;
+            background-size: contain;
+            background-repeat: no-repeat;
+            background-position: center;
+        }
+
+        /* Token Content Layer */
+        .t-content {
+            position: relative;
+            z-index: 2;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        .t-header { text-align: center; line-height: 1.3; }
+        .t-school { font-size: 17px; font-weight: bold; }
+        .t-event { font-size: 14px; margin-top: 3px; font-weight: bold; color: #333;}
+        .t-info { font-size: 12px; color: #444; margin-top: 2px; }
+
+        .t-number-container { text-align: center; margin: 4px 0; }
+        .t-number {
+            font-size: 16px;
+            font-weight: bold;
+            border: 1.5px solid #000;
+            display: inline-block;
+            padding: 3px 15px;
+            border-radius: 20px;
+            background-color: rgba(0,0,0,0.04);
+        }
+
+        /* Input Rows */
+        .t-form { font-size: 13px; line-height: 1.4; margin-top: auto; padding-bottom: 2px;}
+        
+        .input-row {
+            display: flex;
+            align-items: flex-end;
+            margin-top: 8px;
+        }
+
+        .dotted-line {
+            flex-grow: 1;
+            border-bottom: 1.5px dotted #555;
+            margin: 0 6px;
+            position: relative;
+            top: -3px;
+        }
+
+        /* --- Print Styles --- */
+        @media print {
+            @page {
+                size: A4 portrait;
+                margin: 0; /* Let the .a4-page handle margins */
+            }
+            body { background: white; margin: 0; }
+            #controls { display: none; }
+            #printable-area { gap: 0; display: block; }
+            .a4-page { box-shadow: none; margin: 0; }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="controls" class="no-print">
+        <h2>পৃথক টোকেন জেনারেটর (A4 প্রতি ১০টি টোকেন)</h2>
+        <div class="form-grid">
+            <div class="form-group full-width">
+                <label>প্রতিষ্ঠানের নাম</label>
+                <input type="text" id="schoolName" value="গ্রীন সাইন রেসিডেন্সিয়াল স্কুল এন্ড কলেজ">
+            </div>
+            <div class="form-group">
+                <label>অনুষ্ঠানের নাম</label>
+                <input type="text" id="event" value="শিক্ষা সফর - ২০২৬">
+            </div>
+            <div class="form-group">
+                <label>স্থান ও তারিখ</label>
+                <input type="text" id="locationDate" value="স্থানঃ স্বপ্নপুরী | তারিখঃ ১০ এপ্রিল ২০২৬ ইং">
+            </div>
+            <div class="form-group">
+                <label>লোগো URL (জলছাপের জন্য)</label>
+                <input type="url" id="logoUrl" placeholder="https://example.com/logo.png" value="">
+            </div>
+            <div class="form-group">
+                <label>শুরুর টোকেন নম্বর</label>
+                <input type="number" id="startNum" value="1">
+            </div>
+            <div class="form-group">
+                <label>মোট টোকেন (কতগুলো বানাতে চান)</label>
+                <input type="number" id="totalTokens" value="20">
+            </div>
+        </div>
+        <div class="button-group">
+            <button onclick="generateTokens()">Generate Tokens</button>
+            <button class="print-btn" onclick="window.print()">Print (A4)</button>
+        </div>
+    </div>
+
+    <div id="printable-area">
+        </div>
+
+    <script>
+        // Convert English numbers to Bengali digits
+        function toBanglaDigit(number) {
+            const banglaDigits = ['০', '১', '২', '৩', '৪', '৫', '৬', '৭', '৮', '৯'];
+            return number.toString().replace(/\d/g, x => banglaDigits[x]);
+        }
+
+        function generateTokens() {
+            const schoolName = document.getElementById('schoolName').value;
+            const event = document.getElementById('event').value;
+            const locationDate = document.getElementById('locationDate').value;
+            const logoUrl = document.getElementById('logoUrl').value;
+            const startNum = parseInt(document.getElementById('startNum').value) || 1;
+            const totalTokens = parseInt(document.getElementById('totalTokens').value) || 10;
+
+            const container = document.getElementById('printable-area');
+            container.innerHTML = ''; 
+
+            const watermarkStyle = logoUrl ? `background-image: url('${logoUrl}');` : '';
+
+            // Calculate how many A4 pages are needed (10 tokens per page)
+            const totalPages = Math.ceil(totalTokens / 10);
+            let currentToken = startNum;
+            let tokensGenerated = 0;
+
+            for (let pageNum = 0; pageNum < totalPages; pageNum++) {
+                // Create an A4 Page container
+                const pageDiv = document.createElement('div');
+                pageDiv.className = 'a4-page';
+
+                // Fill the page with up to 10 tokens
+                for (let i = 0; i < 10; i++) {
+                    if (tokensGenerated >= totalTokens) break; // Stop if we reached the requested amount
+
+                    const banglaTokenNumber = toBanglaDigit(currentToken);
+
+                    const tokenDiv = document.createElement('div');
+                    tokenDiv.className = 'token';
+                    tokenDiv.innerHTML = `
+                        <div class="watermark" style="${watermarkStyle}"></div>
+                        <div class="t-content">
+                            <div class="t-header">
+                                <div class="t-school">${schoolName}</div>
+                                <div class="t-event">${event}</div>
+                                <div class="t-info">${locationDate}</div>
+                            </div>
+                            
+                            <div class="t-number-container">
+                                <div class="t-number">টোকেন নাম্বারঃ ${banglaTokenNumber}</div>
+                            </div>
+                            
+                            <div class="t-form">
+                                <div class="input-row">
+                                    <span>নামঃ</span> <div class="dotted-line"></div>
+                                    <span>শ্রেণিঃ</span> <div class="dotted-line" style="width: 35px; flex-grow: 0;"></div>
+                                </div>
+                                <div class="input-row">
+                                    <span>শ্রেণি শিক্ষকের স্বাক্ষরঃ</span> <div class="dotted-line"></div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+
+                    pageDiv.appendChild(tokenDiv);
+                    currentToken++;
+                    tokensGenerated++;
+                }
+
+                container.appendChild(pageDiv);
+            }
+        }
+
+        // Generate default tokens when the page loads
+        window.onload = generateTokens;
+    </script>
+</body>
+</html>

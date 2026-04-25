@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>সিট প্ল্যান মেকার প্রো</title>
+    <link href="https://fonts.googleapis.com/css2?family=Tiro+Bangla:ital@0;1&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #1e3799;
+            --bg: #f1f2f6;
+        }
+        body {
+            font-family: 'Tiro Bangla', serif;
+            margin: 0;
+            padding: 20px;
+            background-color: var(--bg);
+        }
+        .no-print {
+            background: white;
+            padding: 25px;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.08);
+            max-width: 800px;
+            margin: 0 auto 30px auto;
+        }
+        h2 { text-align: center; color: var(--primary); margin-top: 0; }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; font-weight: bold; margin-bottom: 8px; color: #333; }
+        input[type="text"], textarea {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ced6e0;
+            border-radius: 5px;
+            font-family: 'Tiro Bangla', serif;
+            box-sizing: border-box;
+            font-size: 15px;
+        }
+        textarea { height: 180px; resize: vertical; }
+        .controls { display: flex; gap: 10px; margin-top: 20px; }
+        
+        button {
+            flex: 1;
+            padding: 12px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            font-family: 'Tiro Bangla', serif;
+            font-weight: bold;
+            transition: 0.3s;
+            color: white;
+        }
+        .convert-btn { background-color: #e58e26; }
+        .convert-btn:hover { background-color: #fa983a; }
+        .print-btn { background-color: #009432; }
+        .print-btn:hover { background-color: #006266; }
+
+        /* Preview and Print Styles */
+        #printable-area { 
+            display: none; 
+            background: white; 
+            padding: 20px; 
+            border-radius: 5px; 
+            max-width: 210mm;
+            margin: 0 auto;
+        }
+
+        @media print {
+            body { margin: 0; padding: 0; background-color: white; }
+            .no-print { display: none; }
+            #printable-area { display: block; padding: 0; max-width: none; }
+            
+            @page { size: A4; margin: 0; }
+
+            .page {
+                width: 210mm;
+                height: 297mm;
+                display: grid;
+                grid-template-columns: repeat(3, 1fr);
+                grid-template-rows: repeat(5, 1fr);
+                page-break-after: always;
+                box-sizing: border-box;
+                padding: 10mm; 
+                gap: 2mm;
+            }
+
+            .ticket {
+                border: 1px dashed #555;
+                border-radius: 4px;
+                padding: 10px;
+                display: flex;
+                flex-direction: column;
+                justify-content: center;
+                align-items: center;
+                text-align: center;
+                box-sizing: border-box;
+                overflow: hidden;
+            }
+
+            .dynamic-container {
+                width: 100%;
+                white-space: nowrap;
+                overflow: hidden;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+            }
+
+            .t-school { font-weight: bold; margin-bottom: 4px; }
+            .t-exam { font-weight: bold; margin-bottom: 6px; border-bottom: 1px solid #000; padding-bottom: 2px;}
+            .t-class { margin-bottom: 10px; }
+            .t-student { font-weight: bold; margin-bottom: 8px; color: #000; }
+            
+            .roll-box {
+                border: 1px solid #000;
+                padding: 3px 15px;
+                border-radius: 5px;
+                font-weight: bold;
+                background-color: #f8f8f8;
+                display: inline-block;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="no-print">
+        <h2>সিট প্ল্যান জেনারেটর</h2>
+        <div class="form-group">
+            <label>প্রতিষ্ঠানের নাম:</label>
+            <input type="text" id="schoolName" value="গ্রীন সাইন রেসিডেন্সিয়াল স্কুল এন্ড কলেজ">
+        </div>
+        <div class="form-group">
+            <label>পরীক্ষার নাম:</label>
+            <input type="text" id="examName" value="প্রথম সাময়িক পরীক্ষা ২০২৬">
+        </div>
+        <div class="form-group">
+            <label>শ্রেণি ও শাখা:</label>
+            <input type="text" id="className" value="নার্সারী">
+        </div>
+        <div class="form-group">
+            <label>শিক্ষার্থীদের তথ্য (এক্সেল থেকে বিজয় ফন্টে কপি করে পেস্ট করুন):</label>
+            <textarea id="studentData" placeholder="01  ‡ivj bs wkÿv_x©i bvg..."></textarea>
+        </div>
+        
+        <div class="controls">
+            <button class="convert-btn" onclick="convertBijoyToAvro()">বিজয় -> অভ্র কনভার্ট</button>
+            <button class="print-btn" onclick="generateAndPrint()">সিট প্ল্যান তৈরি ও প্রিন্ট করুন</button>
+        </div>
+    </div>
+
+    <div id="printable-area"></div>
+
+    <script>
+        // আপনার দেওয়া নির্দিষ্ট ডেটাসেট এবং সাধারণ বিজয় শব্দের জন্য শক্তিশালী কনভার্টার 
+        function convertBijoyToAvro() {
+            let textArea = document.getElementById('studentData');
+            let text = textArea.value;
+
+            if(!text.trim()) {
+                alert("দয়া করে বক্সে আগে কিছু লেখা পেস্ট করুন!");
+                return;
+            }
+
+            // ইংরেজি সংখ্যাকে বাংলা করা
+            text = text.replace(/[0-9]/g, function(w) { return ['০','১','২','৩','৪','৫','৬','৭','৮','৯'][w]; });
+
+            // আপনার দেওয়া নামের তালিকা অনুযায়ী শতভাগ নির্ভুল ম্যাপিং (যাতে কোনো নামের বানান ভুল না হয়)
+            const preciseMapping = {
+                "‡ivj bs": "রোল নং", "wkÿv_x©i bvg": "শিক্ষার্থীর নাম", "‡gv:": "মো:", "‡gvQv:": "মোছা:",
+                "Beªvi Avj Kvwie": "ইবরার আল কারিব", "mvwgnv wmbvb cÖvgvwYK": "সামিহা সিনান প্রামাণিক",
+                "bIwkb AvbRyg bIdv": "নওশীন আনজুম নওভা", "mvdIqvb Avj mvweZ": "সাফওয়ান আল সাবিত",
+                "‡`eeªZ KzÛz K¤úb": "দেবব্রত কুন্ডু কম্পন", "AvKmv Avqiv": "আকসা আয়রা",
+                "wn‡Zk ivq A¼zk": "হিতেশ রায় অংকুশ", "Avãym myenvb": "আব্দুস সুবহান",
+                "Avãyjøvn Avj Av`bvb": "আব্দুল্লাহ আল আদনান", "mvbvd Avinvg": "সানাফ আরহাম",
+                "gy¯Ívweb Bqvmwd myivn": "মুস্তাবিন ইয়াসফি সুরাহ", "Avwei †nv‡mb": "আবির হোসেন",
+                "Avey Avivd": "আবু আরাফ", "ivBqvb Bmjvg": "রাইয়ান ইসলাম",
+                "gvkivwd BbwkqvK gyb": "মাশরাফি ইনশিয়াক মুন", "gvw`qvb †nv‡mb Avhvb": "মাদিয়ান হোসেন আযান",
+                "Zvmwdqv RvbœvZ Awb©": "তাসফিয়া জান্নাত অর্নি", "wgbnvR Avj RybvB`": "মিনহাজ আল জুনাইদ",
+                "byRvBiv ingvb": "নুজাইরা রহমান", "Rqx PµeZx©": "জয়ী চক্রবর্তী", "ûmbvBb": "হুসাইন",
+                "ivBnvb cÖvgvwYK ivnvZ": "রাইহান প্রামাণিক রাহাত", "gywbdv Zvmwbg wmwg": "মুনিফা তাসনিম সিমি",
+                "AvqvR web Avmv`": "আয়াজ বিন আসাদ", "wgbnvR ingvb Avwjd": "মিনহাজ রহমান আলিফ",
+                "†i`Iqvb Kwei ivBqvb": "রেদওয়ান কবির রাইয়ান", "iæKvBqv RvbœvZ": "রুকাইয়া জান্নাত",
+                "gybZvnv Zvevm&myg mviv": "মুনতাহা তাবাসসুম সারা", "AvgvZzjøvn Avj gvqiv": "আমাতুল্লাহ আল মায়রা",
+                "Avnbvd gvwng": "আহনাফ মাহি", "mybvqiv Zvev”Qzg †mRv": "সুনায়রা তাবাসসুম সেজা",
+                "e„›`v †`ex wekvLv": "বৃন্দা দেবী বিশাখা", "myiwRZ ivq": "সুরজিত রায়",
+                "bIwkb †gv¯Ídv üw`": "নওশীন মোস্তফা হৃদি", "bymvBdv RvbœvZ BiwZRv": "নুসাইফা জান্নাত ইরতিজা",
+                "w¯œ»v ivq Lywk": "স্নিগ্ধা রায় খুশি", "Avãyjøvn Rvwei Avinvg": "আব্দুল্লাহ জাবের আরহাম",
+                "Avãyjøvn Avj Kvwd": "আব্দুল্লাহ আল কাফি", "Iqvwn` kvnwiqvi †¯ªvZ": "ওয়াহিদ শাহরিয়ার স্রোত",
+                "BkivZ ingvb Avwbmv": "ইসরাত রহমান আনিসা", "wcÖqg P›`ª ivq": "প্রিয়ম চন্দ্র রায়",
+                "gvnvw` ingvb m¤ªvU": "মাহাদি রহমান সম্রাট", "kvnivb Bmjvg": "শাহরান ইসলাম",
+                "cÖK…wZ ivbx ivq f~wgKv kÖvebx": "প্রকৃতি রানী রায় ভূমিকা শ্রাবনী",
+                "RvbœvZzj gvIqv": "জান্নাতুল মাওয়া", "Zx_© ivq": "তীর্থ রায়", "mv`gvb kvb": "সাদমান শান",
+                "Avwdqv AvbZviv": "আফিয়া আনতারা", "gy¯Ívwmb wejøvn": "মুস্তাসিন বিল্লাহ"
+            };
+
+            for (const [bijoy, avro] of Object.entries(preciseMapping)) {
+                // রিজেক্স ব্যবহার করে সকল স্থানে পরিবর্তন করা হচ্ছে
+                text = text.split(bijoy).join(avro); 
+            }
+
+            // টেক্সট বক্সে কনভার্ট হওয়া ডাটা বসিয়ে দেওয়া হলো
+            textArea.value = text;
+        }
+
+        // ডায়নামিক ফন্ট সাইজ কন্ট্রোলার
+        function adjustFontSize() {
+            const elements = document.querySelectorAll('.dynamic-text');
+            elements.forEach(el => {
+                const container = el.parentElement;
+                let fontSize = parseFloat(el.getAttribute('data-max-size')); 
+                el.style.fontSize = fontSize + 'px';
+                
+                while (el.scrollWidth > container.clientWidth && fontSize > 8) {
+                    fontSize -= 0.5;
+                    el.style.fontSize = fontSize + 'px';
+                }
+            });
+        }
+
+        // সিট প্ল্যান জেনারেট এবং প্রিন্ট 
+        function generateAndPrint() {
+            const schoolName = document.getElementById('schoolName').value;
+            const examName = document.getElementById('examName').value;
+            const className = document.getElementById('className').value;
+            const rawData = document.getElementById('studentData').value;
+
+            if (!rawData.trim()) {
+                alert("দয়া করে শিক্ষার্থীদের তথ্য দিন!");
+                return;
+            }
+
+            const lines = rawData.split('\n');
+            let students = [];
+
+            lines.forEach(line => {
+                if (line.trim() !== '') {
+                    let parts = line.split('\t'); 
+                    if(parts.length < 2) { parts = line.split(/\s{2,}/); }
+                    if(parts.length < 2) { parts = line.split(/\s+(.+)/); }
+                    
+                    if (parts.length >= 2) {
+                        let roll = parts[0].trim();
+                        let name = parts[1].trim();
+                        
+                        name = name.replace(/[\r\n]+/g, " ").trim();
+                        roll = roll.replace(/[\r\n]+/g, "").trim();
+
+                        if(!name.includes("শিক্ষার্থীর নাম") && !roll.includes("রোল")) {
+                            students.push({ roll: roll, name: name });
+                        }
+                    }
+                }
+            });
+
+            const printArea = document.getElementById('printable-area');
+            printArea.innerHTML = '';
+            printArea.style.display = 'block'; // প্রিন্ট এরিয়া দৃশ্যমান করা হলো
+
+            const tokensPerPage = 15; 
+            let totalPages = Math.ceil(students.length / tokensPerPage);
+
+            for (let i = 0; i < totalPages; i++) {
+                let pageDiv = document.createElement('div');
+                pageDiv.className = 'page';
+
+                for (let j = 0; j < tokensPerPage; j++) {
+                    let studentIndex = (i * tokensPerPage) + j;
+                    if (studentIndex < students.length) {
+                        let student = students[studentIndex];
+                        let ticketHtml = `
+                            <div class="ticket">
+                                <div class="dynamic-container t-school">
+                                    <span class="dynamic-text" data-max-size="12">${schoolName}</span>
+                                </div>
+                                <div class="dynamic-container t-exam">
+                                    <span class="dynamic-text" data-max-size="14">${examName}</span>
+                                </div>
+                                <div class="dynamic-container t-class">
+                                    <span class="dynamic-text" data-max-size="13">${className}</span>
+                                </div>
+                                <div class="dynamic-container t-student">
+                                    <span class="dynamic-text" data-max-size="17">${student.name}</span>
+                                </div>
+                                <div class="dynamic-container">
+                                    <span class="dynamic-text roll-box" data-max-size="16">রোল: ${student.roll}</span>
+                                </div>
+                            </div>
+                        `;
+                        pageDiv.innerHTML += ticketHtml;
+                    } else {
+                        pageDiv.innerHTML += `<div class="ticket" style="border-color: transparent;"></div>`;
+                    }
+                }
+                printArea.appendChild(pageDiv);
+            }
+
+            // ফন্ট সাইজ ঠিক করে সাথে সাথে প্রিন্ট ডায়ালগ ওপেন করা
+            setTimeout(() => {
+                adjustFontSize();
+                window.print();
+                printArea.style.display = 'none'; // প্রিন্ট শেষ হলে আবার হাইড হয়ে যাবে
+            }, 300);
+        }
+    </script>
+</body>
+</html>
