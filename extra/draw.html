@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ovijat Pro - Text Mode</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    
+    <style>
+        :root {
+            --primary: #7c3aed; /* Violet */
+            --primary-dark: #6d28d9;
+            --success: #059669;
+            --bg-gradient: linear-gradient(135deg, #2e1065 0%, #4c1d95 100%);
+            --glass: rgba(255, 255, 255, 0.98);
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Inter', sans-serif; }
+
+        body {
+            background: var(--bg-gradient);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+            color: #1f2937;
+        }
+
+        .container {
+            background: var(--glass);
+            padding: 2.5rem;
+            border-radius: 20px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+            width: 100%;
+            max-width: 500px;
+        }
+
+        h1 { text-align: center; color: var(--primary); font-weight: 800; font-size: 2rem; }
+        .subtitle { text-align: center; color: #6b7280; margin-bottom: 2rem; font-size: 0.9rem; }
+
+        .form-group { margin-bottom: 1.2rem; }
+        label { display: block; margin-bottom: 0.5rem; font-weight: 700; font-size: 0.9rem; color: #4b5563; }
+        
+        input {
+            width: 100%; padding: 14px; border: 2px solid #e5e7eb;
+            border-radius: 10px; font-size: 1.1rem; outline: none; transition: 0.2s;
+            font-family: monospace; letter-spacing: 1px;
+        }
+        input:focus { border-color: var(--primary); }
+
+        .tabs { display: flex; margin-bottom: 1.5rem; background: #f3f4f6; padding: 5px; border-radius: 12px; }
+        .tab { flex: 1; text-align: center; padding: 12px; cursor: pointer; border-radius: 8px; font-weight: 600; color: #6b7280; }
+        .tab.active { background: white; color: var(--primary); box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
+        .hidden { display: none !important; }
+
+        .btn-generate {
+            background: var(--primary); color: white; width: 100%; padding: 16px;
+            border: none; border-radius: 12px; font-weight: 700; font-size: 1.1rem; cursor: pointer;
+            margin-top: 10px; transition: 0.2s;
+            box-shadow: 0 4px 6px -1px rgba(124, 58, 237, 0.4);
+        }
+        .btn-generate:hover { transform: translateY(-2px); box-shadow: 0 10px 15px -3px rgba(124, 58, 237, 0.5); }
+        .btn-generate:active { transform: translateY(0); }
+
+        .btn-stop {
+            background: #ef4444; color: white; width: 100%; padding: 12px;
+            border: none; border-radius: 10px; margin-top: 15px; cursor: pointer; font-weight: bold;
+        }
+
+        .download-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 20px; }
+        .btn-dl { padding: 14px; border: none; border-radius: 10px; color: white; cursor: pointer; font-weight: 700; transition: 0.2s; }
+        .btn-dl:hover { opacity: 0.9; }
+        .xls { background: #059669; }
+        .csv { background: #2563EB; }
+        button:disabled { opacity: 0.5; cursor: not-allowed; transform: none !important; box-shadow: none !important; }
+
+        /* Overlay */
+        .overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.9); z-index: 999;
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            color: white; padding: 20px; backdrop-filter: blur(5px);
+        }
+        
+        .progress-container {
+            width: 100%; max-width: 320px; height: 14px; background: #333;
+            border-radius: 7px; margin: 25px 0; overflow: hidden;
+            border: 1px solid #444;
+        }
+        .progress-bar {
+            height: 100%; background: linear-gradient(90deg, #10b981, #34d399); width: 0%; transition: width 0.2s;
+        }
+        .stat-text { font-family: 'Inter', monospace; font-size: 1.5rem; font-weight: bold; letter-spacing: -1px; }
+
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>Ovijat Pro</h1>
+    <p class="subtitle">Clean Text Output Generator</p>
+
+    <div class="tabs">
+        <div class="tab active" onclick="setMode('numeric')">Numeric</div>
+        <div class="tab" onclick="setMode('alpha')">Alphanumeric</div>
+    </div>
+
+    <div id="numeric-inputs">
+        <div class="form-group">
+            <label>Start Number</label>
+            <input type="number" id="n-start" placeholder="e.g. 100000000000">
+        </div>
+        <div class="form-group">
+            <label>End Number</label>
+            <input type="number" id="n-end" placeholder="e.g. 999999999999">
+        </div>
+    </div>
+
+    <div id="alpha-inputs" class="hidden">
+        <div class="form-group">
+            <label>Characters</label>
+            <input type="text" id="a-chars" value="ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789">
+        </div>
+        <div class="form-group">
+            <label>Length</label>
+            <input type="number" id="a-len" value="12">
+        </div>
+    </div>
+
+    <div class="form-group">
+        <label>Total Codes Needed</label>
+        <input type="number" id="total" placeholder="e.g. 100000">
+    </div>
+
+    <button class="btn-generate" onclick="startWorker()">Start Generating</button>
+
+    <div class="download-row">
+        <button class="btn-dl xls" id="btn-xls" disabled onclick="exportData('xlsx')">Download Excel</button>
+        <button class="btn-dl csv" id="btn-csv" disabled onclick="exportData('csv')">Download CSV</button>
+    </div>
+    <p id="final-msg" style="text-align:center; margin-top:15px; font-weight:600; font-size:0.95rem; color:#059669; min-height: 20px;"></p>
+</div>
+
+<div id="loader" class="hidden overlay">
+    <h2 style="font-weight: 300; letter-spacing: 1px;">GENERATING</h2>
+    <div class="stat-text" id="progress-text">0 / 0</div>
+    <div class="progress-container">
+        <div class="progress-bar" id="progress-bar"></div>
+    </div>
+    <p style="color:#9ca3af; font-size:0.9rem">Calculations running in background...</p>
+    <button class="btn-stop" onclick="stopWorker()">CANCEL</button>
+</div>
+
+<script>
+    // --- WORKER SCRIPT (FIXED FOR TEXT OUTPUT) ---
+    const workerScript = `
+        self.onmessage = function(e) {
+            const { mode, total, start, end, chars, len } = e.data;
+            const uniqueSet = new Set();
+            let attempts = 0;
+            const maxAttempts = total * 50; 
+            
+            const reportInterval = 2500; 
+            let lastReport = 0;
+
+            // Helper to generate a number string
+            // We use BigInt logic roughly or just simple string concat to ensure it is text
+            
+            try {
+                while (uniqueSet.size < total) {
+                    let code;
+                    
+                    if (mode === 'numeric') {
+                        // FIX: Convert Number to String immediately
+                        const randomNum = Math.floor(Math.random() * (end - start + 1)) + start;
+                        code = randomNum.toString(); 
+                    } else {
+                        code = '';
+                        for (let i = 0; i < len; i++) {
+                            code += chars.charAt(Math.floor(Math.random() * chars.length));
+                        }
+                    }
+
+                    if (!uniqueSet.has(code)) {
+                        uniqueSet.add(code);
+                    } else {
+                        attempts++;
+                    }
+
+                    if (attempts > maxAttempts && uniqueSet.size < total) {
+                        self.postMessage({ type: 'error', msg: 'Range too small for this many codes.' });
+                        return;
+                    }
+
+                    if (uniqueSet.size - lastReport >= reportInterval) {
+                        self.postMessage({ type: 'progress', current: uniqueSet.size, total: total });
+                        lastReport = uniqueSet.size;
+                    }
+                }
+                
+                // Send back an array of strings
+                self.postMessage({ type: 'done', data: Array.from(uniqueSet) });
+
+            } catch (err) {
+                self.postMessage({ type: 'error', msg: err.message });
+            }
+        };
+    `;
+
+    // --- MAIN SCRIPT ---
+    let worker;
+    let generatedData = [];
+    let currentMode = 'numeric';
+
+    function setMode(m) {
+        currentMode = m;
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        if(m === 'numeric') {
+            document.querySelectorAll('.tab')[0].classList.add('active');
+            document.getElementById('numeric-inputs').classList.remove('hidden');
+            document.getElementById('alpha-inputs').classList.add('hidden');
+        } else {
+            document.querySelectorAll('.tab')[1].classList.add('active');
+            document.getElementById('numeric-inputs').classList.add('hidden');
+            document.getElementById('alpha-inputs').classList.remove('hidden');
+        }
+    }
+
+    function startWorker() {
+        const total = parseInt(document.getElementById('total').value);
+        if(!total) return alert("Please enter total codes");
+
+        let payload = { mode: currentMode, total: total };
+
+        if(currentMode === 'numeric') {
+            const s = Number(document.getElementById('n-start').value);
+            const e = Number(document.getElementById('n-end').value);
+            
+            if(isNaN(s) || isNaN(e)) return alert("Invalid numbers");
+            if(s >= e) return alert("Start must be smaller than End");
+            if((e - s) < total) return alert("Range is too small! Increase the range.");
+            
+            payload.start = s;
+            payload.end = e;
+        } else {
+            payload.chars = document.getElementById('a-chars').value;
+            payload.len = parseInt(document.getElementById('a-len').value);
+            if(!payload.chars) return alert("Enter characters");
+        }
+
+        // Reset UI
+        document.getElementById('loader').classList.remove('hidden');
+        document.getElementById('progress-bar').style.width = '0%';
+        document.getElementById('final-msg').innerText = '';
+        document.getElementById('btn-xls').disabled = true;
+        document.getElementById('btn-csv').disabled = true;
+
+        // Init Worker
+        const blob = new Blob([workerScript], { type: 'application/javascript' });
+        worker = new Worker(URL.createObjectURL(blob));
+
+        worker.onmessage = function(e) {
+            const { type, current, total, data, msg } = e.data;
+
+            if (type === 'progress') {
+                document.getElementById('progress-text').innerText = `${current.toLocaleString()} / ${total.toLocaleString()}`;
+                const pct = (current / total) * 100;
+                document.getElementById('progress-bar').style.width = pct + '%';
+            } 
+            else if (type === 'done') {
+                // Wrap data in objects for SheetJS
+                generatedData = data.map(c => ({ "Code": c }));
+                finish(true);
+            } 
+            else if (type === 'error') {
+                alert("Error: " + msg);
+                stopWorker();
+            }
+        };
+
+        worker.postMessage(payload);
+    }
+
+    function stopWorker() {
+        if(worker) worker.terminate();
+        document.getElementById('loader').classList.add('hidden');
+        alert("Cancelled.");
+    }
+
+    function finish(success) {
+        if(worker) worker.terminate();
+        document.getElementById('loader').classList.add('hidden');
+        if(success) {
+            document.getElementById('final-msg').innerText = `✅ Ready! ${generatedData.length.toLocaleString()} codes generated.`;
+            document.getElementById('btn-xls').disabled = false;
+            document.getElementById('btn-csv').disabled = false;
+        }
+    }
+
+    function exportData(type) {
+        if(!generatedData.length) return;
+        
+        const btn = type === 'xlsx' ? document.getElementById('btn-xls') : document.getElementById('btn-csv');
+        const oldText = btn.innerText;
+        btn.innerText = "Saving...";
+        
+        setTimeout(() => {
+            // Create Worksheet
+            const ws = XLSX.utils.json_to_sheet(generatedData);
+
+            // FIX: Force Text Format for Column A
+            // We iterate over all cells in column A and set type to 's' (string)
+            const range = XLSX.utils.decode_range(ws['!ref']);
+            for (let R = range.s.r; R <= range.e.r; ++R) {
+                const ref = XLSX.utils.encode_cell({r: R, c: 0}); // Column A
+                if (!ws[ref]) continue;
+                ws[ref].t = 's'; // Force String Type
+                ws[ref].z = '@'; // Force Text Format
+            }
+
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "Codes");
+            const fname = `Ovijat_Codes_${new Date().toISOString().slice(0,10)}.${type}`;
+            
+            if(type === 'csv') {
+                XLSX.writeFile(wb, fname, { bookType: "csv" });
+            } else {
+                XLSX.writeFile(wb, fname);
+            }
+            
+            btn.innerText = oldText;
+        }, 50);
+    }
+</script>
+
+</body>
+</html>

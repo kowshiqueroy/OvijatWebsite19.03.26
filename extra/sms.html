@@ -58,6 +58,7 @@
         .alert { margin-top: 1.2rem; padding: 1rem; border-radius: 8px; font-size: 0.85rem; display: none; word-break: break-all; white-space: pre-wrap; font-family: monospace; }
         .alert.success { display: block; background: var(--success-bg); color: var(--success-text); border: 1px solid #bbf7d0; }
         .alert.error { display: block; background: var(--error-bg); color: var(--error-text); border: 1px solid #fecaca; }
+        .alert.info { display: block; background: #eff6ff; color: #1e3a8a; border: 1px solid #bfdbfe; }
         
         .help-text { font-size: 0.75rem; color: var(--text-muted); margin-top: 0.3rem; display: block; }
     </style>
@@ -80,11 +81,11 @@
     </div>
 
     <div id="view-send" class="view active">
-        <form id="formSend" onsubmit="handleSend(event)">
+        <form id="formSend" onsubmit="handleBulkSend(event)">
             <div class="form-group">
                 <label>To (Recipients) *</label>
                 <textarea id="toNumbers" class="form-control" placeholder="8801800000000, 8801700000000" required></textarea>
-                <span class="help-text">Start with 880. Separate multiple with comma.</span>
+                <span class="help-text">Start with 880. Separate multiple with comma. The app will send to them one by one automatically.</span>
             </div>
             
             <div class="form-group">
@@ -152,52 +153,95 @@
         el.textContent = typeof message === 'object' ? JSON.stringify(message, null, 2) : message;
     }
 
-    // Utility: Format Date for API (Y-m-d H:i:s)
+    // Utility: Format Date
     function formatSchedule(datetimeLocal) {
         if(!datetimeLocal) return "";
         return datetimeLocal.replace('T', ' ') + ':00';
     }
 
-    // Error Catcher for CORS
+    // Error Catcher
     function getErrorMessage(error) {
         if(error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
-            return "❌ CORS ERROR: The API server blocked the request from the browser. You must use a backend server (PHP/Node) or install an 'Allow CORS' browser extension to test this file locally.";
+            return "CORS/Network Error: API blocked browser request.";
         }
         return `Error: ${error.message}`;
     }
 
-    // 1. Handle Send
-    async function handleSend(e) {
+    // 1. Handle Bulk Send (One by One)
+    async function handleBulkSend(e) {
         e.preventDefault();
         const key = getApiKey(); if(!key) return;
         
-        const btn = document.getElementById('btnSend');
-        btn.disabled = true; btn.innerText = "Sending...";
-        showAlert('resSend', '', '');
+        // Process numbers: split by comma, remove spaces, filter out empties
+        const rawNumbers = document.getElementById('toNumbers').value;
+        const numberArray = rawNumbers.split(',').map(num => num.replace(/\s+/g, '')).filter(num => num.length > 0);
 
-        const formData = new FormData();
-        formData.append('api_key', key);
-        formData.append('msg', document.getElementById('msgBody').value);
-        formData.append('to', document.getElementById('toNumbers').value.replace(/\s+/g, ''));
+        if (numberArray.length === 0) {
+            return alert("Please enter at least one valid number.");
+        }
+
+        const btn = document.getElementById('btnSend');
+        btn.disabled = true; 
+        
+        // Prepare base form data
+        const baseFormData = new FormData();
+        baseFormData.append('api_key', key);
+        baseFormData.append('msg', document.getElementById('msgBody').value);
         
         const senderId = document.getElementById('senderId').value;
-        if(senderId) formData.append('sender_id', senderId);
+        if(senderId) baseFormData.append('sender_id', senderId);
         
         const contentId = document.getElementById('contentId').value;
-        if(contentId) formData.append('content_id', contentId);
+        if(contentId) baseFormData.append('content_id', contentId);
         
         const schedule = document.getElementById('schedule').value;
-        if(schedule) formData.append('schedule', formatSchedule(schedule));
+        if(schedule) baseFormData.append('schedule', formatSchedule(schedule));
 
-        try {
-            const res = await fetch('https://api.sms.net.bd/sendsms', { method: 'POST', body: formData });
-            const data = await res.json();
-            showAlert('resSend', data.error === 0 ? 'success' : 'error', data);
-        } catch (err) {
-            showAlert('resSend', 'error', getErrorMessage(err));
-        } finally {
-            btn.disabled = false; btn.innerText = "Send Message";
+        let successCount = 0;
+        let failCount = 0;
+        let lastError = "";
+
+        // The One-by-One Loop
+        for (let i = 0; i < numberArray.length; i++) {
+            const currentNumber = numberArray[i];
+            
+            // Update UI to show progress
+            btn.innerText = `Sending ${i + 1} of ${numberArray.length}...`;
+            showAlert('resSend', 'info', `Processing number: ${currentNumber}...`);
+            
+            // Set the specific number for this loop iteration
+            baseFormData.set('to', currentNumber);
+
+            try {
+                const res = await fetch('https://api.sms.net.bd/sendsms', { method: 'POST', body: baseFormData });
+                const data = await res.json();
+                
+                if (data.error === 0) {
+                    successCount++;
+                } else {
+                    failCount++;
+                    lastError = data.msg || `Error ${data.error}`;
+                }
+            } catch (err) {
+                failCount++;
+                lastError = getErrorMessage(err);
+            }
+
+            // Small delay (200ms) to prevent server rate-limiting
+            await new Promise(resolve => setTimeout(resolve, 200));
         }
+
+        // Final Result Output
+        if (failCount === 0) {
+            showAlert('resSend', 'success', `✅ Success! Sent to all ${successCount} number(s).`);
+        } else if (successCount === 0) {
+            showAlert('resSend', 'error', `❌ Failed to send. ${failCount} failed. Last error: ${lastError}`);
+        } else {
+            showAlert('resSend', 'error', `⚠️ Partial Success. Sent: ${successCount}, Failed: ${failCount}. Last error: ${lastError}`);
+        }
+
+        btn.disabled = false; 
+        btn.innerText = "Send Message";
     }
 
     // 2. Handle Balance
