@@ -360,6 +360,14 @@ $messages = getMessages($myId, $chatWithId);
     setInterval(checkTyping, 3000);
     setInterval(updateStatus, 8000);
     updateStatus();
+    
+    // Prevent back-forward cache issues
+    window.addEventListener('pageshow', function(e) {
+        if (e.persisted) {
+            lastRenderedHash = '';
+            fetchMessages();
+        }
+    });
 
     function fetchMessages() {
         fetch(`api.php?action=messages&user=${chatWithId}&last_id=${lastId}`)

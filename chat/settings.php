@@ -302,10 +302,21 @@ if ($action) {
         </div>
     </div>
     
+    <script>
+    function goToGroups() {
+        window.location.href = 'users.php';
+        setTimeout(() => { if(typeof switchTab==='function')switchTab('groups'); }, 200);
+    }
+    </script>
+    
     <div class="tab-bar">
-        <a href="users.php" class="tab-item">
+        <a href="users.php" class="tab-item" id="tab-messages">
             <span class="tab-icon">💬</span>
-            <span class="tab-label">Chats</span>
+            <span class="tab-label">Messages</span>
+        </a>
+        <a href="users.php" class="tab-item" id="tab-groups" onclick="this.href='users.php?openGroups=1';">
+            <span class="tab-icon">👥</span>
+            <span class="tab-label">Groups</span>
         </a>
         <a href="settings.php" class="tab-item active">
             <span class="tab-icon">⚙️</span>
@@ -313,19 +324,9 @@ if ($action) {
         </a>
     </div>
 
-    <script>
-    function selectEmoji(el, emoji) {
-        document.querySelectorAll('.emoji-item').forEach(i => i.classList.remove('active'));
-        el.classList.add('active');
-        document.getElementById('selected-emoji').value = emoji;
-    }
-    function forgetPin() {
-        if (!confirm('Vanish all chats and reset PIN?')) return;
-        const f = document.createElement('form');
-        f.method = 'POST';
-        f.innerHTML = '<input type="hidden" name="csrf_token" value="<?= generateCsrfToken() ?>"><input type="hidden" name="action" value="forget_pin">';
-        document.body.appendChild(f);
-        f.submit();
+<script>
+    function goToGroups() {
+        window.location.href = 'users.php?openGroups=1';
     }
     </script>
 </body>

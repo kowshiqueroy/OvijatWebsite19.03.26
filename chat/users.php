@@ -184,15 +184,41 @@ if ($isSearching) {
     </style>
 </head>
 <body>
+    <div id="createGroupModal" class="modal">
+        <div class="modal-content">
+            <h3>Create New Group</h3>
+            <input type="text" id="groupNameInput" placeholder="Enter Group Name..." style="margin-top:15px">
+            <div style="display:flex; gap:10px; margin-top:10px">
+                <button onclick="submitCreateGroup()" style="flex:1; background:#007bff; color:#fff; border:none; padding:10px; border-radius:8px">Create</button>
+                <button onclick="closeCreateGroupModal()" style="flex:1; background:#eee; border:none; padding:10px; border-radius:8px">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <style>
+        .modal { display: none; position: fixed; z-index: 200; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); }
+        .modal-content { background: #fff; margin: 20% auto; padding: 20px; border-radius: 20px; width: 85%; max-width: 350px; }
+        .modal-content h3 { font-size: 18px; margin-bottom: 10px; }
+        .modal-content input { width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 12px; outline: none; }
+    </style>
+
     <script>
     const myId = <?= $_SESSION['user_id'] ?>;
     const searchQuery = '<?= addslashes($searchQuery) ?>';
+    let currentTab = 'messages';
+
     function updateView(t) {
         fetch('api.php?action=update_viewing&target=' + (t || ''));
     }
     function refreshList() {
-        let url = 'api.php?action=conversations&_=' + Date.now();
-        if (searchQuery) url += '&q=' + encodeURIComponent(searchQuery);
+        let url;
+        if (currentTab === 'messages') {
+            url = 'api.php?action=conversations&_=' + Date.now();
+            if (searchQuery) url += '&q=' + encodeURIComponent(searchQuery);
+        } else {
+            url = 'group_api.php?action=groups&_=' + Date.now();
+        }
+        
         fetch(url)
             .then(r => r.text())
             .then(html => {
@@ -200,11 +226,52 @@ if ($isSearching) {
                 if (wrapper) wrapper.innerHTML = html;
             });
     }
+
+    function switchTab(tab) {
+        currentTab = tab;
+        document.querySelectorAll('.tab-item').forEach(el => el.classList.remove('active'));
+        document.getElementById('tab-' + tab).classList.add('active');
+        refreshList();
+    }
+
+    function showCreateGroupModal() {
+        document.getElementById('createGroupModal').style.display = 'block';
+        document.getElementById('groupNameInput').focus();
+    }
+
+    function closeCreateGroupModal() {
+        document.getElementById('createGroupModal').style.display = 'none';
+    }
+
+    function submitCreateGroup() {
+        const name = document.getElementById('groupNameInput').value.trim();
+        if (name) {
+            let formData = new FormData();
+            formData.append('name', name);
+            fetch('group_api.php?action=create_group', {
+                method: 'POST',
+                body: formData
+            }).then(r => r.json()).then(data => {
+                if (data.success) {
+                    location.href = 'group_chat.php?id=' + data.group_id;
+                }
+            });
+        }
+    }
+
     updateView('');
     setInterval(() => updateView(''), 30000);
     setInterval(refreshList, 5000);
     window.addEventListener('focus', () => { updateView(''); refreshList(); });
     document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshList(); });
+    
+    // Check if should open groups tab
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('openGroups') === '1') {
+        currentTab = 'groups';
+        try { switchTab('groups'); } catch(e) {}
+    }
+    
     refreshList();
     </script>
     <div class="header">
@@ -232,9 +299,13 @@ if ($isSearching) {
     </div>
     
     <div class="tab-bar">
-        <a href="users.php" class="tab-item active">
+        <a href="javascript:void(0)" id="tab-messages" class="tab-item active" onclick="switchTab('messages')">
             <span class="tab-icon">💬</span>
             <span class="tab-label">Messages</span>
+        </a>
+        <a href="javascript:void(0)" id="tab-groups" class="tab-item" onclick="switchTab('groups')">
+            <span class="tab-icon">👥</span>
+            <span class="tab-label">Groups</span>
         </a>
         <a href="settings.php" class="tab-item">
             <span class="tab-icon">⚙️</span>
