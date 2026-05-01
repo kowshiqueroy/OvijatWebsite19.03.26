@@ -12,7 +12,7 @@ define('DB_NAME', 'food_company_db');
 
 // Application Settings
 define('APP_NAME', 'Food Distribution Management');
-define('BASE_URL', 'http://localhost/distribution/');
+define('BASE_URL', '/distribution/');
 
 // User Roles
 define('ROLE_ADMIN', 'Admin');

@@ -178,6 +178,7 @@ $messages = getMessages($myId, $chatWithId);
                 </svg>
                 <button class="timer-btn" onclick="toggleLock()"><?= $isUnlocked ? '🔓' : '🔒' ?></button>
             </div>
+            <button class="vanish-btn" style="background:none;border:none;font-size:18px;" onclick="location.href='aichat.php?user=<?= $chatWithId ?>'">✨</button>
             <button class="vanish-btn" style="background:none;border:none;font-size:18px;" onclick="document.getElementById('vanishModal').classList.add('active')">🗑️</button>
         </div>
     </div>
@@ -309,44 +310,41 @@ $messages = getMessages($myId, $chatWithId);
     function toggleLock() {
         if (isUnlocked) {
             lockChat();
-        } else {
-            const pin = prompt('Enter PIN to unlock:');
-            if (!pin) return;
-            const fd = new FormData();
-            fd.append('user', chatWithId);
-            fd.append('message', pin);
-            fetch('api.php?action=send_message', { method: 'POST', body: fd })
-                .then(r => r.json())
-                .then(d => {
-                    if (d.unlocked) location.reload();
-                    else alert('Wrong PIN');
-                });
         }
-    }
-
     document.getElementById('msgs').addEventListener('click', (e) => {
         if (!isUnlocked) return;
         const msg = e.target.closest('.msg');
         if (!msg) return;
+
+        const isReceived = msg.classList.contains('received');
         const content = msg.querySelector('.msg-content');
         const real = msg.dataset.real;
         const msgId = msg.dataset.id;
         const type = msg.dataset.type;
-        
-        fetch('api.php?action=view_message&id=' + msgId);
-        
+
+        // Only call view_message and start timers if it's a received message
+        if (isReceived) {
+            fetch('api.php?action=view_message&id=' + msgId);
+        }
+
         if (type === 'image') {
             content.innerHTML = `<img src="${real}">`;
         } else {
             content.textContent = real;
         }
         resetTimer();
-        setTimeout(() => {
-            if (type === 'image') {
-                content.innerHTML = '<div class="img-placeholder">🖼️</div>';
-            } else {
-                content.textContent = msg.dataset.fake;
-            }
+
+        // Only revert to camouflage if it's a received message
+        if (isReceived) {
+            setTimeout(() => {
+                if (type === 'image') {
+                    content.innerHTML = '<div class="img-placeholder">🖼️</div>';
+                } else {
+                    content.textContent = msg.dataset.fake;
+                }
+            }, 5000);
+        }
+    });
             fetch('api.php?action=refresh_msgs&user=' + chatWithId);
         }, 5000);
     });

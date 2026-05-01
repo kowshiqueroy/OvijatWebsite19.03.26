@@ -249,7 +249,8 @@ function saveMessage($senderId, $receiverId, $message, $type = 'text', $replyTo 
 
 function cleanupOldMessages($u1, $u2) {
     $pdo = getDB();
-    $stmt = $pdo->prepare("SELECT id, message, type FROM messages WHERE ((sender_id = ? AND receiver_id = ?) OR (sender_id = ? AND receiver_id = ?)) ORDER BY id DESC LIMIT 1000 OFFSET 200");
+    // Only cleanup messages that have been viewed (delete_at > 0)
+    $stmt = $pdo->prepare("SELECT id, message, type FROM messages WHERE ((sender_id = ? AND receiver_id = ?) OR (sender_id = ? AND receiver_id = ?)) AND delete_at > 0 ORDER BY id DESC LIMIT 1000 OFFSET 200");
     $stmt->execute([$u1, $u2, $u2, $u1]);
     $toDelete = $stmt->fetchAll();
     if ($toDelete) {
@@ -284,14 +285,13 @@ function cleanupGlobalOldMessages() {
     $pdo = getDB();
     $sevenDaysAgo = date('Y-m-d H:i:s', strtotime('-7 days'));
     
-    // Find images to delete
-    $stmt = $pdo->prepare("SELECT message FROM messages WHERE type = 'image' AND created_at < ?");
+    // Only delete messages that were viewed AND are older than 7 days
+    $stmt = $pdo->prepare("SELECT message, type FROM messages WHERE type = 'image' AND created_at < ? AND delete_at > 0");
     $stmt->execute([$sevenDaysAgo]);
     $imgs = $stmt->fetchAll(PDO::FETCH_COLUMN);
     foreach ($imgs as $img) if (file_exists($img)) @unlink($img);
     
-    // Delete messages
-    $pdo->prepare("DELETE FROM messages WHERE created_at < ?")->execute([$sevenDaysAgo]);
+    $pdo->prepare("DELETE FROM messages WHERE created_at < ? AND delete_at > 0")->execute([$sevenDaysAgo]);
 }
 
 function camouflage($msg) {

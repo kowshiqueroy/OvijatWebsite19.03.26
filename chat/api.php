@@ -179,8 +179,11 @@ if ($action === 'markread') {
 if ($action === 'view_message') {
     $msgId = (int)($_GET['id'] ?? 0);
     if ($msgId) {
-        // Mark as blue tick AND set deletion timer
-        getDB()->prepare("UPDATE messages SET is_read = 2, delete_at = CASE WHEN delete_at = 0 THEN ? ELSE delete_at END WHERE id = ?")->execute([time() + 30, $msgId]);
+        // Only the receiver can trigger the deletion timer and mark as blue tick (is_read=2)
+        getDB()->prepare("UPDATE messages SET 
+            is_read = CASE WHEN receiver_id = ? THEN 2 ELSE is_read END,
+            delete_at = CASE WHEN receiver_id = ? AND delete_at = 0 THEN ? ELSE delete_at END 
+            WHERE id = ?")->execute([$myId, $myId, time() + 30, $msgId]);
         echo json_encode(['success' => true]);
     }
     exit;
