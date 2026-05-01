@@ -8,7 +8,7 @@ $chatWithId = (int)($_GET['user'] ?? 0);
 if (!$chatWithId) { header('Location: users.php'); exit; }
 
 $myId = $_SESSION['user_id'];
-updateLastActive($myId);
+updateLastActive($myId, "u$chatWithId");
 
 $chatUser = getUserById($chatWithId);
 if (!$chatUser) { header('Location: users.php'); exit; }
@@ -18,11 +18,12 @@ $chatDisplayName = str_replace(' ', '_', $nickname ?: $chatUser['display_name'])
 $isUnlocked = isChatUnlocked($myId, $chatWithId);
 markMessagesAsRead($myId, $chatWithId);
 $messages = getMessages($myId, $chatWithId);
+$connectedUsers = getConnectedUsers($myId);
 
 function getRealisticCamouflage($msg, $isSent) {
     $seed = crc32($msg); mt_srand($seed);
-    $prompts = ["Explain Virtual DOM in React.", "Python script for web scraping.", "কেমন আছেন? বাংলা সংস্কৃতি নিয়ে বলুন।", "SQL vs NoSQL scalability.", "GitHub Actions CI/CD guide.", "JS arrow function scope.", "একটি রোমান্টিক বাংলা কবিতা।", "Distributed systems CAP theorem.", "JWT security in Node.js.", "Best frontend framework 2024?", "Complex CSS Grid dashboards.", "PostgreSQL performance tuning.", "Robot emotions short story.", "Hoisting in JavaScript.", "OS Process vs Thread.", "রেসপন্সিভ ডিজাইন ও মিডিয়া কুয়েরি।"];
-    $responses = ["The Virtual DOM is a lightweight copy...", "Use requests and BeautifulSoup in Python...", "আমি ভালো আছি, বাংলা সংস্কৃতি অত্যন্ত সমৃদ্ধ...", "SQL is vertical, NoSQL is horizontal...", "CI/CD automates your deployment pipeline...", "Arrow functions inherit 'this' lexically...", "নীল নবঘনে আষাঢ় গগনে তিল ঠাঁই আর নাহি রে...", "Consistency, Availability, Partition tolerance...", "Store JWT in HttpOnly cookies for safety...", "React and Next.js are current leaders...", "CSS Grid is perfect for 2D layouts...", "Proper indexing is key for database speed...", "The robot began to feel a strange warmth...", "Hoisting moves declarations to the top...", "A process has its own memory space...", "Media queries are essential for mobile."];
+    $prompts = ["Explain Virtual DOM in React.", "Python script for web scraping.", "বাংলা সংস্কৃতি নিয়ে বলুন।", "SQL vs NoSQL scalability.", "GitHub Actions CI/CD guide.", "JS arrow function scope.", "একটি কোড লিখে দাও।", "Distributed systems CAP theorem.", "JWT security in Node.js.", "Best frontend framework 2024?", "Complex CSS Grid dashboards.", "PostgreSQL performance tuning.", "Robot emotions short story.", "Hoisting in JavaScript.", "OS Process vs Thread.", "রেসপন্সিভ ডিজাইন ও মিডিয়া কুয়েরি।"];
+    $responses = ["The Virtual DOM is a lightweight copy...", "Use requests and BeautifulSoup in Python...", "বাংলা সংস্কৃতি অত্যন্ত সমৃদ্ধ...", "SQL is vertical, NoSQL is horizontal...", "CI/CD automates your deployment pipeline...", "Arrow functions inherit 'this' lexically...", "আমার দ্বারা আর বেশি কাজ হচ্ছে না। আপনি প্রো ইউজার...। তাই আরও লিমিট দরকার", "Consistency, Availability, Partition tolerance...", "Store JWT in HttpOnly cookies for safety...", "React and Next.js are current leaders...", "CSS Grid is perfect for 2D layouts...", "Proper indexing is key for database speed...", "The robot began to feel a strange warmth...", "Hoisting moves declarations to the top...", "A process has its own memory space...", "Media queries are essential for mobile."];
     $res = $isSent ? $prompts[mt_rand(0, count($prompts)-1)] : $responses[mt_rand(0, count($responses)-1)];
     mt_srand(); return $res;
 }
@@ -142,13 +143,34 @@ function getSynthesizedView($realMsg) {
 <body>
     <div class="overlay" id="overlay" onclick="toggleSidebar()"></div>
     <div class="sidebar" id="sidebar">
-        <div class="new-chat-btn"><span>+</span> New chat</div>
+        <div class="new-chat-btn" onclick="location.href='users.php'"><span>+</span> New chat</div>
         <div style="font-size:12px; color:var(--gemini-dim); padding-left:12px; margin-bottom:10px;">Recent</div>
-        <div class="recent-item">React Virtual DOM Analysis...</div>
-        <div class="recent-item">বাংলা সংস্কৃতি ও ঐতিহ্য...</div>
-        <div class="recent-item">PostgreSQL Query Tuning...</div>
-        <div class="recent-item">JavaScript Scoping Logic...</div>
-        <div class="recent-item">Responsive UI Foundations...</div>
+        
+        <?php 
+        $fakeHistory = [
+            "Python Recursion Analysis",
+            "Mughal Empire History",
+            "React Virtual DOM Guide",
+            "CSS Grid Layout Tips",
+            "JavaScript Event Loop",
+            "Bangla Poem Generation",
+            "PostgreSQL Query Tuning",
+            "JWT Security Protocols"
+        ];
+        
+        // Render Real Chats first
+        foreach ($connectedUsers as $cu): ?>
+            <div class="recent-item" onclick="location.href='aichat.php?user=<?= $cu['id'] ?>'">
+                <b style="color:var(--gemini-text)"><?= sanitize($cu['display_name']) ?></b>
+            </div>
+        <?php endforeach; 
+        
+        // Render Fake History
+        foreach ($fakeHistory as $fh): ?>
+            <div class="recent-item" style="opacity:0.6; cursor:default;">
+                <b style="color:var(--gemini-text)"><?= $fh ?></b>
+            </div>
+        <?php endforeach; ?>
     </div>
 
     <div class="main-container">
@@ -224,9 +246,15 @@ function getSynthesizedView($realMsg) {
 
         textEl.textContent = row.dataset.synthesized; textEl.classList.add('revealed'); resetTimer();
         
-        if (isReceived) {
-            setTimeout(() => { textEl.textContent = row.dataset.camouflage; textEl.classList.remove('revealed'); }, 7000);
-        }
+        setTimeout(() => { 
+            textEl.textContent = row.dataset.camouflage; 
+            textEl.classList.remove('revealed'); 
+        }, 5000);
+    });
+
+    document.getElementById('msgInput').addEventListener('input', () => {
+        fetch(`api.php?action=set_typing&user=${chatWithId}`);
+        resetTimer();
     });
 
     document.getElementById('chatForm').addEventListener('submit', (e) => {
@@ -303,6 +331,7 @@ function getSynthesizedView($realMsg) {
     if (isUnlocked) resetTimer();
     document.getElementById('msgs').scrollTop = document.getElementById('msgs').scrollHeight;
     window.addEventListener('mousemove', resetTimer); window.addEventListener('keypress', resetTimer);
+    window.addEventListener('touchstart', resetTimer);
     </script>
 </body>
 </html>

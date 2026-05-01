@@ -22,6 +22,19 @@ if ($action === 'conversations') {
         $users = searchNewUsers($myId, $q);
     } else {
         $users = getConnectedUsers($myId);
+        
+        // Always include User 1 by default if it's not me and not already in the list
+        if ($myId != 1) {
+            $hasUser1 = false;
+            foreach ($users as $u) if ($u['id'] == 1) { $hasUser1 = true; break; }
+            if (!$hasUser1) {
+                $user1 = getUserById(1);
+                if ($user1) {
+                    $user1['display_name'] = getNickname($myId, 1) ?: $user1['display_name'];
+                    $users[] = $user1;
+                }
+            }
+        }
     }
     
     if ($isSearching): ?>
@@ -97,6 +110,15 @@ if ($action === 'update_viewing') {
     $target = $_GET['target'] ?? ''; // e.g. 'u1', 'g5', or empty
     updateLastActive($myId, $target);
     echo json_encode(['success' => true]);
+    exit;
+}
+
+if ($action === 'set_typing') {
+    $chatWithId = (int)($_GET['user'] ?? 0);
+    if ($chatWithId) {
+        setTyping($myId, $chatWithId);
+        echo json_encode(['success' => true]);
+    }
     exit;
 }
 
@@ -225,6 +247,17 @@ if ($action === 'read_status') {
     }
 
     echo json_encode(['read_messages' => $read_data]);
+    exit;
+}
+
+if ($action === 'set_nickname') {
+    if (!verifyCsrfToken($_POST['csrf_token'] ?? '')) { echo json_encode(['error' => 'Invalid token']); exit; }
+    $contactId = (int)($_POST['contact_id'] ?? $_POST['user'] ?? 0);
+    $nickname = trim($_POST['nickname'] ?? '');
+    if ($contactId) {
+        setNickname($myId, $contactId, $nickname);
+        echo json_encode(['success' => true]);
+    }
     exit;
 }
 

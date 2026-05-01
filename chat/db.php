@@ -71,14 +71,13 @@ function getConnectedUsers($userId) {
     
     // Get all users who have exchanged messages with current user (either direction)
     $stmt = $pdo->prepare("
-        SELECT DISTINCT CASE 
-            WHEN sender_id = ? THEN receiver_id 
-            ELSE sender_id 
-        END as other_id
-        FROM messages 
-        WHERE sender_id = ? OR receiver_id = ?
+        SELECT DISTINCT other_id FROM (
+            SELECT receiver_id as other_id FROM messages WHERE sender_id = ?
+            UNION
+            SELECT sender_id as other_id FROM messages WHERE receiver_id = ?
+        )
     ");
-    $stmt->execute([$userId, $userId, $userId]);
+    $stmt->execute([$userId, $userId]);
     $rows = $stmt->fetchAll();
     
     if (empty($rows)) {
