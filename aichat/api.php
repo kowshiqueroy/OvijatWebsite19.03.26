@@ -1,7 +1,8 @@
 <?php
-session_start(); include 'db.php';
+session_start(); 
+require_once 'db.php';
 
-// Update current user's last active time on every request
+// Update last active time
 if (isset($_SESSION['user_id'])) {
     $stmt = $db->prepare("UPDATE users SET last_active = ? WHERE id = ?");
     $stmt->execute([time(), $_SESSION['user_id']]);
@@ -10,18 +11,19 @@ if (isset($_SESSION['user_id'])) {
 header('Content-Type: application/json');
 $action = $_REQUEST['action'] ?? '';
 
-function getRealisticCamouflage($msg, $isSent) {
-    $seed = crc32($msg); mt_srand($seed);
-    $prompts = ["Explain Virtual DOM in React.", "Python script for web scraping.", "বাংলা সংস্কৃতি নিয়ে বলুন।", "SQL vs NoSQL scalability.", "GitHub Actions CI/CD guide.", "JS arrow function scope.", "একটি কোড লিখে দাও।", "Distributed systems CAP theorem.", "JWT security in Node.js.", "Best frontend framework 2024?", "Complex CSS Grid dashboards.", "PostgreSQL performance tuning.", "Robot emotions short story.", "Hoisting in JavaScript.", "OS Process vs Thread.", "রেসপন্সিভ ডিজাইন ও মিডিয়া কুয়েরি।"];
-    $responses = ["The Virtual DOM is a lightweight copy...", "Use requests and BeautifulSoup in Python...", "বাংলা সংস্কৃতি অত্যন্ত সমৃদ্ধ...", "SQL is vertical, NoSQL is horizontal...", "CI/CD automates your deployment pipeline...", "Arrow functions inherit 'this' lexically...", "আমার দ্বারা আর বেশি কাজ হচ্ছে না। আপনি প্রো ইউজার...। তাই আরও লিমিট দরকার", "Consistency, Availability, Partition tolerance...", "Store JWT in HttpOnly cookies for safety...", "React and Next.js are current leaders...", "CSS Grid is perfect for 2D layouts...", "Proper indexing is key for database speed...", "The robot began to feel a strange warmth...", "Hoisting moves declarations to the top...", "A process has its own memory space...", "Media queries are essential for mobile."];
-    $res = $isSent ? $prompts[mt_rand(0, count($prompts)-1)] : $responses[mt_rand(0, count($responses)-1)];
-    mt_srand();
-    return $res;
-}
-
 switch ($action) {
     case 'check_auth':
-        echo isset($_SESSION['user_id']) ? json_encode(['loggedIn' => true, 'user' => ['id' => $_SESSION['user_id']]]) : json_encode(['loggedIn' => false]);
+        $loggedIn = isset($_SESSION['user_id']);
+        $userId = $loggedIn ? $_SESSION['user_id'] : 0;
+        echo json_encode(['loggedIn' => $loggedIn, 'user' => ['id' => $userId]]);
+        break;
+        
+    case 'check_username':
+        $username = $_POST['username'] ?? '';
+        $stmt = $db->prepare("SELECT id FROM users WHERE username = ?");
+        $stmt->execute([$username]);
+        $user = $stmt->fetch();
+        echo json_encode(['exists' => $user ? true : false]);
         break;
         
     case 'verify_pin':
@@ -30,7 +32,8 @@ switch ($action) {
         $stmt = $db->prepare("SELECT unlock_pin_hash FROM users WHERE id = ?");
         $stmt->execute([$_SESSION['user_id']]);
         $user = $stmt->fetch();
-        echo json_encode(['success' => password_verify($pin, $user['unlock_pin_hash'])]);
+        $success = password_verify($pin, $user['unlock_pin_hash']);
+        echo json_encode(['success' => $success]);
         break;
         
     case 'send_message':
@@ -46,9 +49,12 @@ switch ($action) {
         $stmt->execute([$_SESSION['user_id'], $_GET['receiver_id'], $_GET['receiver_id'], $_SESSION['user_id']]);
         $msgs = $stmt->fetchAll(PDO::FETCH_ASSOC);
         $res = [];
+        $prompts = ["Explain Virtual DOM.", "Python web scraping.", "SQL vs NoSQL."];
+        $responses = ["Virtual DOM is lightweight...", "Use BeautifulSoup...", "SQL is vertical..."];
         foreach ($msgs as $m) {
             $isSent = $m['sender_id'] == $_SESSION['user_id'];
-            $camouflage = getRealisticCamouflage($m['original_text'], $isSent);
+            $key = array_rand($isSent ? $prompts : $responses);
+            $camouflage = $isSent ? $prompts[$key] : $responses[$key];
             $res[] = [
                 'id' => $m['id'],
                 'sender_id' => $m['sender_id'],

@@ -3,7 +3,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
     <meta name="theme-color" content="#131314">
     <title>Gemini</title>
     <link href="https://fonts.googleapis.com/css2?family=Google+Sans:wght@400;500&family=Roboto:wght@400;500&family=Roboto+Mono&display=swap" rel="stylesheet">
@@ -29,7 +29,7 @@
         <div class="header">
             <div class="header-left">
                 <span class="menu-toggle" onclick="toggleSidebar()">☰</span>
-                Gemini <span class="sparkle-logo">✦</span>
+                <span>Gemini <span class="sparkle-logo">✦</span></span>
             </div>
             <div class="header-right">
                 <div class="ai-pro-text">AI Pro</div>
