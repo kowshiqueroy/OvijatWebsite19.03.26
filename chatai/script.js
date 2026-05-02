@@ -1,62 +1,16 @@
-// Configuration
-// CURRENT_USER_ID and OTHER_USER_ID are now provided by index.php
-
+// Scaled Gemini Chat Logic
 let isLocked = true;
 let inactivityTimer = 60;
-let scrollInactivityTimer = 10;
 let timerInterval;
-let scrollInterval;
-let statusInterval;
 let pollInterval;
+let statusInterval;
 let isTyping = false;
 let typingTimeout;
-let logsInterval;
 let renderedMessageIds = new Set();
-let currentPIN = ''; // Handled by verify_pin on backend now
-
-// Realistic AI Camouflage Content
-const camouflageData = {
-    1: { // User 1: Tech/Coding theme
-        prompts: [
-            "Explain Python list comprehensions.",
-            "How does CSS Flexbox work?",
-            "What is a REST API?",
-            "Explain the difference between SQL and NoSQL.",
-            "How do I optimize a React application?"
-        ],
-        responses: [
-            "List comprehensions provide a concise way to create lists in Python using a single line of code.",
-            "Flexbox is a one-dimensional layout method for arranging items in rows or columns.",
-            "A REST API is an architectural style for an application program interface that uses HTTP requests.",
-            "SQL databases are relational, while NoSQL databases are non-relational or distributed.",
-            "To optimize React, use Memoization, lazy loading, and avoid unnecessary re-renders."
-        ]
-    },
-    2: { // User 2: Physics/Science theme
-        prompts: [
-            "What is quantum entanglement?",
-            "Explain the theory of general relativity.",
-            "How do black holes form?",
-            "What is the Higgs Boson?",
-            "Explain the double-slit experiment."
-        ],
-        responses: [
-            "Quantum entanglement is a phenomenon where particles become linked and share their state instantly.",
-            "General relativity is Einstein's theory of gravity, describing space-time as a curved fabric.",
-            "Black holes form when a massive star collapses under its own gravity at the end of its life cycle.",
-            "The Higgs Boson is a fundamental particle that gives other particles mass via the Higgs field.",
-            "The double-slit experiment demonstrates that light and matter can display characteristics of both waves and particles."
-        ]
-    }
-};
-
-const fakeRecentChats = [
-    "Project Phoenix Refactor",
-    "Quantum Mechanics Notes",
-    "Neural Network Architecture",
-    "Thermodynamics Basics",
-    "C Library Optimization"
-];
+let currentRoomId = null;
+let currentUser = null; // Will hold profile and privacy settings
+let camouflageLibrary = { prompts: [], responses: [] };
+let renderedRoomIds = new Set();
 
 // DOM Elements
 const sidebar = document.getElementById('sidebar');
@@ -74,43 +28,18 @@ const thinkingArea = document.querySelector('.thinking-area');
 const thinkingSparkle = document.getElementById('thinking-sparkle');
 const thinkingText = document.getElementById('thinking-text');
 const systemLogsContainer = document.getElementById('system-logs');
-const panicLogo = document.getElementById('panic-logo');
+const activeRoomName = document.getElementById('active-room-name');
+const roomListContainer = document.getElementById('room-list');
 
 let currentStatusText = "Gemini is online";
 let statusCycleInterval;
 let inputMaskTimeout;
 
-// Initialization
+// --- Initialization ---
 document.addEventListener('DOMContentLoaded', async () => {
-    initFakeUI();
+    await initUser();
+    initEventListeners();
     startPolling();
-    resetInactivityTimer();
-    startScrollInactivityTimer();
-    
-    // UI Event Listeners
-    if (menuToggle) menuToggle.onclick = toggleSidebar;
-    if (sidebarOverlay) sidebarOverlay.onclick = closeSidebar;
-    lockStatus.onclick = toggleLock;
-    
-    // Message Input Interceptor
-    messageInput.onkeydown = (e) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            handleSend();
-        }
-        if (!isLocked) handleTyping();
-        resetScrollInactivityTimer();
-    };
-
-    messageInput.oninput = handleInputPrivacy;
-    if (viewTextBtn) viewTextBtn.onclick = peekInputText;
-    
-    sendBtn.onclick = handleSend;
-    attachBtn.onclick = () => fileInput.click();
-    fileInput.onchange = handleImageUpload;
-
-    // Security
-    initSecurity();
     
     // Always show thinking area
     thinkingArea.style.display = 'flex';
@@ -125,35 +54,519 @@ document.addEventListener('DOMContentLoaded', async () => {
     startStatusCycling();
 });
 
-// --- CSRF Helper ---
-async function secureFetch(url, options = {}) {
-    const defaultHeaders = {
-        'X-CSRF-TOKEN': window.CSRF_TOKEN || ''
+async function initUser() {
+    const resp = await secureFetch('api.php?action=get_user_info');
+    currentUser = await resp.json();
+    
+    // Set privacy defaults from user settings
+    inactivityTimer = currentUser.auto_lock_timer || 60;
+    
+    // Fetch camouflage for their theme
+    await fetchCamouflage(currentUser.camouflage_theme);
+    
+    resetInactivityTimer();
+}
+
+async function fetchCamouflage(theme) {
+    const resp = await secureFetch(`api.php?action=get_camouflage&theme=${theme}`);
+    const data = await resp.json();
+    camouflageLibrary.prompts = data.filter(i => i.type === 'prompt').map(i => i.content);
+    camouflageLibrary.responses = data.filter(i => i.type === 'response').map(i => i.content);
+    
+    // Fallback if empty
+    if (camouflageLibrary.prompts.length === 0) camouflageLibrary.prompts = ["Explain Python logic."];
+    if (camouflageLibrary.responses.length === 0) camouflageLibrary.responses = ["Python logic involves using clear syntax."];
+}
+
+function initEventListeners() {
+    if (menuToggle) menuToggle.onclick = toggleSidebar;
+    if (sidebarOverlay) sidebarOverlay.onclick = closeSidebar;
+    const sidebarClose = document.getElementById('sidebar-close');
+    if (sidebarClose) sidebarClose.onclick = closeSidebar;
+    lockStatus.onclick = toggleLock;
+    
+    messageInput.onkeydown = (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            handleSend();
+        }
+        if (!isLocked) handleTyping();
+    };
+
+    messageInput.oninput = () => {
+        messageInput.style.webkitTextSecurity = 'disc';
     };
     
+    if (viewTextBtn) viewTextBtn.onclick = peekInputText;
+    
+    sendBtn.onclick = handleSend;
+    attachBtn.onclick = () => fileInput.click();
+    fileInput.onchange = handleImageUpload;
+    
+    document.onmousemove = () => { if (!isLocked) resetInactivityTimer(); };
+    document.onkeypress = () => { if (!isLocked) resetInactivityTimer(); };
+}
+
+// --- CSRF & Fetch ---
+async function secureFetch(url, options = {}) {
+    const defaultHeaders = { 'X-CSRF-TOKEN': window.CSRF_TOKEN || '' };
     if (options.body && !(options.body instanceof FormData)) {
         defaultHeaders['Content-Type'] = 'application/json';
     }
-
     options.headers = { ...defaultHeaders, ...(options.headers || {}) };
     const resp = await fetch(url, options);
-    
-    if (resp.status === 401) {
-        window.location.reload();
-        return;
-    }
-    
+    if (resp.status === 401) { window.location.reload(); return; }
     return resp;
 }
 
-// --- Sanitization Helper ---
+// --- Navigation ---
+async function loadRooms() {
+    const resp = await secureFetch('api.php?action=get_rooms');
+    const rooms = await resp.json();
+    
+    rooms.forEach(room => {
+        if (renderedRoomIds.has(room.id)) {
+            // Update existing room name if needed
+            return;
+        }
+        const div = document.createElement('div');
+        div.className = `nav-item ${currentRoomId === room.id ? 'active' : ''}`;
+        div.id = `room-${room.id}`;
+        const displayName = room.name || room.member_names || 'Conversation ' + room.id;
+        div.innerHTML = `<span>💬</span> ${escapeHTML(displayName)}`;
+        div.onclick = () => switchRoom(room.id, displayName);
+        roomListContainer.appendChild(div);
+        renderedRoomIds.add(room.id);
+    });
+
+    if (!currentRoomId && rooms.length > 0) {
+        const first = rooms[0];
+        switchRoom(first.id, first.name || first.member_names || 'Conversation ' + first.id);
+    }
+}
+
+function switchRoom(id, name) {
+    if (currentRoomId === id) return;
+    currentRoomId = id;
+    activeRoomName.textContent = name || 'Conversation ' + id;
+    renderedMessageIds.clear();
+    messagesContainer.innerHTML = '';
+    
+    document.querySelectorAll('#room-list .nav-item').forEach(el => {
+        el.classList.toggle('active', el.id === `room-${id}`);
+    });
+    
+    loadMessages();
+    closeSidebar();
+}
+
+let selectedUsers = [];
+
+async function searchUsers(query) {
+    const resultsContainer = document.getElementById('user-search-results');
+    if (query.length < 2) {
+        resultsContainer.innerHTML = '';
+        return;
+    }
+
+    const resp = await secureFetch(`api.php?action=search_users&query=${encodeURIComponent(query)}`);
+    const users = await resp.json();
+
+    resultsContainer.innerHTML = '';
+    users.forEach(u => {
+        if (selectedUsers.some(su => su.username === u.username)) return;
+        const div = document.createElement('div');
+        div.style = 'padding: 10px; cursor: pointer; border-bottom: 1px solid rgba(255,255,255,0.05); display: flex; justify-content: space-between; align-items: center;';
+        div.innerHTML = `
+            <div onclick="selectUser(${JSON.stringify(u).replace(/"/g, '&quot;')})">
+                <strong>${escapeHTML(u.username)}</strong> <small>(${escapeHTML(u.display_name)})</small>
+            </div>
+            <button onclick="promptNickname(${u.id}, '${escapeHTML(u.display_name)}')" style="background:none; border:1px solid var(--gemini-dim); color:var(--gemini-dim); padding:2px 8px; border-radius:4px; font-size:10px; cursor:pointer;">Nick</button>
+        `;
+        resultsContainer.appendChild(div);
+    });
+}
+
+async function promptNickname(id, name) {
+    const nick = prompt(`Set a local nickname for ${name} (leave empty to reset):`);
+    if (nick === null) return;
+    
+    await secureFetch('api.php?action=set_nickname', {
+        method: 'POST',
+        body: JSON.stringify({ target_user_id: id, nickname: nick })
+    });
+    alert("Nickname updated!");
+    loadRooms(); // Refresh names
+}
+
+function selectUser(user) {
+    if (selectedUsers.some(u => u.username === user.username)) return;
+    selectedUsers.push(user);
+    renderSelectedUsers();
+    document.getElementById('new-room-user').value = '';
+    document.getElementById('user-search-results').innerHTML = '';
+}
+
+function removeUser(username) {
+    selectedUsers = selectedUsers.filter(u => u.username !== username);
+    renderSelectedUsers();
+}
+
+function renderSelectedUsers() {
+    const container = document.getElementById('selected-users');
+    container.innerHTML = '';
+    selectedUsers.forEach(u => {
+        const span = document.createElement('span');
+        span.style = 'background: var(--gemini-blue); color: #fff; padding: 4px 10px; border-radius: 16px; font-size: 12px; display: flex; align-items: center; gap: 5px;';
+        span.innerHTML = `${escapeHTML(u.username)} <b onclick="removeUser('${u.username}')" style="cursor:pointer; font-size:14px;">&times;</b>`;
+        container.appendChild(span);
+    });
+}
+
+async function createRoom() {
+    if (selectedUsers.length === 0) return;
+    
+    const usernames = selectedUsers.map(u => u.username);
+    const resp = await secureFetch('api.php?action=create_room', {
+        method: 'POST',
+        body: JSON.stringify({ 
+            type: usernames.length > 1 ? 'group' : '1to1', 
+            name: usernames.length > 1 ? usernames.join(', ') : null,
+            members: usernames 
+        })
+    });
+    const data = await resp.json();
+    if (data.success) {
+        selectedUsers = [];
+        renderSelectedUsers();
+        closeModal('create-room-modal');
+        loadRooms();
+        if (data.room_id) switchRoom(data.room_id, null);
+    } else {
+        alert(data.error || "Failed to start conversation");
+    }
+}
+
+// --- Admin Logic ---
+window.showModal = (id) => {
+    document.getElementById(id).style.display = 'flex';
+    if (id === 'admin-modal') loadAdminData();
+    if (id === 'settings-modal') loadSettingsUI();
+};
+window.closeModal = (id) => document.getElementById(id).style.display = 'none';
+
+async function loadSettingsUI() {
+    document.getElementById('setting-lock-timer').value = currentUser.auto_lock_timer;
+    document.getElementById('setting-arrival-dur').value = currentUser.reveal_on_arrival_duration;
+    document.getElementById('setting-theme').value = currentUser.camouflage_theme;
+    document.getElementById('setting-style').value = currentUser.camouflage_style || 'none';
+    
+    // Profile Fields
+    document.getElementById('prof-display-name').value = currentUser.display_name;
+}
+
+async function updateProfile() {
+    const displayName = document.getElementById('prof-display-name').value.trim();
+    if (!displayName) return;
+    
+    const resp = await secureFetch('api.php?action=update_profile', {
+        method: 'POST',
+        body: JSON.stringify({ display_name: displayName })
+    });
+    const data = await resp.json();
+    if (data.success) {
+        currentUser.display_name = displayName;
+        const sidebarName = document.getElementById('sidebar-display-name');
+        if (sidebarName) sidebarName.textContent = displayName;
+        alert("Display name updated!");
+    } else {
+        alert(data.error || "Update failed");
+    }
+}
+
+async function updatePassword() {
+    const oldPass = document.getElementById('prof-old-pass').value;
+    const newPass = document.getElementById('prof-new-pass').value;
+    if (!oldPass || !newPass) { alert("Please fill all fields"); return; }
+    
+    const resp = await secureFetch('api.php?action=update_password', {
+        method: 'POST',
+        body: JSON.stringify({ old_pass: oldPass, new_pass: newPass })
+    });
+    const data = await resp.json();
+    if (data.success) {
+        document.getElementById('prof-old-pass').value = '';
+        document.getElementById('prof-new-pass').value = '';
+        alert("Password updated successfully!");
+    } else {
+        alert(data.error || "Update failed");
+    }
+}
+
+async function updatePIN() {
+    const oldPin = document.getElementById('prof-old-pin').value;
+    const newPin = document.getElementById('prof-new-pin').value;
+    if (!oldPin || !newPin) { alert("Please fill all fields"); return; }
+    
+    const resp = await secureFetch('api.php?action=update_pin', {
+        method: 'POST',
+        body: JSON.stringify({ old_pin: oldPin, new_pin: newPin })
+    });
+    const data = await resp.json();
+    if (data.success) {
+        document.getElementById('prof-old-pin').value = '';
+        document.getElementById('prof-new-pin').value = '';
+        alert("PIN updated successfully!");
+    } else {
+        alert(data.error || "Update failed");
+    }
+}
+
+async function loadAdminData() {
+    const userResp = await secureFetch('api.php?action=admin_get_users');
+    const users = await userResp.json();
+
+    const listEl = document.getElementById('admin-user-list');
+    listEl.innerHTML = '<h3>Manage Users</h3>';
+    users.forEach(u => {
+        const div = document.createElement('div');
+        div.style = 'display:flex; justify-content:space-between; align-items:center; padding:10px; border-bottom:1px solid rgba(255,255,255,0.05);';
+        div.innerHTML = `
+            <div>
+                <strong>${escapeHTML(u.username)}</strong> (${escapeHTML(u.display_name)})<br>
+                <small style="color:var(--gemini-dim)">Status: ${u.status} | Role: ${u.role}</small>
+            </div>
+            <div>
+                ${u.status === 'pending' ? `<button onclick="updateUserStatus(${u.id}, 'active')" style="color:#28a745; background:none; border:1px solid #28a745; padding:4px 8px; border-radius:4px; cursor:pointer;">Approve</button>` : ''}
+                ${u.status === 'active' && u.username !== 'kush' ? `<button onclick="updateUserStatus(${u.id}, 'blocked')" style="color:#ff4d4d; background:none; border:1px solid #ff4d4d; padding:4px 8px; border-radius:4px; cursor:pointer;">Block</button>` : ''}
+                ${u.status === 'blocked' ? `<button onclick="updateUserStatus(${u.id}, 'active')" style="color:#28a745; background:none; border:1px solid #28a745; padding:4px 8px; border-radius:4px; cursor:pointer;">Unblock</button>` : ''}
+            </div>
+        `;
+        listEl.appendChild(div);
+    });
+
+    // Camouflage Editor (Simplified)
+    const camList = document.getElementById('admin-cam-list');
+    camList.innerHTML = `
+        <div style="margin-bottom:15px; display:flex; gap:10px;">
+            <select id="new-cam-theme" style="padding:5px; background:#222; color:#fff; border:1px solid #444;"><option value="coding">Coding</option><option value="physics">Physics</option><option value="games">Games</option><option value="beauty">Beauty</option></select>
+            <select id="new-cam-type" style="padding:5px; background:#222; color:#fff; border:1px solid #444;"><option value="prompt">Prompt</option><option value="response">Response</option></select>
+            <input type="text" id="new-cam-content" placeholder="Content text" style="flex:1; padding:5px; background:#222; color:#fff; border:1px solid #444;">
+            <button onclick="addCamouflage()" style="padding:5px 15px; background:var(--gemini-blue); color:#fff; border:none; border-radius:4px; cursor:pointer;">Add</button>
+        </div>
+    `;
+}
+
+async function updateUserStatus(id, status) {
+    await secureFetch('api.php?action=admin_update_user', {
+        method: 'POST',
+        body: JSON.stringify({ id, status, role: 'user' })
+    });
+    loadAdminData();
+}
+
+async function addCamouflage() {
+    const theme = document.getElementById('new-cam-theme').value;
+    const type = document.getElementById('new-cam-type').value;
+    const content = document.getElementById('new-cam-content').value;
+    if (!content) return;
+
+    await secureFetch('api.php?action=admin_manage_camouflage', {
+        method: 'POST',
+        body: JSON.stringify({ sub_action: 'add', theme, type, content })
+    });
+    document.getElementById('new-cam-content').value = '';
+    alert("Camouflage added!");
+}
+async function handleSend() {
+    const content = messageInput.value.trim();
+    if (!content || !currentRoomId) return;
+
+    // PIN Verification Intercept (if locked)
+    if (isLocked && content.length === 4 && /^\d+$/.test(content)) {
+        const resp = await secureFetch('api.php?action=verify_pin', {
+            method: 'POST',
+            body: JSON.stringify({ pin: content })
+        });
+        const data = await resp.json();
+        if (data.success) {
+            messageInput.value = '';
+            unlockApp();
+            return;
+        }
+    }
+
+    messageInput.value = '';
+    messageInput.style.webkitTextSecurity = 'none';
+    
+    await secureFetch('api.php?action=send_message', {
+        method: 'POST',
+        body: JSON.stringify({ room_id: currentRoomId, content, is_image: 0 })
+    });
+
+    // Refresh messages immediately to show yours
+    await loadMessages();
+    addFakeGeneratingResponse();
+}
+
+async function loadMessages() {
+    if (!currentRoomId || isLocked) return;
+    const response = await secureFetch(`api.php?action=get_messages&room_id=${currentRoomId}`);
+    const messages = await response.json();
+    
+    let hasNew = false;
+    messages.forEach(msg => {
+        if (!renderedMessageIds.has(msg.id)) {
+            renderMessage(msg, true);
+            renderedMessageIds.add(msg.id);
+            hasNew = true;
+        }
+    });
+
+    if (hasNew) scrollToBottom();
+}
+
+function renderMessage(msg, isNew = false) {
+    if (document.getElementById(`msg-${msg.id}`)) return;
+    const div = document.createElement('div');
+    const isSent = msg.sender_id === currentUser.id;
+    
+    div.className = `message-row ${isSent ? 'sent' : 'received'}`;
+    div.id = `msg-${msg.id}`;
+    
+    let displayContent = applyCamouflage(msg);
+    let shouldAutoReveal = false;
+
+    // Check privacy settings for auto-reveal
+    if (!isLocked && isNew && !isSent) {
+        if (currentUser.reveal_on_arrival_duration > 0) {
+            shouldAutoReveal = true;
+        } else if (currentUser.auto_reveal_unlocked) {
+            displayContent = msg.is_image ? `<img src="${escapeHTML(msg.content)}" class="real-img">` : escapeHTML(msg.content);
+        }
+    }
+
+    const avatarClass = isSent ? 'user' : 'ai colorful-sparkle';
+    const avatarIcon = isSent ? '👤' : '✦';
+    
+    const bodyHtml = `
+        <div class="msg-body">
+            <div class="msg-text glass" onclick="revealMessage(${JSON.stringify(msg).replace(/"/g, '&quot;')}, this)">${displayContent}</div>
+            <div class="timestamp">${formatTimestamp(msg.created_at)} ${isSent ? '' : '• ' + escapeHTML(msg.sender_name)}</div>
+        </div>
+    `;
+
+    if (isSent) {
+        div.innerHTML = `${bodyHtml}<div class="avatar ${avatarClass}">${avatarIcon}</div>`;
+    } else {
+        div.innerHTML = `<div class="avatar ${avatarClass}">${avatarIcon}</div>${bodyHtml}`;
+    }
+    
+    messagesContainer.appendChild(div);
+
+    if (shouldAutoReveal) {
+        const textEl = div.querySelector('.msg-text');
+        textEl.innerHTML = msg.is_image ? `<img src="${escapeHTML(msg.content)}" class="real-img">` : escapeHTML(msg.content);
+        textEl.classList.add('revealed');
+        setTimeout(() => {
+            textEl.innerHTML = applyCamouflage(msg);
+            textEl.classList.remove('revealed');
+        }, currentUser.reveal_on_arrival_duration * 1000);
+    }
+}
+
+async function revealMessage(msg, element) {
+    if (isLocked || element.dataset.revealing === "true") return;
+    element.dataset.revealing = "true";
+    
+    const originalContent = element.innerHTML;
+    let realContent = msg.is_image ? `<img src="${escapeHTML(msg.content)}" class="real-img">` : escapeHTML(msg.content);
+    
+    // Apply camouflage style if configured
+    if (currentUser.camouflage_style === 'c_code' && !msg.is_image) {
+        realContent = `<pre style="font-family:monospace; font-size:12px; color:#4285f4;">${formatToCCode(msg.content)}</pre>`;
+    }
+
+    element.innerHTML = realContent;
+    element.classList.add('revealed');
+    
+    const duration = currentUser.reveal_on_click_duration || 5;
+    setTimeout(() => {
+        element.innerHTML = applyCamouflage(msg);
+        element.classList.remove('revealed');
+        delete element.dataset.revealing;
+    }, duration * 1000);
+}
+
+function applyCamouflage(msg) {
+    const pool = msg.sender_id === currentUser.id ? camouflageLibrary.prompts : camouflageLibrary.responses;
+    const index = msg.id % pool.length;
+    return escapeHTML(pool[index]);
+}
+
+function addFakeGeneratingResponse() {
+    const fakeDiv = document.createElement('div');
+    fakeDiv.className = 'message-row received fake-response';
+    fakeDiv.innerHTML = `
+        <div class="avatar ai white-sparkle">✦</div>
+        <div class="msg-body">
+            <div class="msg-text glass fake-msg">The response is generating... wait few moments, typing...</div>
+            <div class="timestamp">${formatTimestamp(new Date().toISOString())} <span class="fake-badge">simulated</span></div>
+        </div>
+    `;
+    messagesContainer.appendChild(fakeDiv);
+    scrollToBottom();
+    setTimeout(() => {
+        fakeDiv.style.opacity = '0';
+        fakeDiv.style.transition = 'opacity 0.6s ease';
+        setTimeout(() => fakeDiv.remove(), 600);
+    }, 5000);
+}
+
+// --- Stealth & Locking ---
+function toggleLock() { if (!isLocked) lockApp(); }
+function lockApp() { isLocked = true; location.reload(); }
+function unlockApp() {
+    isLocked = false;
+    lockStatus.textContent = 'U';
+    messagesContainer.innerHTML = '';
+    renderedMessageIds.clear();
+    startSystemLogs();
+    resetInactivityTimer();
+    loadMessages();
+}
+
+function resetInactivityTimer() {
+    if (timerInterval) clearInterval(timerInterval);
+    let time = inactivityTimer;
+    if (!isLocked) {
+        timerInterval = setInterval(() => {
+            time--;
+            const offset = 88 * (1 - time / inactivityTimer);
+            if (timerProgress) timerProgress.style.strokeDashoffset = offset;
+            if (time <= 0) lockApp();
+        }, 1000);
+    }
+}
+
+// --- Utils ---
 function escapeHTML(str) {
     const div = document.createElement('div');
     div.textContent = str;
     return div.innerHTML;
 }
 
-// --- Sidebar Logic ---
+function formatTimestamp(ts) {
+    const date = new Date(ts);
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+function scrollToBottom() {
+    const container = chatWindow; // Define if not globally accessible
+    const cw = document.getElementById('chat-window');
+    cw.scrollTop = cw.scrollHeight;
+}
+
 function toggleSidebar() {
     sidebar.classList.toggle('active');
     sidebarOverlay.classList.toggle('active');
@@ -164,497 +577,86 @@ function closeSidebar() {
     sidebarOverlay.classList.remove('active');
 }
 
-// --- Privacy Input Logic ---
-function handleInputPrivacy() {
-    lastTypeTime = Date.now();
-    messageInput.style.webkitTextSecurity = 'disc';
-}
-
 function peekInputText() {
     clearTimeout(inputMaskTimeout); 
     messageInput.style.webkitTextSecurity = 'none'; 
-    
     inputMaskTimeout = setTimeout(() => {
         messageInput.style.webkitTextSecurity = 'disc';
     }, 2000);
 }
 
-let lastTypeTime = 0;
 function handleTyping() {
     isTyping = true;
-    lastTypeTime = Date.now();
     clearTimeout(typingTimeout);
-    typingTimeout = setTimeout(() => {
-        isTyping = false;
-    }, 3500);
+    typingTimeout = setTimeout(() => { isTyping = false; }, 3500);
 }
 
-// --- Auto-Scroll Logic ---
-function startScrollInactivityTimer() {
-    if (scrollInterval) clearInterval(scrollInterval);
-    scrollInterval = setInterval(() => {
-        scrollInactivityTimer--;
-        if (scrollInactivityTimer <= 0) {
-            scrollToBottom();
-            scrollInactivityTimer = 10;
-        }
-    }, 1000);
+function startPolling() {
+    loadRooms(); // Initial load
+    setInterval(loadRooms, 5000);
+    setInterval(loadMessages, 3000);
 }
-
-function resetScrollInactivityTimer() {
-    scrollInactivityTimer = 10;
-}
-
-function scrollToBottom() {
-    const container = messagesContainer.parentElement.parentElement;
-    container.scrollTop = container.scrollHeight;
-}
-
-document.onmousemove = () => { 
-    if (!isLocked) resetInactivityTimer(); 
-    resetScrollInactivityTimer();
-};
-document.onkeypress = () => { 
-    if (!isLocked) resetInactivityTimer(); 
-    resetScrollInactivityTimer();
-};
 
 function startStatusCycling() {
     let cycle = 0;
-    if (statusCycleInterval) clearInterval(statusCycleInterval);
     statusCycleInterval = setInterval(() => {
         cycle = (cycle + 1) % 3;
-        if (cycle === 0) {
-            thinkingText.textContent = currentStatusText;
-        } else {
-            thinkingText.textContent = "Gemini is thinking...";
-        }
-    }, 1000);
+        thinkingText.textContent = (cycle === 0) ? currentStatusText : "Gemini is thinking...";
+    }, 1500);
 }
 
-// --- System Logs ---
 function startSystemLogs() {
-    const logs = [
-        "[System_Active]",
-        "[Nodes_Synchronized]",
-        "[Connection_Secure]",
-        "[Analyzing_Clusters]",
-        "[Synthesizing_Output]",
-        "[Improvising_Context]",
-        "[Drafting_Insights]",
-        "[Processing_Neural_Nodes]"
-    ];
-    
-    if (logsInterval) clearInterval(logsInterval);
-    logsInterval = setInterval(() => {
+    const logs = ["[System_Active]", "[Nodes_Synchronized]", "[Connection_Secure]", "[Analyzing_Clusters]", "[Processing_Neural_Nodes]"];
+    setInterval(() => {
         systemLogsContainer.textContent = logs[Math.floor(Math.random() * logs.length)];
-    }, 3000);
+    }, 4000);
 }
 
-// --- Fake UI Functions ---
-function initFakeUI() {
-    const container = document.getElementById('fake-chats');
-    if (!container) return;
-    container.innerHTML = '';
-    fakeRecentChats.forEach(chat => {
-        const div = document.createElement('div');
-        div.className = 'nav-item';
-        div.innerHTML = `<span>💬</span> ${escapeHTML(chat)}`;
-        container.appendChild(div);
-    });
-}
-
-function addFakeAIResponse() {
-    if (isLocked) return;
-    setTimeout(() => {
-        const pool = camouflageData[CURRENT_USER_ID];
-        const randomRes = pool.responses[Math.floor(Math.random() * pool.responses.length)];
-        renderMessage({
-            id: Math.floor(Math.random() * 10000),
-            sender_id: 0, 
-            content: randomRes,
-            is_image: 0,
-            created_at: new Date().toISOString(),
-            is_fake: true
-        });
-    }, 2000 + Math.random() * 2000);
-}
-
-// --- Stealth & Locking ---
-function toggleLock() {
-    if (!isLocked) lockApp();
-}
-
-function lockApp() {
-    isLocked = true;
-    lockStatus.textContent = 'L';
-    location.reload(); 
-}
-
-async function unlockApp() {
-    isLocked = false;
-    lockStatus.textContent = 'U';
-    thinkingArea.style.display = 'flex';
-    renderedMessageIds.clear();
-    messagesContainer.innerHTML = '';
-    startSystemLogs();
-    resetInactivityTimer();
-    loadMessages();
-}
-
-function resetInactivityTimer() {
-    inactivityTimer = 60;
-    if (timerInterval) clearInterval(timerInterval);
-    if (!isLocked) {
-        timerInterval = setInterval(() => {
-            inactivityTimer--;
-            updateTimerCircle();
-            if (inactivityTimer <= 0) lockApp();
-        }, 1000);
-    }
-}
-
-function updateTimerCircle() {
-    const circumference = 88;
-    const offset = circumference * (1 - inactivityTimer / 60);
-    if (timerProgress) timerProgress.style.strokeDashoffset = offset;
-}
-
-// --- Message Handling ---
-async function handleSend() {
-    const input = messageInput.value.trim();
-    if (!input) return;
-
-    // Nuclear Command Intercept
-    if (input === '0000') {
-        messageInput.value = '';
-        await secureFetch('api.php?action=nuclear_wipe', { method: 'POST' });
-        location.reload();
-        return;
-    }
-
-    // PIN Verification Intercept
-    if (isLocked && input.length === 4 && /^\d+$/.test(input)) {
-        const resp = await secureFetch('api.php?action=verify_pin', {
-            method: 'POST',
-            body: JSON.stringify({ pin: input })
-        });
-        const data = await resp.json();
-        if (data.success) {
-            messageInput.value = '';
-            unlockApp();
-            return;
-        }
-    }
-
-    const content = input;
-    messageInput.value = '';
-    messageInput.style.webkitTextSecurity = 'none';
-    
-    await secureFetch('api.php?action=send_message', {
-        method: 'POST',
-        body: JSON.stringify({ content, is_image: 0 })
-    });
-
-    loadMessages();
-    if (!isLocked) addFakeAIResponse();
-}
-
-async function handleImageUpload(e) {
-    const file = e.target.files[0];
-    if (!file) return;
-    if (!confirm("Confirm before send image?")) return;
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-        let base64 = event.target.result;
-        if (base64.length > 800000) { // Limit for Base64 overhead
-            alert("Image too large");
-            return;
-        }
-        await secureFetch('api.php?action=send_message', {
-            method: 'POST',
-            body: JSON.stringify({ content: base64, is_image: 1 })
-        });
-        loadMessages();
+async function saveSettings() {
+    const settings = {
+        auto_lock_timer: parseInt(document.getElementById('setting-lock-timer').value),
+        reveal_on_arrival_duration: parseInt(document.getElementById('setting-arrival-dur').value),
+        camouflage_theme: document.getElementById('setting-theme').value,
+        camouflage_style: document.getElementById('setting-style').value
     };
-    reader.readAsDataURL(file);
-}
-
-async function loadMessages() {
-    const response = await secureFetch('api.php?action=get_messages');
-    const messages = await response.json();
-    messages.forEach(msg => {
-        if (!renderedMessageIds.has(msg.id)) {
-            renderMessage(msg, true);
-            renderedMessageIds.add(msg.id);
-        }
+    
+    await secureFetch('api.php?action=update_privacy_settings', {
+        method: 'POST',
+        body: JSON.stringify(settings)
     });
-    const currentIds = messages.map(m => `msg-${m.id}`);
-    document.querySelectorAll('.message-row').forEach(el => {
-        if (!currentIds.includes(el.id)) el.remove();
+    
+    await secureFetch('api.php?action=update_theme', {
+        method: 'POST',
+        body: JSON.stringify({ theme: settings.camouflage_theme })
     });
-    scrollToBottom();
-}
 
-function renderMessage(msg, isNew = false) {
-    if (document.getElementById(`msg-${msg.id}`)) return;
-    const div = document.createElement('div');
-    const isSent = msg.sender_id === CURRENT_USER_ID;
-    const isAI = msg.sender_id === 0;
-    
-    div.className = `message-row ${isSent ? 'sent' : 'received'}`;
-    div.id = `msg-${msg.id}`;
-    let displayContent = msg.content;
-    let autoCamouflage = false;
-    
-    if (!msg.is_fake) {
-        if (isLocked) {
-            displayContent = applyCamouflage(msg);
-        } else {
-            if (CURRENT_USER_ID === 1) {
-                displayContent = applyCamouflage(msg);
-                div.style.cursor = 'pointer';
-                div.onclick = () => revealMessage(msg, div);
-            } else if (CURRENT_USER_ID === 2) {
-                if (isNew) {
-                    autoCamouflage = true;
-                    displayContent = msg.is_image ? `<img src="${escapeHTML(msg.content)}" class="real-img">` : escapeHTML(msg.content);
-                } else {
-                    displayContent = applyCamouflage(msg);
-                }
-                div.style.cursor = 'pointer';
-                div.onclick = () => revealMessage(msg, div);
-            }
-        }
-    } else {
-        displayContent = escapeHTML(displayContent);
-    }
-    
-    const avatarClass = isSent ? 'user' : 'ai colorful-sparkle';
-    const avatarIcon = isSent ? '👤' : '✦';
-    div.innerHTML = `
-        <div class="avatar ${avatarClass}">${avatarIcon}</div>
-        <div class="msg-body">
-            <div class="msg-text glass ${(!isLocked && CURRENT_USER_ID === 2 && isNew && !isAI) ? 'revealed' : ''}">${displayContent}</div>
-            <div class="timestamp">${formatTimestamp(msg.created_at)}</div>
-            ${msg.burn_after ? `<div class="burn-timer" id="burn-${msg.id}">🔥 <span></span></div>` : ''}
-        </div>
-    `;
-    messagesContainer.appendChild(div);
-    
-    if (autoCamouflage) {
-        setTimeout(() => {
-            const contentDiv = div.querySelector('.msg-text');
-            if (contentDiv && !contentDiv.dataset.revealedManual) {
-                contentDiv.innerHTML = applyCamouflage(msg);
-                contentDiv.classList.remove('revealed');
-            }
-        }, 2000);
-    }
-    if (msg.burn_after) startBurnUI(msg.id, msg.burn_after);
-}
-
-function applyCamouflage(msg) {
-    if (msg.is_image) return `<div class="image-camouflage">Failed sending or generating image. Error code: 0x882</div>`;
-    const isSent = msg.sender_id === CURRENT_USER_ID;
-    const pool = camouflageData[CURRENT_USER_ID];
-    const items = isSent ? pool.prompts : pool.responses;
-    const index = msg.id % items.length;
-    return escapeHTML(items[index]);
+    location.reload();
 }
 
 function formatToCCode(text) {
     const words = text.split(/\s+/).filter(w => w.length > 0);
-    if (words.length === 0) return escapeHTML(text);
-    const reversed = [...words].reverse();
+    if (words.length === 0) return text;
     let code = `#include <stdio.h>\n\nint main() {\n`;
-    reversed.forEach((word, i) => {
-        let label = (i === 0) ? "target" : (i === reversed.length - 1 ? "subject" : `var_${i}`);
-        code += `    char* ${label} = "${escapeHTML(word)}";\n`;
+    words.forEach((word, i) => {
+        code += `    char* var_${i} = "${word}";\n`;
     });
-    code += `\n    // Output Sequence\n`;
-    reversed.forEach((word, i) => {
-        let label = (i === 0) ? "target" : (i === reversed.length - 1 ? "subject" : `var_${i}`);
-        code += `    printf("%s ", ${label});\n`;
+    code += `\n    // Sequence Output\n`;
+    words.forEach((word, i) => {
+        code += `    printf("%s ", var_${i});\n`;
     });
-    code += `\n    return 0;\n}`;
-    return code;
+    return code + `\n    return 0;\n}`;
 }
 
-async function revealMessage(msg, element) {
-    const contentDiv = element.querySelector('.msg-text');
-    if (contentDiv.dataset.revealedManual) return;
-    contentDiv.dataset.revealedManual = "true";
-    
-    const avatar = element.querySelector('.avatar.ai');
-    if (avatar) {
-        avatar.classList.remove('colorful-sparkle');
-        avatar.classList.add('white-sparkle');
-    }
-
-    let realContent = msg.is_image ? `<img src="${escapeHTML(msg.content)}" class="real-img">` : escapeHTML(msg.content);
-    if (!msg.is_image && CURRENT_USER_ID === 1) realContent = `<pre>${formatToCCode(msg.content)}</pre>`;
-    
-    contentDiv.innerHTML = realContent;
-    contentDiv.classList.add('revealed');
-    
-    const wordCount = msg.is_image ? 50 : msg.content.split(' ').length;
-    const viewTime = Math.max(3, Math.min(10, wordCount * 0.5)) * 1000;
-    
-    setTimeout(async () => {
-        if (!msg.burn_after) {
-            const resp = await secureFetch('api.php?action=mark_viewed', {
-                method: 'POST',
-                body: JSON.stringify({ msg_id: msg.id })
-            });
-            const data = await resp.json();
-            if (data.success) {
-                msg.burn_after = data.burn_after;
-                startBurnUI(msg.id, data.burn_after);
-            }
-        }
-        contentDiv.innerHTML = applyCamouflage(msg);
-        contentDiv.classList.remove('revealed');
-        delete contentDiv.dataset.revealedManual;
-        if (avatar) {
-            avatar.classList.add('colorful-sparkle');
-            avatar.classList.remove('white-sparkle');
-        }
-    }, viewTime);
-}
-
-function startBurnUI(id, burnAt) {
-    const burnDiv = document.getElementById(`burn-${id}`);
-    if (!burnDiv) return;
-    const span = burnDiv.querySelector('span');
-    const interval = setInterval(() => {
-        const remaining = Math.max(0, burnAt - Math.floor(Date.now() / 1000));
-        if (span) span.textContent = `${remaining}s`;
-        if (remaining <= 0) {
-            clearInterval(interval);
-            const msgEl = document.getElementById(`msg-${id}`);
-            if (msgEl) msgEl.remove();
-        }
-    }, 1000);
-}
-
-function formatTimestamp(ts) {
-    const date = new Date(ts);
-    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-}
-
-function startPolling() {
-    setInterval(updateMyStatus, 2000);
-    pollInterval = setInterval(() => {
-        getOtherStatus();
-        loadMessages();
-    }, 2000);
-}
-
-async function updateMyStatus() {
-    await secureFetch('api.php?action=update_status', {
-        method: 'POST',
-        body: JSON.stringify({ is_typing: isTyping ? 1 : 0 })
-    });
-}
-
-async function getOtherStatus() {
-    try {
-        const resp = await secureFetch('api.php?action=get_other_status');
-        const data = await resp.json();
-        const root = document.documentElement;
-        if (data.status === 'typing') {
-            root.style.setProperty('--status-color', '#ffc107');
-            currentStatusText = "Other user is typing...";
-        } else if (data.status === 'active') {
-            root.style.setProperty('--status-color', '#28a745');
-            currentStatusText = "Gemini is online";
-        } else {
-            root.style.setProperty('--status-color', '#f44336');
-            currentStatusText = "Gemini is offline";
-        }
-    } catch (e) { console.error("Status check failed", e); }
-}
-
-function initSecurity() {
-    let escCount = 0;
-    document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') {
-            escCount++;
-            if (escCount === 2) panic();
-            setTimeout(() => escCount = 0, 500);
-        }
-    });
-    if (panicLogo) {
-        let logoTaps = 0;
-        panicLogo.onclick = () => {
-            logoTaps++;
-            if (logoTaps === 2) panic();
-            setTimeout(() => logoTaps = 0, 500);
-        };
-    }
-    const detectDevTools = () => {
-        const threshold = 160;
-        if (window.outerWidth - window.innerWidth > threshold || window.outerHeight - window.innerHeight > threshold) onDevToolsDetected();
-    };
-    setInterval(detectDevTools, 1000);
-}
-
-function panic() {
-    document.body.innerHTML = '';
-    window.location.href = 'https://gemini.google.com';
-}
-
-function onDevToolsDetected() {
-    console.clear();
-    isLocked = true;
-    document.body.innerHTML = '<div style="background:black;color:red;height:100vh;display:flex;align-items:center;justify-content:center;font-family:monospace;">FATAL ERROR: SECURITY BREACH DETECTED. SYSTEM LOCKED.</div>';
-    setTimeout(() => window.location.href = 'https://gemini.google.com', 2000);
-}
-
-window.showModal = (id) => document.getElementById(id).style.display = 'flex';
-window.closeModal = (id) => document.getElementById(id).style.display = 'none';
-
-async function resetPIN() { showModal('reset-pin-modal'); }
-
-async function confirmResetPIN() {
-    const newPin = document.getElementById('reset-new-pin').value;
-    if (newPin.length !== 4) return alert("PIN must be 4 digits");
-    if (confirm("FINAL WARNING: This will wipe all messages and change your PIN. Proceed?")) {
-        await secureFetch('api.php?action=reset_pin', {
+async function handleImageUpload(e) {
+    const file = e.target.files[0];
+    if (!file || !currentRoomId) return;
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+        await secureFetch('api.php?action=send_message', {
             method: 'POST',
-            body: JSON.stringify({ new_pin: newPin })
+            body: JSON.stringify({ room_id: currentRoomId, content: event.target.result, is_image: 1 })
         });
-        location.reload();
-    }
-}
-
-async function updatePIN() {
-    const oldPin = document.getElementById('old-pin').value;
-    const newPin = document.getElementById('new-pin').value;
-    if (newPin.length !== 4) return alert("PIN must be 4 digits");
-    const resp = await secureFetch('api.php?action=update_pin', {
-        method: 'POST',
-        body: JSON.stringify({ old_pin: oldPin, new_pin: newPin })
-    });
-    const data = await resp.json();
-    if (data.success) {
-        alert("PIN updated successfully");
-        closeModal('pin-modal');
-    } else alert(data.error || "Update failed");
-}
-
-async function updatePassword() {
-    const oldPass = document.getElementById('old-password').value;
-    const newPass = document.getElementById('new-password').value;
-    if (!newPass) return alert("Password cannot be empty");
-    const resp = await secureFetch('api.php?action=update_password', {
-        method: 'POST',
-        body: JSON.stringify({ old_pass: oldPass, new_pass: newPass })
-    });
-    const data = await resp.json();
-    if (data.success) {
-        alert("Password updated successfully");
-        closeModal('password-modal');
-    } else alert(data.error || "Update failed");
+        loadMessages();
+    };
+    reader.readAsDataURL(file);
 }
