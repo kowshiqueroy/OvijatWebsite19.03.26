@@ -249,7 +249,7 @@ async function getOtherStatus() {
     const d = await r.json(); lastSeenTimestamp = d.last_seen;
     const color = (d.status === 'typing') ? '#ffc107' : ((d.status === 'active') ? '#28a745' : '#f44336');
     document.documentElement.style.setProperty('--status-color', color);
-    currentStatusText = (d.status === 'typing') ? "Other user is typing..." : ((d.status === 'active') ? "Gemini is online" : "Gemini is offline");
+    currentStatusText = (d.status === 'typing') ? "Gemini partner is typing..." : ((d.status === 'active') ? "Gemini is online" : "Gemini is offline");
     if (thinkingText) thinkingText.textContent = currentStatusText;
 }
 
