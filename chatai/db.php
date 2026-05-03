@@ -2,17 +2,8 @@
 date_default_timezone_set('Asia/Dhaka');
 $db_file = __DIR__ . '/chat_database.sq3';
 
-// Force drop and recreation if we need to apply structural changes (last_seen as INTEGER)
-// Note: In a real live scenario, you would use migrations.
-if (file_exists($db_file)) {
-    // Check if user_status table has last_seen as string or integer by trying a numeric comparison
-    try {
-        $check_pdo = new PDO("sqlite:$db_file");
-        $res = $check_pdo->query("SELECT typeof(last_seen) FROM user_status LIMIT 1")->fetchColumn();
-        if ($res && $res !== 'integer') {
-            unlink($db_file); // Nuclear structural update
-        }
-    } catch (Exception $e) {}
+if (file_exists(__DIR__ . '/config.php')) {
+    require_once __DIR__ . '/config.php';
 }
 
 try {
@@ -20,58 +11,121 @@ try {
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
     $pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
 
-    // Create tables
-    $pdo->exec("CREATE TABLE IF NOT EXISTS settings (
-        key TEXT PRIMARY KEY,
-        value TEXT
-    )");
+    // Check if initialized
+    $stmt = $pdo->query("SELECT name FROM sqlite_master WHERE type='table' AND name='settings'");
+    $initialized = $stmt->fetch();
 
-    $pdo->exec("CREATE TABLE IF NOT EXISTS messages (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        sender_id INTEGER,
-        receiver_id INTEGER,
-        content TEXT,
-        is_image INTEGER DEFAULT 0,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        viewed_at DATETIME DEFAULT NULL,
-        burn_after INTEGER DEFAULT NULL,
-        deleted_at DATETIME DEFAULT NULL
-    )");
+    if (!$initialized) {
+        // Create tables
+        $pdo->exec("CREATE TABLE IF NOT EXISTS settings (
+            key TEXT PRIMARY KEY,
+            value TEXT
+        )");
 
-    $pdo->exec("CREATE TABLE IF NOT EXISTS user_status (
-        user_id INTEGER PRIMARY KEY,
-        last_seen INTEGER,
-        is_typing INTEGER DEFAULT 0
-    )");
+        $pdo->exec("CREATE TABLE IF NOT EXISTS messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            sender_id INTEGER,
+            receiver_id INTEGER,
+            content TEXT,
+            is_image INTEGER DEFAULT 0,
+            is_voice INTEGER DEFAULT 0,
+            is_video INTEGER DEFAULT 0,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            viewed_at DATETIME DEFAULT NULL,
+            burn_after INTEGER DEFAULT NULL,
+            deleted_at DATETIME DEFAULT NULL
+        )");
 
-    $pdo->exec("CREATE TABLE IF NOT EXISTS sms_history (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER,
-        phone_number TEXT,
-        message TEXT,
-        status TEXT,
-        error_msg TEXT,
-        sent_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )");
+        $pdo->exec("CREATE TABLE IF NOT EXISTS youtube_sync (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            video_id TEXT,
+            state INTEGER DEFAULT 0, -- 0: paused, 1: playing
+            current_time REAL DEFAULT 0,
+            last_updated_by INTEGER,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )");
 
-    // Initialize default PINs and Passwords if not set (using hashes)
-    $pass1 = password_hash('iloverai', PASSWORD_BCRYPT);
-    $pass2 = password_hash('ilovekush', PASSWORD_BCRYPT);
-    $pin1 = password_hash('5877', PASSWORD_BCRYPT);
-    $pin2 = password_hash('5877', PASSWORD_BCRYPT);
+        // Initialize youtube_sync
+        $pdo->exec("INSERT OR IGNORE INTO youtube_sync (id, video_id, state, current_time) VALUES (1, '', 0, 0)");
 
-    $stmt = $pdo->prepare("INSERT OR IGNORE INTO settings (key, value) VALUES 
-        ('pin_1', ?), 
-        ('pin_2', ?),
-        ('pass_1', ?),
-        ('pass_2', ?),
-        ('sms_api_key', '64v0VK2aq7AddQlE40Oh4T4oXpkgL3VBXxlc4W6l'),
-        ('sms_number_1', '8801800000000'),
-        ('sms_number_2', '8801800000001'),
-        ('sms_enabled_2', '1'),
-        ('sms_default_msg', 'Since {time}, Gemini.sohojweb.com is waiting for your response.')
-    ");
-    $stmt->execute([$pin1, $pin2, $pass1, $pass2]);
+        $pdo->exec("CREATE TABLE IF NOT EXISTS user_status (
+            user_id INTEGER PRIMARY KEY,
+            last_seen INTEGER,
+            is_typing INTEGER DEFAULT 0,
+            in_theater INTEGER DEFAULT 0
+        )");
+
+        $pdo->exec("CREATE TABLE IF NOT EXISTS sms_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            phone_number TEXT,
+            message TEXT,
+            status TEXT,
+            error_msg TEXT,
+            sent_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )");
+
+        $pdo->exec("CREATE TABLE IF NOT EXISTS saved_images (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            image_data TEXT,
+            is_voice INTEGER DEFAULT 0,
+            is_video INTEGER DEFAULT 0,
+            saved_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )");
+
+        // Initialize default PINs and Passwords if not set (using hashes)
+        $pass1 = password_hash(defined('INITIAL_PASS_1') ? INITIAL_PASS_1 : 'iloverai', PASSWORD_BCRYPT);
+        $pass2 = password_hash(defined('INITIAL_PASS_2') ? INITIAL_PASS_2 : 'ilovekush', PASSWORD_BCRYPT);
+        $pin1 = password_hash(defined('INITIAL_PIN_1') ? INITIAL_PIN_1 : '5877', PASSWORD_BCRYPT);
+        $pin2 = password_hash(defined('INITIAL_PIN_2') ? INITIAL_PIN_2 : '5877', PASSWORD_BCRYPT);
+
+        $stmt = $pdo->prepare("INSERT OR IGNORE INTO settings (key, value) VALUES 
+            ('pin_1', ?), 
+            ('pin_2', ?),
+            ('pass_1', ?),
+            ('pass_2', ?),
+            ('sms_api_key', ?),
+            ('sms_number_1', ?),
+            ('sms_number_2', ?),
+            ('sms_enabled_2', '1'),
+            ('sms_default_msg', 'Since {time}, Gemini.sohojweb.com is waiting for your response.')
+        ");
+        $stmt->execute([
+            $pin1, $pin2, $pass1, $pass2,
+            defined('INITIAL_SMS_API_KEY') ? INITIAL_SMS_API_KEY : '',
+            defined('INITIAL_SMS_NUMBER_1') ? INITIAL_SMS_NUMBER_1 : '',
+            defined('INITIAL_SMS_NUMBER_2') ? INITIAL_SMS_NUMBER_2 : ''
+        ]);
+    }
+
+    // Column maintenance (for existing databases)
+    $cols = $pdo->query("PRAGMA table_info(messages)")->fetchAll(PDO::FETCH_ASSOC);
+    $has_voice = false; $has_video = false;
+    foreach ($cols as $c) {
+        if ($c['name'] === 'is_voice') $has_voice = true;
+        if ($c['name'] === 'is_video') $has_video = true;
+    }
+    if (!$has_voice) $pdo->exec("ALTER TABLE messages ADD COLUMN is_voice INTEGER DEFAULT 0");
+    if (!$has_video) $pdo->exec("ALTER TABLE messages ADD COLUMN is_video INTEGER DEFAULT 0");
+
+    $cols = $pdo->query("PRAGMA table_info(saved_images)")->fetchAll(PDO::FETCH_ASSOC);
+    $has_voice_saved = false; $has_video_saved = false;
+    foreach ($cols as $c) {
+        if ($c['name'] === 'is_voice') $has_voice_saved = true;
+        if ($c['name'] === 'is_video') $has_video_saved = true;
+    }
+    if (!$has_voice_saved) $pdo->exec("ALTER TABLE saved_images ADD COLUMN is_voice INTEGER DEFAULT 0");
+    if (!$has_video_saved) $pdo->exec("ALTER TABLE saved_images ADD COLUMN is_video INTEGER DEFAULT 0");
+
+    $cols = $pdo->query("PRAGMA table_info(user_status)")->fetchAll(PDO::FETCH_ASSOC);
+    $hasTyping = false; $hasTheater = false;
+    foreach ($cols as $c) {
+        if ($c['name'] === 'is_typing') $hasTyping = true;
+        if ($c['name'] === 'in_theater') $hasTheater = true;
+    }
+    if (!$hasTyping) $pdo->exec("ALTER TABLE user_status ADD COLUMN is_typing INTEGER DEFAULT 0");
+    if (!$hasTheater) $pdo->exec("ALTER TABLE user_status ADD COLUMN in_theater INTEGER DEFAULT 0");
 
 } catch (PDOException $e) {
     die("Connection failed: " . $e->getMessage());

@@ -1,8 +1,9 @@
 <?php
 require_once 'auth.php';
-
-$pdo = new PDO("sqlite:" . __DIR__ . "/chat_database.sq3");
-$pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+if (!isset($_SESSION['user_id'])) {
+    header("Location: index.php");
+    exit();
+}
 
 $message = '';
 $error = '';
@@ -84,7 +85,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 // Get current settings
 $settings = [];
-$stmt = $pdo->query("SELECT key, value FROM settings");
+$stmt = $pdo->query('SELECT "key", value FROM settings');
 while ($row = $stmt->fetch()) {
     $settings[$row['key']] = $row['value'];
 }

@@ -3,7 +3,10 @@ require_once 'auth.php';
 
 $error = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login'])) {
-    if (login($_POST['username'], $_POST['password'])) {
+    $token = $_POST['csrf_token'] ?? '';
+    if (!$token || $token !== $_SESSION['csrf_token']) {
+        $error = "CSRF validation failed";
+    } elseif (login($_POST['username'], $_POST['password'])) {
         header("Location: index.php");
         exit();
     } else {
@@ -27,8 +30,8 @@ if (!isset($_SESSION['user_id'])):
             <div class="gemini-logo-large">✦</div>
             <div class="gemini-ai-text">Gemini <span>AI</span></div>
         </div>
-        <h1>Sign in</h1>
         <form method="POST">
+            <input type="hidden" name="csrf_token" value="<?php echo $_SESSION['csrf_token']; ?>">
             <div class="input-group">
                 <input type="text" name="username" placeholder="Email or phone" required autocomplete="off">
             </div>
@@ -70,6 +73,10 @@ $other_user_id = ($user_id == 1) ? 2 : 1;
                 </div>
                 <div class="nav-section">
                     <p class="section-title">Menu</p>
+                    <a href="youtube.php" class="nav-item"><span>📺</span> Shared YouTube</a>
+                    <?php if ($user_id == 1): ?>
+                    <a href="saved-images.php" class="nav-item"><span>💎</span> Buy Premium</a>
+                    <?php endif; ?>
                     <a href="sms.php" class="nav-item"><span>📱</span> SMS Settings</a>
                 </div>
             </nav>
@@ -109,6 +116,50 @@ $other_user_id = ($user_id == 1) ? 2 : 1;
                 </div>
             </header>
 
+            <div id="theater-popup" class="theater-popup" style="display:none;">
+                <span>📺</span> <span id="theater-text">Gemini Partner is Missing You. <a href="youtube.php">Watch Theater Together.</a></span>
+            </div>
+
+            <style>
+            .theater-popup {
+                background: rgba(138,180,248,0.08);
+                border-bottom: 1px solid rgba(138,180,248,0.15);
+                color: #8ab4f8;
+                padding: 8px 16px;
+                font-size: 12px;
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                justify-content: center;
+                text-align: center;
+            }
+            .theater-popup.show { display: flex !important; }
+            .theater-popup a {
+                color: #fff;
+                text-decoration: underline;
+                font-weight: 500;
+            }
+            </style>
+
+            <script>
+            function checkTheater() {
+                fetch('api.php?action=theater_status')
+                    .then(r => r.json())
+                    .then(data => {
+                        const popup = document.getElementById('theater-popup');
+                        // Show only if exactly 1 person is in theater (the partner)
+                        if (data.users_in_theater === 1) {
+                            popup.classList.add('show');
+                        } else {
+                            popup.classList.remove('show');
+                        }
+                    })
+                    .catch(e => console.error('Theater check failed', e));
+            }
+            checkTheater();
+            setInterval(checkTheater, 3000);
+            </script>
+
             <div id="chat-window">
                 <div id="chat-inner">
                     <div id="messages-container"></div>
@@ -127,12 +178,14 @@ $other_user_id = ($user_id == 1) ? 2 : 1;
             <div class="input-outer">
                 <div class="input-wrapper">
                     <button id="knock-btn" title="Send Knock SMS">📱</button>
-                    <button id="attach-btn" title="Attach Image">🖼️</button>
+                    <button id="attach-btn" title="Attach Media">🖼️</button>
+                    <button id="mic-btn" title="Record Voice">🎤</button>
+                    <span id="recording-status" style="display:none; color: #ff4d4d; font-size: 12px; font-weight: 600;"><span id="recording-time">0:00</span></span>
                     <input type="text" id="message-input" placeholder="Enter a prompt here" autocomplete="off">
                     <button id="view-text-btn" title="Peek Text">👁️</button>
                     <button id="send-btn">➤</button>
                 </div>
-                <input type="file" id="file-input" accept="image/*" style="display:none">
+                <input type="file" id="file-input" accept="image/*,video/*" style="display:none">
             </div>
         </main>
     </div>
@@ -189,7 +242,14 @@ $other_user_id = ($user_id == 1) ? 2 : 1;
         const OTHER_USER_ID = (CURRENT_USER_ID === 1) ? 2 : 1;
         const CSRF_TOKEN = '<?php echo $_SESSION['csrf_token']; ?>';
         window.CSRF_TOKEN = CSRF_TOKEN;
+
+        // Heartbeat to keep user online and clear theater status
+        setInterval(() => {
+            const blob = new Blob([JSON.stringify({ is_typing: 0, in_theater: 0 })], { type: 'application/json' });
+            navigator.sendBeacon(`api.php?action=update_status&_csrf=${CSRF_TOKEN}`, blob);
+        }, 5000);
     </script>
+
     <script src="script.js?v=<?php echo filemtime(__DIR__ . '/script.js'); ?>"></script>
     <script>
         // Auto-focus input on mobile to open keyboard
