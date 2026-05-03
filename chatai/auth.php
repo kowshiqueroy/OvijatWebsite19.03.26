@@ -6,61 +6,34 @@ require_once 'db.php';
 if (empty($_SESSION['csrf_token'])) {
     $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
 }
-
 function login($username, $password) {
     global $pdo;
 
-    $username = trim($username);
-    $stmt = $pdo->prepare("SELECT * FROM users WHERE username = ?");
-    $stmt->execute([$username]);
-    $user = $stmt->fetch();
+    // Normalize input to lowercase for easier matching
+    $input = strtolower(trim($username));
 
-    if ($user && password_verify($password, $user['password_hash'])) {
-        if ($user['status'] !== 'active') {
-            return ['success' => false, 'error' => 'Your account is ' . $user['status'] . '. Please wait for admin approval.'];
-        }
+    // Support login by ID (1 or 2) or custom names
+    $id = null;
+    if ($input === '1' || $input === 'kush') {
+        $id = 1;
+    } elseif ($input === '2' || $input === 'rai') {
+        $id = 2;
+    }
 
-        session_regenerate_id(true);
-        $_SESSION['user_id'] = $user['id'];
-        $_SESSION['username'] = $user['username'];
-        $_SESSION['display_name'] = $user['display_name'];
-        $_SESSION['role'] = $user['role'];
+    if (!$id) return false;
+
+    $stmt = $pdo->prepare("SELECT value FROM settings WHERE key = ?");
+    $stmt->execute(['pass_' . $id]);
+    $db_pass_hash = $stmt->fetchColumn();
+
+    if ($db_pass_hash && password_verify($password, $db_pass_hash)) {
+        session_regenerate_id(true); // Prevent session fixation
+        $_SESSION['user_id'] = $id;
+        $_SESSION['username'] = ($id === 1 ? "Kush" : "Rai");
         $_SESSION['unlocked'] = false;
-        return ['success' => true];
+        return true;
     }
-    return ['success' => false, 'error' => 'Invalid username or password.'];
-}
-
-function register($username, $display_name, $password, $pin) {
-    global $pdo;
-    
-    $username = trim($username);
-    if (empty($username) || empty($password) || empty($pin)) {
-        return ['success' => false, 'error' => 'All fields are required.'];
-    }
-
-    $stmtCheck = $pdo->prepare("SELECT COUNT(*) FROM users WHERE username = ?");
-    $stmtCheck->execute([$username]);
-    if ($stmtCheck->fetchColumn() > 0) {
-        return ['success' => false, 'error' => 'Username already exists.'];
-    }
-
-    $passHash = password_hash($password, PASSWORD_BCRYPT);
-    $pinHash = password_hash($pin, PASSWORD_BCRYPT);
-
-    try {
-        $stmt = $pdo->prepare("INSERT INTO users (username, display_name, password_hash, pin_hash) VALUES (?, ?, ?, ?)");
-        $stmt->execute([$username, $display_name, $passHash, $pinHash]);
-        $userId = $pdo->lastInsertId();
-
-        // Initialize default privacy settings
-        $stmtPriv = $pdo->prepare("INSERT INTO user_privacy_settings (user_id) VALUES (?)");
-        $stmtPriv->execute([$userId]);
-
-        return ['success' => true];
-    } catch (Exception $e) {
-        return ['success' => false, 'error' => 'Registration failed: ' . $e->getMessage()];
-    }
+    return false;
 }
 
 function logout() {
@@ -69,8 +42,6 @@ function logout() {
     exit();
 }
 
-if (isset($_GET['action'])) {
-    if ($_GET['action'] === 'logout') {
-        logout();
-    }
+if (isset($_GET['action']) && $_GET['action'] === 'logout') {
+    logout();
 }
