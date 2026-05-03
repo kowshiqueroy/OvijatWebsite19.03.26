@@ -80,9 +80,6 @@ $other_user_id = ($user_id == 1) ? 2 : 1;
                 <button class="nav-item" onclick="showModal('pin-modal')">
                     <span>🔑</span> Update PIN
                 </button>
-                <button class="nav-item" id="enable-notifications">
-                    <span>🔔</span> Enable Notifications
-                </button>
                 <button class="nav-item" onclick="resetPIN()">
                     <span>☢️</span> Reset PIN & Wipe
                 </button>

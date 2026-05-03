@@ -41,7 +41,7 @@ switch ($action) {
         break;
 
     case 'get_messages':
-        $stmt = $pdo->prepare("SELECT id, sender_id, receiver_id, content, is_image, burn_after, strftime('%Y-%m-%dT%H:%M:%SZ', created_at) as created_at, strftime('%Y-%m-%dT%H:%M:%SZ', viewed_at) as viewed_at FROM messages WHERE (sender_id = ? OR receiver_id = ?) AND deleted_at IS NULL ORDER BY created_at ASC");
+        $stmt = $pdo->prepare("SELECT * FROM messages WHERE (sender_id = ? OR receiver_id = ?) AND deleted_at IS NULL ORDER BY created_at ASC");
         $stmt->execute([$user_id, $user_id]);
         $messages = $stmt->fetchAll();
         
@@ -224,36 +224,38 @@ switch ($action) {
             break;
         }
         
-        // Switch to cURL for better reliability
-        $ch = curl_init();
-        $url = "https://api.sms.net.bd/sendsms";
-        $params = [
-            'api_key' => $api_key,
-            'msg' => $message,
-            'to' => $to_number
-        ];
+        // Send SMS via API using GET method
+        $url = 'https://api.sms.net.bd/sendsms?api_key=' . urlencode($api_key) . '&msg=' . urlencode($message) . '&to=' . urlencode($to_number);
         
-        curl_setopt($ch, CURLOPT_URL, $url . "?" . http_build_query($params));
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false); // For local/older environments
-        curl_setopt($ch, CURLOPT_TIMEOUT, 15);
+        $context = stream_context_create([
+            'http' => [
+                'timeout' => 10,
+                'ignore_errors' => true
+            ],
+            'ssl' => [
+                'verify_peer' => false,
+                'verify_peer_name' => false
+            ]
+        ]);
         
-        $response = curl_exec($ch);
-        $curl_error = curl_error($ch);
-        curl_close($ch);
+        $response = @file_get_contents($url, false, $context);
         
-        if ($response === false) {
+        if ($response === FALSE) {
+            $error = error_get_last();
+            // Save to history
             $stmt = $pdo->prepare("INSERT INTO sms_history (user_id, phone_number, message, status, error_msg) VALUES (?, ?, ?, 'failed', ?)");
-            $stmt->execute([$user_id, $to_number, $message, "Connection Error: " . $curl_error]);
-            echo json_encode(['success' => false, 'error' => 'Connection failed: ' . $curl_error]);
+            $stmt->execute([$user_id, $to_number, $message, $error['message'] ?? 'Unknown error']);
+            echo json_encode(['success' => false, 'error' => 'Failed to connect to SMS service: ' . ($error['message'] ?? 'Unknown error')]);
         } else {
             $result = json_decode($response, true);
             if (isset($result['error']) && $result['error'] == 0) {
+                // Save to history
                 $stmt = $pdo->prepare("INSERT INTO sms_history (user_id, phone_number, message, status) VALUES (?, ?, ?, 'sent')");
                 $stmt->execute([$user_id, $to_number, $message]);
                 echo json_encode(['success' => true]);
             } else {
-                $error_msg = $result['msg'] ?? 'Gateway returned error';
+                $error_msg = $result['msg'] ?? 'Unknown error';
+                // Save to history
                 $stmt = $pdo->prepare("INSERT INTO sms_history (user_id, phone_number, message, status, error_msg) VALUES (?, ?, ?, 'failed', ?)");
                 $stmt->execute([$user_id, $to_number, $message, $error_msg]);
                 echo json_encode(['success' => false, 'error' => $error_msg, 'response' => $response]);

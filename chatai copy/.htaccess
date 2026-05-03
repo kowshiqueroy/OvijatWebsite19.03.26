@@ -1,0 +1,4 @@
+<FilesMatch "\.(sq3|db|sqlite)$">
+    Order deny,allow
+    Deny from all
+</FilesMatch>

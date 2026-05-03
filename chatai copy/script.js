@@ -75,10 +75,8 @@ const thinkingSparkle = document.getElementById('thinking-sparkle');
 const thinkingText = document.getElementById('thinking-text');
 const systemLogsContainer = document.getElementById('system-logs');
 const panicLogo = document.getElementById('panic-logo');
-const notificationBtn = document.getElementById('enable-notifications');
 
 let currentStatusText = "Gemini is offline";
-let previousStatus = 'offline';
 let statusCycleInterval;
 let inputMaskTimeout;
 
@@ -96,20 +94,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (sidebarClose) sidebarClose.onclick = closeSidebar;
     lockStatus.onclick = toggleLock;
     
-    if (notificationBtn) {
-        notificationBtn.onclick = async () => {
-            const permission = await Notification.requestPermission();
-            if (permission === 'granted') {
-                alert("Notifications enabled!");
-                notificationBtn.style.display = 'none';
-            } else {
-                alert("Notification permission denied.");
-            }
-        };
-        // Hide if already granted
-        if (Notification.permission === 'granted') notificationBtn.style.display = 'none';
-    }
-
     // Message Input Interceptor
     messageInput.onkeydown = (e) => {
         if (e.key === 'Enter' && !e.shiftKey) {
@@ -192,13 +176,9 @@ function formatTimestamp(ts) {
 }
 
 function getTimeAgo(ts) {
-    // If the timestamp string from SQLite is like "2026-05-03T10:00:00Z", 
-    // new Date(ts) will correctly parse it as UTC.
     const created = new Date(ts).getTime();
-    const now = Date.now();
-    const diff = Math.floor((now - created) / 1000);
-    
-    if (diff < 10) return "just now";
+    const diff = Math.floor((Date.now() - created) / 1000);
+    if (diff < 0) return "just now";
     
     const h = Math.floor(diff / 3600);
     const m = Math.floor((diff % 3600) / 60);
@@ -637,7 +617,7 @@ function renderMessage(msg, isNew = false) {
     
     const metaHtml = `
         <div class="msg-meta">
-            <div class="timestamp" data-created="${msg.created_at}">${formatTimestamp(msg.created_at)} • ${getTimeAgo(msg.created_at)}</div>
+            <div class="timestamp">${formatTimestamp(msg.created_at)}</div>
             ${msg.viewed_at ? '<div class="viewed-badge">👁️ Viewed</div>' : ''}
             ${msg.burn_after ? `<div class="burn-timer" id="burn-${msg.id}">🔥 <span></span></div>` : ''}
         </div>
@@ -789,13 +769,6 @@ async function getOtherStatus() {
         
         currentStatus = data.status;
         lastSeenTimestamp = data.last_seen || 0;
-
-        if (previousStatus === 'offline' && data.status === 'active') {
-            if (Notification.permission === 'granted') {
-                new Notification("Gemini AI", { body: "Gemini AI is now Online." });
-            }
-        }
-        previousStatus = data.status;
 
         if (data.status === 'typing') {
             root.style.setProperty('--status-color', '#ffc107');
