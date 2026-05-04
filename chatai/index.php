@@ -93,6 +93,9 @@ $other_user_id = ($user_id == 1) ? 2 : 1;
                 <button class="nav-item" onclick="resetPIN()">
                     <span>☢️</span> Reset PIN & Wipe
                 </button>
+                <button class="nav-item" onclick="burnYTComments()">
+                    <span>🔥</span> Burn YT Comments
+                </button>
                 <a href="auth.php?action=logout" class="nav-item logout">
                     <span>🚪</span> Logout
                 </a>

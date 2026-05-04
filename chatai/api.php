@@ -215,6 +215,18 @@ switch ($action) {
         echo json_encode(['success' => true]);
         break;
 
+    case 'burn_yt_comments':
+        $stmt = $pdo->prepare("SELECT id, content FROM messages WHERE (sender_id = ? OR receiver_id = ?) AND content LIKE '%YT_COMMENT:%' AND deleted_at IS NULL");
+        $stmt->execute([$user_id, $user_id]);
+        $messages = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        foreach ($messages as $msg) {
+            if (strpos($msg['content'], 'uploads/') === 0 && file_exists(__DIR__ . '/' . $msg['content'])) unlink(__DIR__ . '/' . $msg['content']);
+        }
+        $stmtDel = $pdo->prepare("UPDATE messages SET deleted_at = CURRENT_TIMESTAMP WHERE (sender_id = ? OR receiver_id = ?) AND content LIKE '%YT_COMMENT:%' AND deleted_at IS NULL");
+        $stmtDel->execute([$user_id, $user_id]);
+        echo json_encode(['success' => true, 'count' => count($messages)]);
+        break;
+
     case 'reset_pin':
         $data = json_decode(file_get_contents('php://input'), true);
         $new_pin = $data['new_pin'] ?? '';

@@ -280,6 +280,11 @@ function stoprecording() { mediaRecorder.stop(); isrecording = false; document.g
 
 window.showModal = (id) => { document.getElementById(id).style.display = 'flex'; };
 window.closeModal = (id) => { document.getElementById(id).style.display = 'none'; };
+window.burnYTComments = async () => {
+    if (!confirm("Burn all messages containing YT_COMMENT: text?")) return;
+    const r = await secureFetch('api.php?action=burn_yt_comments', { method: 'POST' });
+    if (r && (await r.json()).success) { alert("YT_COMMENT messages burned"); location.reload(); }
+};
 window.confirmResetPIN = async () => {
     const p = document.getElementById('reset-new-pin').value;
     if (p.length === 4) { await secureFetch('api.php?action=reset_pin', { method: 'POST', body: JSON.stringify({ new_pin: p }) }); location.reload(); }
