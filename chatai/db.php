@@ -42,11 +42,21 @@ try {
             state INTEGER DEFAULT 0, -- 0: paused, 1: playing
             current_time REAL DEFAULT 0,
             last_updated_by INTEGER,
-            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            ready_user1 INTEGER DEFAULT 1,
+            ready_user2 INTEGER DEFAULT 1,
+            comments_enabled INTEGER DEFAULT 1
         )");
 
         // Initialize youtube_sync
-        $pdo->exec("INSERT OR IGNORE INTO youtube_sync (id, video_id, state, current_time) VALUES (1, '', 0, 0)");
+        $pdo->exec("INSERT OR IGNORE INTO youtube_sync (id, video_id, state, current_time, ready_user1, ready_user2, comments_enabled) VALUES (1, '', 0, 0, 1, 1, 1)");
+
+        $pdo->exec("CREATE TABLE IF NOT EXISTS video_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            video_id TEXT UNIQUE,
+            title TEXT,
+            watched_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )");
 
         $pdo->exec("CREATE TABLE IF NOT EXISTS user_status (
             user_id INTEGER PRIMARY KEY,
@@ -75,10 +85,10 @@ try {
         )");
 
         // Initialize default PINs and Passwords if not set (using hashes)
-        $pass1 = password_hash(defined('INITIAL_PASS_1') ? INITIAL_PASS_1 : 'iloverai', PASSWORD_BCRYPT);
-        $pass2 = password_hash(defined('INITIAL_PASS_2') ? INITIAL_PASS_2 : 'ilovekush', PASSWORD_BCRYPT);
-        $pin1 = password_hash(defined('INITIAL_PIN_1') ? INITIAL_PIN_1 : '5877', PASSWORD_BCRYPT);
-        $pin2 = password_hash(defined('INITIAL_PIN_2') ? INITIAL_PIN_2 : '5877', PASSWORD_BCRYPT);
+        $pass1 = password_hash(bin2hex(random_bytes(16)), PASSWORD_BCRYPT);
+        $pass2 = password_hash(bin2hex(random_bytes(16)), PASSWORD_BCRYPT);
+        $pin1 = password_hash(sprintf("%04d", random_int(0, 9999)), PASSWORD_BCRYPT);
+        $pin2 = password_hash(sprintf("%04d", random_int(0, 9999)), PASSWORD_BCRYPT);
 
         $stmt = $pdo->prepare("INSERT OR IGNORE INTO settings (key, value) VALUES 
             ('pin_1', ?), 
@@ -127,6 +137,30 @@ try {
     if (!$hasTyping) $pdo->exec("ALTER TABLE user_status ADD COLUMN is_typing INTEGER DEFAULT 0");
     if (!$hasTheater) $pdo->exec("ALTER TABLE user_status ADD COLUMN in_theater INTEGER DEFAULT 0");
 
+    $cols = $pdo->query("PRAGMA table_info(youtube_sync)")->fetchAll(PDO::FETCH_ASSOC);
+    $hasReady1 = false; $hasReady2 = false;
+    foreach ($cols as $c) {
+        if ($c['name'] === 'ready_user1') $hasReady1 = true;
+        if ($c['name'] === 'ready_user2') $hasReady2 = true;
+    }
+    if (!$hasReady1) $pdo->exec("ALTER TABLE youtube_sync ADD COLUMN ready_user1 INTEGER DEFAULT 1");
+    if (!$hasReady2) $pdo->exec("ALTER TABLE youtube_sync ADD COLUMN ready_user2 INTEGER DEFAULT 1");
+
+    $colsSync = $pdo->query("PRAGMA table_info(youtube_sync)")->fetchAll(PDO::FETCH_ASSOC);
+    $hasCommentsEnabled = false;
+    foreach ($colsSync as $c) {
+        if ($c['name'] === 'comments_enabled') $hasCommentsEnabled = true;
+    }
+    if (!$hasCommentsEnabled) $pdo->exec("ALTER TABLE youtube_sync ADD COLUMN comments_enabled INTEGER DEFAULT 1");
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS video_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        video_id TEXT UNIQUE,
+        title TEXT,
+        watched_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )");
+
 } catch (PDOException $e) {
-    die("Connection failed: " . $e->getMessage());
+    error_log($e->getMessage());
+    die("A database error occurred. Please try again later.");
 }

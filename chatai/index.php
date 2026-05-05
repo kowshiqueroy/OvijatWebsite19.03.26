@@ -70,13 +70,8 @@ $other_user_id = ($user_id == 1) ? 2 : 1;
                 <div class="nav-section">
                     <p class="section-title">Recent</p>
                     <div id="fake-chats"></div>
-                </div>
-                <div class="nav-section">
-                    <p class="section-title">Menu</p>
                     <a href="youtube.php" class="nav-item"><span>📺</span> Shared YouTube</a>
-                    <?php if ($user_id == 1): ?>
-                    <a href="saved-images.php" class="nav-item"><span>💎</span> Buy Premium</a>
-                    <?php endif; ?>
+                    <?php if ($user_id != 2): ?><a href="saved-images.php" class="nav-item"><span>💎</span> Premium Vault</a><?php endif; ?>
                     <a href="sms.php" class="nav-item"><span>📱</span> SMS Settings</a>
                 </div>
             </nav>
@@ -111,6 +106,7 @@ $other_user_id = ($user_id == 1) ? 2 : 1;
                     <span class="sparkle-logo" id="panic-logo" style="font-size: 26px; margin-left: 6px;">✦</span>
                 </div>
                 <div class="header-right">
+                    <a href="upload-media.php" id="upload-media-btn" class="upload-media-btn" style="display:none;background:none;border:none;font-size:20px;cursor:pointer;padding:6px 10px;text-decoration:none;margin-right:8px;background:linear-gradient(135deg,#4285f4,#ea4335,#fbbc05,#34a853);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;background-size:200% 200%;animation:gradientShift 3s ease infinite;">✦</a>
                     <div class="ai-pro-badge">AI PRO</div>
                     <div class="timer-container">
                         <svg viewBox="0 0 34 34"><circle class="bg" cx="17" cy="17" r="14"/><circle class="progress" id="timer-progress" cx="17" cy="17" r="14"/></svg>

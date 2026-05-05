@@ -54,8 +54,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $url = 'https://api.sms.net.bd/sendsms?api_key=' . urlencode($api_key) . '&msg=' . urlencode($custom_msg) . '&to=' . urlencode($num);
                 
                 $context = stream_context_create([
-                    'http' => ['timeout' => 10, 'ignore_errors' => true],
-                    'ssl' => ['verify_peer' => false, 'verify_peer_name' => false]
+                    'http' => ['timeout' => 10, 'ignore_errors' => true]
                 ]);
                 
                 $response = @file_get_contents($url, false, $context);

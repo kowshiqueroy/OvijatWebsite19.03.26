@@ -4,16 +4,16 @@ header('Content-Type: application/json');
 
 if (!isset($_SESSION['user_id'])) {
     http_response_code(401);
-    echo json_encode(['error' => 'Unauthorized']);
+    echo json_encode(array('error' => 'Unauthorized'));
     exit();
 }
 
 // CSRF Protection Check for POST requests
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $csrf_token = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? $_GET['_csrf'] ?? '';
+    $csrf_token = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? $_GET['_csrf'] ?? ($_POST['_csrf'] ?? '');
     if (!$csrf_token || $csrf_token !== $_SESSION['csrf_token']) {
         http_response_code(403);
-        echo json_encode(['error' => 'CSRF validation failed']);
+        echo json_encode(array('error' => 'CSRF validation failed'));
         exit();
     }
 }
@@ -21,31 +21,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $user_id = $_SESSION['user_id'];
 $action = $_GET['action'] ?? '';
 
-/**
- * Helper to save base64 data to a file or copy existing file
- */
 function saveBase64File($base64Data, $prefix = 'file', $targetDir = 'uploads') {
     if (empty($base64Data)) return false;
     
+    $allowedDirs = ['uploads', 'premium_vault'];
+    if (!in_array($targetDir, $allowedDirs)) return false;
+
     $fullTargetDir = __DIR__ . '/' . $targetDir . '/';
-    if (!file_exists($fullTargetDir)) mkdir($fullTargetDir, 0777, true);
+    if (!file_exists($fullTargetDir)) mkdir($fullTargetDir, 0755, true);
     
-    // Check if it's already a file path (for copying to persistent vault)
+    // Fix: Secure file copy from uploads to premium_vault (prevent traversal)
     if (is_string($base64Data) && strpos($base64Data, 'uploads/') === 0) {
-        $sourceFile = __DIR__ . '/' . $base64Data;
+        $cleanPath = basename($base64Data);
+        $sourceFile = __DIR__ . '/uploads/' . $cleanPath;
         if (!file_exists($sourceFile)) return false;
         
-        $extension = pathinfo($sourceFile, PATHINFO_EXTENSION);
+        $extension = strtolower(pathinfo($sourceFile, PATHINFO_EXTENSION));
+        $allowedExts = ['jpg', 'jpeg', 'png', 'webp', 'mp4', 'webm', 'mov', 'ogg', 'wav'];
+        if (!in_array($extension, $allowedExts)) return false;
+
         $filename = $prefix . '_' . bin2hex(random_bytes(8)) . '_' . time() . '.' . $extension;
         $destFile = $fullTargetDir . $filename;
-        
         if (copy($sourceFile, $destFile)) {
             return $targetDir . '/' . $filename;
         }
         return false;
     }
 
-    // Extract base64 and extension
     if (!preg_match('/^data:([^;]+);base64,(.*)$/', $base64Data, $matches)) return false;
     
     $mimeType = $matches[1];
@@ -61,7 +63,7 @@ function saveBase64File($base64Data, $prefix = 'file', $targetDir = 'uploads') {
         case 'audio/ogg':  $extension = 'ogg'; break;
         case 'audio/wav':  $extension = 'wav'; break;
         case 'video/mp4':  $extension = 'mp4'; break;
-        case 'video/webm': $extension = 'webm'; break;
+        case 'video/webm':  $extension = 'webm'; break;
         case 'video/quicktime': $extension = 'mov'; break;
         default: return false;
     }
@@ -83,32 +85,31 @@ switch ($action) {
         $is_voice = $data['is_voice'] ?? 0;
         $is_video = $data['is_video'] ?? 0;
         $receiver_id = ($user_id == 1) ? 2 : 1;
-
-        if (strlen($content) > 140000000) { // ~100MB limit for Base64 (approx 1.37x overhead)
-             echo json_encode(['success' => false, 'error' => 'Payload too large (100MB max)']);
-             break;
+        
+        if (strlen($content) > 140000000) {
+            echo json_encode(array('success' => false, 'error' => 'Payload too large (100MB max)'));
+            break;
         }
-
+        
         if ($is_image || $is_voice || $is_video) {
             $prefix = $is_image ? 'img' : ($is_voice ? 'voice' : 'video');
             $filePath = saveBase64File($content, $prefix);
             if ($filePath) $content = $filePath;
             else {
-                echo json_encode(['success' => false, 'error' => 'Failed to save media file']);
+                echo json_encode(array('success' => false, 'error' => 'Failed to save media file'));
                 break;
             }
         }
-
-        $stmt = $pdo->prepare("INSERT INTO messages (sender_id, receiver_id, content, is_image, is_voice, is_video) VALUES (?, ?, ?, ?, ?, ?)");
-        $stmt->execute([$user_id, $receiver_id, $content, $is_image, $is_voice, $is_video]);
-        echo json_encode(['success' => true]);
+        
+        $stmt = $pdo->prepare('INSERT INTO messages (sender_id, receiver_id, content, is_image, is_voice, is_video) VALUES (?, ?, ?, ?, ?, ?)');
+        $stmt->execute(array($user_id, $receiver_id, $content, $is_image, $is_voice, $is_video));
+        echo json_encode(array('success' => true));
         break;
 
     case 'get_messages':
         $stmt = $pdo->prepare("SELECT id, sender_id, receiver_id, content, is_image, is_voice, is_video, burn_after, strftime('%Y-%m-%dT%H:%M:%SZ', created_at) as created_at, strftime('%Y-%m-%dT%H:%M:%SZ', viewed_at) as viewed_at FROM messages WHERE (sender_id = ? OR receiver_id = ?) AND deleted_at IS NULL ORDER BY created_at ASC");
-        $stmt->execute([$user_id, $user_id]);
+        $stmt->execute(array($user_id, $user_id));
         $messages = $stmt->fetchAll();
-        
         $now = time();
         foreach ($messages as $key => $msg) {
             if ($msg['burn_after'] !== null && $now >= $msg['burn_after']) {
@@ -118,267 +119,398 @@ switch ($action) {
                         unlink(__DIR__ . '/' . $filePath);
                     }
                 }
-                $stmtDel = $pdo->prepare("UPDATE messages SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?");
-                $stmtDel->execute([$msg['id']]);
+                $stmtDel = $pdo->prepare('UPDATE messages SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?');
+                $stmtDel->execute(array($msg['id']));
                 unset($messages[$key]);
             }
         }
         echo json_encode(array_values($messages));
         break;
 
+    case 'save_image':
+        if (isset($_FILES['file'])) {
+            $file = $_FILES['file'];
+            $fileType = $file['type'];
+            
+            $allowedMimes = [
+                'image/jpeg', 'image/png', 'image/webp',
+                'video/mp4', 'video/webm', 'video/quicktime',
+                'audio/webm', 'audio/mp4', 'audio/ogg', 'audio/wav'
+            ];
+            
+            if (!in_array($fileType, $allowedMimes)) {
+                echo json_encode(array('success' => false, 'error' => 'Invalid file type'));
+                break;
+            }
+
+            $is_v = (strpos($fileType, 'audio') !== false) ? 1 : 0;
+            $is_vid = (strpos($fileType, 'video') !== false) ? 1 : 0;
+            $prefix = $is_v ? 'p_voice' : ($is_vid ? 'p_video' : 'p_img');
+            
+            $mimeToExt = array(
+                'image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp',
+                'video/mp4' => 'mp4', 'video/webm' => 'webm', 'video/quicktime' => 'mov',
+                'audio/webm' => 'webm', 'audio/mp4' => 'mp4', 'audio/ogg' => 'ogg', 'audio/wav' => 'wav'
+            );
+            $extension = $mimeToExt[$fileType] ?? 'bin';
+            
+            $filename = $prefix . '_' . bin2hex(random_bytes(8)) . '_' . time() . '.' . $extension;
+            $targetDir = __DIR__ . '/premium_vault/';
+            if (!file_exists($targetDir)) mkdir($targetDir, 0755, true);
+            $targetPath = $targetDir . $filename;
+            
+            if (move_uploaded_file($file['tmp_name'], $targetPath)) {
+                $path = 'premium_vault/' . $filename;
+                $stmt = $pdo->prepare('INSERT INTO saved_images (user_id, image_data, is_voice, is_video) VALUES (?, ?, ?, ?)');
+                $stmt->execute(array($user_id, $path, $is_v, $is_vid));
+                echo json_encode(array('success' => true));
+            } else {
+                echo json_encode(array('success' => false, 'error' => 'Failed to move uploaded file'));
+            }
+            break;
+        }
+        
+        $data = json_decode(file_get_contents('php://input'), true);
+        $media = $data['media_data'] ?? $data['image_data'] ?? '';
+        $is_v = $data['is_voice'] ?? 0;
+        $is_vid = $data['is_video'] ?? 0;
+        if (empty($media)) { echo json_encode(array('success' => false, 'error' => 'No media')); break; }
+        
+        $prefix = $is_v ? 'p_voice' : ($is_vid ? 'p_video' : 'p_img');
+        $path = saveBase64File($media, $prefix, 'premium_vault');
+        
+        if (!$path) { echo json_encode(array('success' => false, 'error' => 'Failed save')); break; }
+        $pdo->prepare('INSERT INTO saved_images (user_id, image_data, is_voice, is_video) VALUES (?, ?, ?, ?)')->execute(array($user_id, $path, $is_v, $is_vid));
+        echo json_encode(array('success' => true));
+        break;
+
+    case 'get_saved_images':
+        $stmt = $pdo->prepare('SELECT * FROM saved_images WHERE user_id = ? ORDER BY saved_at DESC');
+        $stmt->execute(array($user_id));
+        echo json_encode($stmt->fetchAll());
+        break;
+
+    case 'verify_pin':
+        $data = json_decode(file_get_contents('php://input'), true);
+        $pin = $data['pin'] ?? '';
+        $stmt = $pdo->prepare('SELECT value FROM settings WHERE key = ?');
+        $stmt->execute(array('pin_' . $user_id));
+        $hash = $stmt->fetchColumn();
+        if ($hash && password_verify($pin, $hash)) {
+            echo json_encode(array('success' => true));
+        } else {
+            echo json_encode(array('success' => false, 'error' => 'Invalid PIN'));
+        }
+        break;
+
+    case 'nuclear_wipe':
+        // Delete all messages and their media
+        $stmt = $pdo->query("SELECT content FROM messages WHERE is_image=1 OR is_voice=1 OR is_video=1");
+        while ($row = $stmt->fetch()) {
+            $path = $row['content'];
+            if ($path && strpos($path, 'uploads/') === 0 && file_exists(__DIR__ . '/' . $path)) {
+                unlink(__DIR__ . '/' . $path);
+            }
+        }
+        $pdo->exec("DELETE FROM messages");
+        
+        // Delete all saved images and their media
+        $stmt = $pdo->query("SELECT image_data FROM saved_images");
+        while ($row = $stmt->fetch()) {
+            $path = $row['image_data'];
+            if ($path && strpos($path, 'premium_vault/') === 0 && file_exists(__DIR__ . '/' . $path)) {
+                unlink(__DIR__ . '/' . $path);
+            }
+        }
+        $pdo->exec("DELETE FROM saved_images");
+        
+        echo json_encode(array('success' => true));
+        break;
+
+    case 'burn_yt_comments':
+        $pdo->prepare("UPDATE messages SET deleted_at = CURRENT_TIMESTAMP WHERE content LIKE '%YT_COMMENT:%'")->execute();
+        echo json_encode(array('success' => true));
+        break;
+
+    case 'reset_pin':
+        $data = json_decode(file_get_contents('php://input'), true);
+        $new_pin = $data['new_pin'] ?? '';
+        if (strlen($new_pin) !== 4) { echo json_encode(array('success' => false, 'error' => 'Invalid PIN')); break; }
+        $hash = password_hash($new_pin, PASSWORD_BCRYPT);
+        $pdo->prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)')->execute(array('pin_' . $user_id, $hash));
+        
+        // Wipe messages as per description
+        $stmt = $pdo->query("SELECT content FROM messages WHERE is_image=1 OR is_voice=1 OR is_video=1");
+        while ($row = $stmt->fetch()) {
+            $path = $row['content'];
+            if ($path && strpos($path, 'uploads/') === 0 && file_exists(__DIR__ . '/' . $path)) {
+                unlink(__DIR__ . '/' . $path);
+            }
+        }
+        $pdo->exec("DELETE FROM messages");
+        echo json_encode(array('success' => true));
+        break;
+
+    case 'update_pin':
+        $data = json_decode(file_get_contents('php://input'), true);
+        $old_pin = $data['old_pin'] ?? '';
+        $new_pin = $data['new_pin'] ?? '';
+        $stmt = $pdo->prepare('SELECT value FROM settings WHERE key = ?');
+        $stmt->execute(array('pin_' . $user_id));
+        $hash = $stmt->fetchColumn();
+        if ($hash && password_verify($old_pin, $hash)) {
+            $new_hash = password_hash($new_pin, PASSWORD_BCRYPT);
+            $pdo->prepare('UPDATE settings SET value = ? WHERE key = ?')->execute(array($new_hash, 'pin_' . $user_id));
+            echo json_encode(array('success' => true));
+        } else {
+            echo json_encode(array('success' => false, 'error' => 'Invalid old PIN'));
+        }
+        break;
+
+    case 'update_password':
+        $data = json_decode(file_get_contents('php://input'), true);
+        $old_pass = $data['old_password'] ?? '';
+        $new_pass = $data['new_password'] ?? '';
+        $stmt = $pdo->prepare('SELECT value FROM settings WHERE key = ?');
+        $stmt->execute(array('pass_' . $user_id));
+        $hash = $stmt->fetchColumn();
+        if ($hash && password_verify($old_pass, $hash)) {
+            $new_hash = password_hash($new_pass, PASSWORD_BCRYPT);
+            $pdo->prepare('UPDATE settings SET value = ? WHERE key = ?')->execute(array($new_hash, 'pass_' . $user_id));
+            echo json_encode(array('success' => true));
+        } else {
+            echo json_encode(array('success' => false, 'error' => 'Invalid old password'));
+        }
+        break;
+
+    case 'send_knock_sms':
+        $data = json_decode(file_get_contents('php://input'), true);
+        $custom_text = $data['custom_text'] ?? '';
+        
+        $stmt = $pdo->query("SELECT key, value FROM settings WHERE key IN ('sms_api_key', 'sms_default_msg', 'sms_number_1', 'sms_number_2', 'sms_enabled_2')");
+        $sets = [];
+        while($r = $stmt->fetch()) $sets[$r['key']] = $r['value'];
+        
+        $api_key = $sets['sms_api_key'] ?? '';
+        if (empty($api_key)) { echo json_encode(array('success' => false, 'error' => 'No API Key')); break; }
+        
+        $other_user_id = ($user_id == 1) ? 2 : 1;
+        if ($other_user_id == 2 && ($sets['sms_enabled_2'] ?? '1') != '1') {
+            echo json_encode(array('success' => false, 'error' => 'SMS disabled for partner'));
+            break;
+        }
+        
+        $to = $sets['sms_number_' . $other_user_id] ?? '';
+        if (empty($to)) { echo json_encode(array('success' => false, 'error' => 'No partner number')); break; }
+        
+        $msg = !empty($custom_text) ? $custom_text : ($sets['sms_default_msg'] ?? 'Knock knock! Check the chat.');
+        $url = 'https://api.sms.net.bd/sendsms?api_key=' . urlencode($api_key) . '&msg=' . urlencode($msg) . '&to=' . urlencode($to);
+        
+        $resp = @file_get_contents($url, false, stream_context_create(['http'=>['timeout'=>10,'ignore_errors'=>true]]));
+        $success = false;
+        $err = 'Connection failed';
+        if ($resp) {
+            $result = json_decode($resp, true);
+            if (isset($result['error']) && $result['error'] == 0) { $success = true; }
+            else { $err = $result['msg'] ?? 'API Error'; }
+        }
+        
+        $pdo->prepare("INSERT INTO sms_history (user_id, phone_number, message, status, error_msg) VALUES (?, ?, ?, ?, ?)")
+            ->execute([$user_id, $to, $msg, $success ? 'sent' : 'failed', $success ? null : $err]);
+            
+        echo json_encode(array('success' => $success, 'error' => $success ? null : $err));
+        break;
+
+    case 'delete_saved_image':
+        $data = json_decode(file_get_contents('php://input'), true);
+        $image_id = $data['image_id'] ?? 0;
+        
+        $stmt = $pdo->prepare('SELECT image_data, user_id FROM saved_images WHERE id = ?');
+        $stmt->execute(array($image_id));
+        $row = $stmt->fetch();
+        if (!$row || $row['user_id'] != $user_id) {
+            echo json_encode(array('success' => false, 'error' => 'Unauthorized'));
+            break;
+        }
+        
+        $path = $row['image_data'];
+        if ($path && strpos($path, 'premium_vault/') === 0 && file_exists(__DIR__ . '/' . $path)) {
+            unlink(__DIR__ . '/' . $path);
+        }
+        
+        $pdo->prepare('DELETE FROM saved_images WHERE id = ?')->execute(array($image_id));
+        echo json_encode(array('success' => true));
+        break;
+
     case 'update_status':
         $data = json_decode(file_get_contents('php://input'), true);
-        $updates = ['last_seen = ?'];
-        $params = [time()];
-        if (isset($data['is_typing'])) {
-            $updates[] = 'is_typing = ?';
-            $params[] = ($data['is_typing'] == 1) ? 1 : 0;
-        }
-        if (isset($data['in_theater'])) {
-            $updates[] = 'in_theater = ?';
-            $params[] = ($data['in_theater'] == 1) ? 1 : 0;
-        }
-        $stmt = $pdo->prepare("INSERT OR IGNORE INTO user_status (user_id, last_seen, is_typing, in_theater) VALUES (?, ?, ?, ?)");
-        $stmt->execute([$user_id, time(), 0, 0]);
-        $params[] = $user_id;
-        $sql = "UPDATE user_status SET " . implode(', ', $updates) . " WHERE user_id = ?";
-        $stmt = $pdo->prepare($sql);
-        $stmt->execute($params);
-        echo json_encode(['success' => true]);
-        break;
-
-    case 'heartbeat':
-        $stmt = $pdo->prepare("UPDATE user_status SET last_seen = ? WHERE user_id = ?");
-        $stmt->execute([time(), $user_id]);
-        echo json_encode(['success' => true]);
-        break;
-
-    case 'get_other_status':
-        $other_user_id = ($user_id == 1) ? 2 : 1;
         $stmt = $pdo->prepare("SELECT * FROM user_status WHERE user_id = ?");
-        $stmt->execute([$other_user_id]);
-        $status = $stmt->fetch();
-        if ($status) {
-            $diff = time() - (int)$status['last_seen'];
-            $state = ($diff < 10) ? (($status['is_typing'] == 1) ? 'typing' : 'active') : 'offline';
-            echo json_encode(['status' => $state, 'last_seen' => $status['last_seen']]);
-        } else echo json_encode(['status' => 'offline', 'last_seen' => 0]);
-        break;
-
-    case 'is_other_in_theater':
-        $other_user_id = ($user_id == 1) ? 2 : 1;
-        $stmt = $pdo->prepare("SELECT * FROM user_status WHERE user_id = ?");
-        $stmt->execute([$other_user_id]);
-        $row = $stmt->fetch();
-        $in_theater = ($row && (int)$row['in_theater'] === 1 && (time() - (int)$row['last_seen'] < 10));
-        echo json_encode(['in_theater' => $in_theater]);
-        break;
-
-    case 'theater_status':
-        $stmt = $pdo->prepare("SELECT COUNT(*) as cnt FROM user_status WHERE in_theater = 1 AND last_seen > ?");
-        $stmt->execute([time() - 10]);
-        $row = $stmt->fetch();
-        echo json_encode(['users_in_theater' => (int)$row['cnt']]);
-        break;
-
-    case 'leave_theater_beacon':
-        if (isset($_SESSION['user_id'])) {
-            $stmt = $pdo->prepare("UPDATE user_status SET in_theater = 0 WHERE user_id = ?");
-            $stmt->execute([$_SESSION['user_id']]);
+        $stmt->execute([$user_id]);
+        $current = $stmt->fetch();
+        
+        $is_typing = isset($data['is_typing']) ? (int)$data['is_typing'] : ($current['is_typing'] ?? 0);
+        $in_theater = isset($data['in_theater']) ? (int)$data['in_theater'] : ($current['in_theater'] ?? 0);
+        
+        if ($current) {
+            $stmt = $pdo->prepare("UPDATE user_status SET last_seen = ?, is_typing = ?, in_theater = ? WHERE user_id = ?");
+            $stmt->execute([time(), $is_typing, $in_theater, $user_id]);
+        } else {
+            $stmt = $pdo->prepare("INSERT INTO user_status (user_id, last_seen, is_typing, in_theater) VALUES (?, ?, ?, ?)");
+            $stmt->execute([$user_id, time(), $is_typing, $in_theater]);
         }
         echo json_encode(['success' => true]);
         break;
 
     case 'mark_viewed':
         $data = json_decode(file_get_contents('php://input'), true);
-        $msg_id = $data['msg_id'];
-        $stmt = $pdo->prepare("SELECT * FROM messages WHERE id = ? AND receiver_id = ?");
-        $stmt->execute([$msg_id, $user_id]);
+        $msg_id = $data['msg_id'] ?? 0;
+        $burn_after = 0;
+        $stmt = $pdo->prepare("SELECT sender_id, receiver_id, viewed_at FROM messages WHERE id = ? AND deleted_at IS NULL");
+        $stmt->execute([$msg_id]);
         $msg = $stmt->fetch();
-        if ($msg && $msg['burn_after'] === null) {
-            $burn_at = time() + 120;
-            $stmtUpd = $pdo->prepare("UPDATE messages SET viewed_at = CURRENT_TIMESTAMP, burn_after = ? WHERE id = ?");
-            $stmtUpd->execute([$burn_at, $msg_id]);
-            echo json_encode(['success' => true, 'burn_after' => $burn_at]);
-        } else echo json_encode(['success' => false]);
-        break;
-
-    case 'nuclear_wipe':
-        $stmt = $pdo->prepare("SELECT content FROM messages WHERE (sender_id = ? OR receiver_id = ?) AND (is_image = 1 OR is_voice = 1 OR is_video = 1) AND deleted_at IS NULL");
-        $stmt->execute([$user_id, $user_id]);
-        $files = $stmt->fetchAll(PDO::FETCH_COLUMN);
-        foreach ($files as $f) {
-            if ($f && strpos($f, 'uploads/') === 0 && file_exists(__DIR__ . '/' . $f)) unlink(__DIR__ . '/' . $f);
+        if ($msg && $msg['receiver_id'] == $user_id && !$msg['viewed_at']) {
+            $burn_after = time() + 30;
+            $pdo->prepare("UPDATE messages SET viewed_at = CURRENT_TIMESTAMP, burn_after = ? WHERE id = ?")->execute([$burn_after, $msg_id]);
         }
-        $stmt = $pdo->prepare("UPDATE messages SET deleted_at = CURRENT_TIMESTAMP WHERE sender_id = ? OR receiver_id = ?");
-        $stmt->execute([$user_id, $user_id]);
-        echo json_encode(['success' => true]);
+        echo json_encode(['success' => true, 'burn_after' => $burn_after]);
         break;
 
-    case 'burn_yt_comments':
-        $stmt = $pdo->prepare("SELECT id, content FROM messages WHERE (sender_id = ? OR receiver_id = ?) AND content LIKE '%YT_COMMENT:%' AND deleted_at IS NULL");
-        $stmt->execute([$user_id, $user_id]);
-        $messages = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        foreach ($messages as $msg) {
-            if (strpos($msg['content'], 'uploads/') === 0 && file_exists(__DIR__ . '/' . $msg['content'])) unlink(__DIR__ . '/' . $msg['content']);
+    case 'get_other_status':
+        $other_user_id = ($user_id == 1) ? 2 : 1;
+        $stmt = $pdo->prepare("SELECT last_seen, is_typing, in_theater FROM user_status WHERE user_id = ?");
+        $stmt->execute([$other_user_id]);
+        $status = $stmt->fetch();
+        
+        $response = ['status' => 'offline', 'last_seen' => null];
+        if ($status) {
+            $response['last_seen'] = (int)$status['last_seen'];
+            $is_online = (time() - $status['last_seen']) < 10;
+            if ($is_online) {
+                $response['status'] = $status['is_typing'] ? 'typing' : 'active';
+                $response['in_theater'] = (bool)$status['in_theater'];
+            }
         }
-        $stmtDel = $pdo->prepare("UPDATE messages SET deleted_at = CURRENT_TIMESTAMP WHERE (sender_id = ? OR receiver_id = ?) AND content LIKE '%YT_COMMENT:%' AND deleted_at IS NULL");
-        $stmtDel->execute([$user_id, $user_id]);
-        echo json_encode(['success' => true, 'count' => count($messages)]);
+        echo json_encode($response);
         break;
 
-    case 'reset_pin':
+    case 'theater_status':
+        $stmt = $pdo->query("SELECT COUNT(*) FROM user_status WHERE last_seen > " . (time() - 10) . " AND in_theater = 1");
+        $count = $stmt->fetchColumn();
+        echo json_encode(['users_in_theater' => (int)$count]);
+        break;
+
+    case 'register_peer':
         $data = json_decode(file_get_contents('php://input'), true);
-        $new_pin = $data['new_pin'] ?? '';
-        if (strlen($new_pin) !== 4) { echo json_encode(['success' => false, 'error' => 'Invalid PIN']); break; }
-        $stmtDel = $pdo->prepare("UPDATE messages SET deleted_at = CURRENT_TIMESTAMP WHERE sender_id = ? OR receiver_id = ?");
-        $stmtDel->execute([$user_id, $user_id]);
-        $stmtPin = $pdo->prepare('UPDATE settings SET value = ? WHERE key = ?');
-        $stmtPin->execute([password_hash($new_pin, PASSWORD_BCRYPT), "pin_" . $user_id]);
-        echo json_encode(['success' => true]);
+        $peerId = $data['peer_id'] ?? '';
+        if (empty($peerId)) {
+            echo json_encode(array('success' => false));
+            break;
+        }
+        $stmt = $pdo->prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)');
+        $stmt->execute(array('peer_' . $user_id, $peerId));
+        echo json_encode(array('success' => true));
         break;
 
-    case 'verify_pin':
-        $data = json_decode(file_get_contents('php://input'), true);
-        $stmt = $pdo->prepare("SELECT value FROM settings WHERE key = ?");
-        $stmt->execute(["pin_" . $user_id]);
-        $hash = $stmt->fetchColumn();
-        echo json_encode(['success' => ($hash && password_verify($data['pin'] ?? '', $hash))]);
-        break;
-
-    case 'update_pin':
-        $data = json_decode(file_get_contents('php://input'), true);
-        $stmt = $pdo->prepare("SELECT value FROM settings WHERE key = ?");
-        $stmt->execute(["pin_" . $user_id]);
-        $hash = $stmt->fetchColumn();
-        if ($hash && password_verify($data['old_pin'] ?? '', $hash)) {
-            $stmtUpd = $pdo->prepare("UPDATE settings SET value = ? WHERE key = ?");
-            $stmtUpd->execute([password_hash($data['new_pin'], PASSWORD_BCRYPT), "pin_" . $user_id]);
-            echo json_encode(['success' => true]);
-        } else echo json_encode(['success' => false, 'error' => 'Old PIN incorrect']);
-        break;
-
-    case 'update_password':
-        $data = json_decode(file_get_contents('php://input'), true);
-        $stmt = $pdo->prepare("SELECT value FROM settings WHERE key = ?");
-        $stmt->execute(["pass_" . $user_id]);
-        $hash = $stmt->fetchColumn();
-        if ($hash && password_verify($data['old_pass'] ?? '', $hash)) {
-            $stmtUpd = $pdo->prepare("UPDATE settings SET value = ? WHERE key = ?");
-            $stmtUpd->execute([password_hash($data['new_pass'], PASSWORD_BCRYPT), "pass_" . $user_id]);
-            echo json_encode(['success' => true]);
-        } else echo json_encode(['success' => false, 'error' => 'Old password incorrect']);
-        break;
-
-    case 'get_youtube_sync':
-        $stmt = $pdo->prepare("SELECT * FROM youtube_sync WHERE id = 1");
-        $stmt->execute();
-        $sync = $stmt->fetch();
-        $stmt = $pdo->prepare("SELECT last_seen FROM user_status WHERE user_id = ?");
-        $stmt->execute([($user_id == 1) ? 2 : 1]);
-        $ls = $stmt->fetchColumn();
-        $sync['other_online'] = ($ls && (time() - (int)$ls < 10));
-        echo json_encode($sync);
+    case 'get_peer':
+        $other_user_id = ($user_id == 1) ? 2 : 1;
+        $stmt = $pdo->prepare('SELECT value FROM settings WHERE key = ?');
+        $stmt->execute(array('peer_' . $other_user_id));
+        $peerId = $stmt->fetchColumn();
+        echo json_encode(array('peer_id' => $peerId));
         break;
 
     case 'update_youtube_sync':
         $data = json_decode(file_get_contents('php://input'), true);
-        $sql = "UPDATE youtube_sync SET state = ?, current_time = ?, last_updated_by = ?, updated_at = CURRENT_TIMESTAMP";
-        $params = [$data['state'] ?? 0, $data['current_time'] ?? 0, $user_id];
-        if (isset($data['video_id'])) {
-            $sql = "UPDATE youtube_sync SET video_id = ?, state = ?, current_time = ?, last_updated_by = ?, updated_at = CURRENT_TIMESTAMP";
-            array_unshift($params, $data['video_id']);
+        $video_id = $data['video_id'] ?? null;
+        $state = $data['state'] ?? null;
+        $current_time = $data['current_time'] ?? null;
+        $ready = $data['ready'] ?? null;
+        $comments_enabled = $data['comments_enabled'] ?? null;
+        $video_title = $data['video_title'] ?? '';
+        $now = microtime(true);
+        
+        $ready_col = ($user_id == 1) ? 'ready_user1' : 'ready_user2';
+
+        if ($video_id !== null) {
+            $stmtCheck = $pdo->query("SELECT video_id FROM youtube_sync WHERE id = 1");
+            $currentVideoId = $stmtCheck->fetchColumn();
+            
+            if ($video_id !== $currentVideoId) {
+                $stmt = $pdo->prepare("UPDATE youtube_sync SET video_id = ?, state = 0, current_time = 0, last_updated_by = ?, updated_at = ?, ready_user1 = 0, ready_user2 = 0 WHERE id = 1");
+                $stmt->execute([$video_id, $user_id, $now]);
+                
+                // Add to history
+                if ($video_id) {
+                    $stmtHist = $pdo->prepare("INSERT OR REPLACE INTO video_history (video_id, title, watched_at) VALUES (?, ?, CURRENT_TIMESTAMP)");
+                    $stmtHist->execute([$video_id, $video_title]);
+                }
+            }
         }
-        $stmt = $pdo->prepare($sql . " WHERE id = 1");
-        $stmt->execute($params);
+        
+        $updates = [];
+        $params = [];
+        if ($state !== null) { $updates[] = "state = ?"; $params[] = $state; }
+        if ($current_time !== null) { $updates[] = "current_time = ?"; $params[] = $current_time; }
+        if ($ready !== null) { $updates[] = "$ready_col = ?"; $params[] = (int)$ready; }
+        if ($comments_enabled !== null) { $updates[] = "comments_enabled = ?"; $params[] = (int)$comments_enabled; }
+        
+        if (!empty($updates)) {
+            $updates[] = "last_updated_by = ?"; $params[] = $user_id;
+            $updates[] = "updated_at = ?"; $params[] = $now;
+            $sql = "UPDATE youtube_sync SET " . implode(", ", $updates) . " WHERE id = 1";
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute($params);
+        }
+        
         echo json_encode(['success' => true]);
+        break;
+
+    case 'get_video_history':
+        $stmt = $pdo->query("SELECT * FROM video_history ORDER BY watched_at DESC LIMIT 20");
+        echo json_encode($stmt->fetchAll());
+        break;
+
+    case 'get_youtube_sync':
+        $stmt = $pdo->query("SELECT * FROM youtube_sync WHERE id = 1");
+        $data = $stmt->fetch();
+        
+        $other_user_id = ($user_id == 1) ? 2 : 1;
+        $stmtStatus = $pdo->prepare("SELECT last_seen FROM user_status WHERE user_id = ?");
+        $stmtStatus->execute([$other_user_id]);
+        $last_seen = $stmtStatus->fetchColumn();
+        $other_online = $last_seen && (time() - $last_seen) < 12;
+        
+        $data['other_online'] = (bool)$other_online;
+        // Fix: Don't automatically mark offline users as ready. 
+        // Let the client decide how to handle playback when the partner is away.
+        $data['server_time'] = microtime(true);
+        echo json_encode($data);
         break;
 
     case 'send_youtube_comment':
         $data = json_decode(file_get_contents('php://input'), true);
+        $content = $data['content'] ?? '';
+        if (!$content) { echo json_encode(['success' => false]); break; }
+        
+        $full_content = 'YT_COMMENT:' . $content;
+        $receiver_id = ($user_id == 1) ? 2 : 1;
         $stmt = $pdo->prepare("INSERT INTO messages (sender_id, receiver_id, content) VALUES (?, ?, ?)");
-        $stmt->execute([$user_id, ($user_id == 1) ? 2 : 1, "YT_COMMENT:" . ($data['content'] ?? '')]);
+        $stmt->execute([$user_id, $receiver_id, $full_content]);
         echo json_encode(['success' => true]);
         break;
 
     case 'get_youtube_comments':
-        $stmt = $pdo->prepare("SELECT id, sender_id, content FROM messages WHERE content LIKE 'YT_COMMENT:%' AND created_at > datetime('now', '-2 minutes') AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 10");
+        $stmt = $pdo->prepare("SELECT id, sender_id, content FROM messages WHERE content LIKE 'YT_COMMENT:%' AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 50");
         $stmt->execute();
-        $comments = $stmt->fetchAll();
-        foreach($comments as &$c) $c['content'] = str_replace('YT_COMMENT:', '', $c['content']);
-        echo json_encode($comments);
-        break;
-
-    case 'send_knock_sms':
-        $stmt = $pdo->prepare("SELECT key, value FROM settings WHERE key IN ('sms_api_key', 'sms_number_1', 'sms_number_2', 'sms_default_msg', 'sms_enabled_2')");
-        $stmt->execute();
-        $settings = [];
-        while ($row = $stmt->fetch()) $settings[$row['key']] = $row['value'];
-        if ($user_id != 1 && ($settings['sms_enabled_' . $user_id] ?? '1') != '1') {
-            echo json_encode(['success' => false, 'error' => 'SMS disabled']);
-            break;
+        $rows = $stmt->fetchAll();
+        foreach ($rows as &$row) {
+            $row['content'] = str_replace('YT_COMMENT:', '', $row['content']);
         }
-        $api_key = $settings['sms_api_key'] ?? '';
-        $to_number = $settings['sms_number_' . (($user_id == 1) ? 2 : 1)] ?? '';
-        $msg = $settings['sms_default_msg'] ?? 'Waiting for response at {time}.';
-        $data = json_decode(file_get_contents('php://input'), true);
-        if (!empty($data['custom_text'])) $msg .= " " . $data['custom_text'];
-        $msg = str_replace('{time}', (new DateTime('now', new DateTimeZone('Asia/Dhaka')))->format('Y-m-d h:i A'), $msg);
-        if (empty($api_key) || empty($to_number)) { echo json_encode(['success' => false, 'error' => 'SMS not configured']); break; }
-        $ch = curl_init();
-        curl_setopt_array($ch, [
-            CURLOPT_URL => "https://api.sms.net.bd/sendsms?" . http_build_query(['api_key' => $api_key, 'msg' => $msg, 'to' => $to_number]),
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_SSL_VERIFYPEER => false,
-            CURLOPT_TIMEOUT => 15
-        ]);
-        $resp = curl_exec($ch); $err = curl_error($ch); curl_close($ch);
-        if ($resp === false) {
-            $pdo->prepare("INSERT INTO sms_history (user_id, phone_number, message, status, error_msg) VALUES (?, ?, ?, 'failed', ?)")->execute([$user_id, $to_number, $msg, "Error: $err"]);
-            echo json_encode(['success' => false, 'error' => "Failed: $err"]);
-        } else {
-            $res = json_decode($resp, true);
-            $status = (isset($res['error']) && $res['error'] == 0) ? 'sent' : 'failed';
-            $pdo->prepare("INSERT INTO sms_history (user_id, phone_number, message, status, error_msg) VALUES (?, ?, ?, ?, ?)")->execute([$user_id, $to_number, $msg, $status, $res['msg'] ?? '']);
-            echo json_encode(['success' => ($status === 'sent'), 'error' => $res['msg'] ?? '']);
-        }
+        echo json_encode($rows);
         break;
 
-    case 'save_image':
-        if ($user_id != 1) { echo json_encode(['success' => false, 'error' => 'Unauthorized']); break; }
-        $data = json_decode(file_get_contents('php://input'), true);
-        $media = $data['media_data'] ?? $data['image_data'] ?? '';
-        $is_v = $data['is_voice'] ?? 0;
-        $is_vid = $data['is_video'] ?? 0;
-        if (empty($media)) { echo json_encode(['success' => false, 'error' => 'No media']); break; }
-        
-        $prefix = $is_v ? 'p_voice' : ($is_vid ? 'p_video' : 'p_img');
-        // Save to persistent premium_vault
-        $path = saveBase64File($media, $prefix, 'premium_vault');
-        
-        if (!$path) { echo json_encode(['success' => false, 'error' => 'Failed save']); break; }
-        $pdo->prepare("INSERT INTO saved_images (user_id, image_data, is_voice, is_video) VALUES (?, ?, ?, ?)")->execute([$user_id, $path, $is_v, $is_vid]);
-        echo json_encode(['success' => true]);
-        break;
-
-    case 'get_saved_images':
-        if ($user_id != 1) { echo json_encode([]); break; }
-        $stmt = $pdo->prepare("SELECT * FROM saved_images WHERE user_id = ? ORDER BY saved_at DESC");
-        $stmt->execute([$user_id]);
-        echo json_encode($stmt->fetchAll());
-        break;
-
-    case 'delete_saved_image':
-        if ($user_id != 1) { echo json_encode(['success' => false, 'error' => 'Unauthorized']); break; }
-        $data = json_decode(file_get_contents('php://input'), true);
-        $stmt = $pdo->prepare("SELECT image_data FROM saved_images WHERE id = ? AND user_id = ?");
-        $stmt->execute([$data['image_id'] ?? 0, $user_id]);
-        $path = $stmt->fetchColumn();
-        // Delete from premium_vault
-        if ($path && strpos($path, 'premium_vault/') === 0 && file_exists(__DIR__ . '/' . $path)) {
-            unlink(__DIR__ . '/' . $path);
-        }
-        $pdo->prepare("DELETE FROM saved_images WHERE id = ? AND user_id = ?")->execute([$data['image_id'] ?? 0, $user_id]);
+    case 'leave_theater_beacon':
+        $pdo->prepare("UPDATE user_status SET in_theater = 0 WHERE user_id = ?")->execute([$user_id]);
         echo json_encode(['success' => true]);
         break;
 }

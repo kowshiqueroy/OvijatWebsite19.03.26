@@ -12,409 +12,527 @@ $user_id = $_SESSION['user_id'];
     <link href="https://fonts.googleapis.com/css2?family=Google+Sans:wght@400;500;600&family=Roboto:wght@300;400;500&family=Roboto+Mono&display=swap" rel="stylesheet">
     <style>
         :root {
-            --yt-bg: #0a0a0a;
-            --accent: #8ab4f8;
-            --header-h: 50px;
-            --footer-h: 120px;
+            --yt-bg: #0f0f0f;
+            --accent: #3ea6ff;
+            --header-h: 56px;
         }
         body.yt-mode {
             background: var(--yt-bg);
             margin: 0;
             padding: 0;
-            overflow: hidden;
-            height: 100vh;
-            height: -webkit-fill-available;
+            overflow-x: hidden;
             display: flex;
             flex-direction: column;
-            font-family: 'Google Sans', sans-serif;
-        }
-        html {
-            height: -webkit-fill-available;
-        }
-        .cinematic-bg {
-            position: fixed;
-            top: 0; left: 0; width: 100%; height: 100%;
-            background: radial-gradient(circle at 50% 50%, #1a1a1a 0%, #0a0a0a 100%);
-            z-index: -1;
+            font-family: 'Roboto', Arial, sans-serif;
+            color: #fff;
+            -webkit-tap-highlight-color: transparent;
         }
         .yt-header {
             height: var(--header-h);
-            padding: 0 20px;
+            padding: 0 12px;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            background: rgba(0,0,0,0.8);
-            backdrop-filter: blur(10px);
-            z-index: 100;
+            background: #0f0f0f;
+            position: sticky;
+            top: 0;
+            z-index: 1000;
         }
         .yt-header h1 {
-            font-size: 16px;
+            font-size: 18px;
             font-weight: 500;
             margin: 0;
-            color: var(--accent);
             display: flex;
             align-items: center;
             gap: 8px;
         }
-        .header-actions {
-            display: flex;
-            gap: 8px;
-            align-items: center;
-        }
-        .back-btn, .sugg-btn {
-            color: #fff;
-            text-decoration: none;
-            font-size: 13px;
-            opacity: 0.7;
+        .header-actions { display: flex; gap: 8px; }
+        .modern-btn-header {
             background: rgba(255,255,255,0.1);
-            padding: 5px 12px;
-            border-radius: 20px;
+            color: #fff;
             border: none;
+            padding: 6px 12px;
+            border-radius: 18px;
+            font-size: 13px;
+            font-weight: 500;
             cursor: pointer;
-            font-family: inherit;
+            text-decoration: none;
         }
-        .sugg-btn { opacity: 1; }
-        .sugg-btn.active { background: var(--accent); color: #000; }
 
-        .main-stage {
-            flex: 1;
+        /* Mobile First: Single Column */
+        .main-container {
             display: flex;
-            align-items: center;
-            justify-content: center;
-            position: relative;
-            background: #000;
+            flex-direction: column;
+            width: 100%;
         }
+
+        .primary-content { width: 100%; }
+        .secondary-content { width: 100%; padding: 16px; box-sizing: border-box; }
 
         .player-outer {
             width: 100%;
-            width: 100vw;
             aspect-ratio: 16/9;
             background: #000;
             position: relative;
-            box-shadow: 0 0 50px rgba(0,0,0,0.5);
+            z-index: 10;
         }
 
-        #player {
-            width: 100%;
-            height: 100%;
-            border: none;
+        .video-info { padding: 12px; }
+        .video-title { font-size: 18px; font-weight: 600; line-height: 24px; margin-bottom: 8px; }
+        
+        .video-meta {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-bottom: 16px;
         }
+        .channel-info { display: flex; align-items: center; gap: 10px; }
+        .channel-avatar {
+            width: 36px; height: 36px;
+            border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            font-weight: 700; font-size: 14px;
+            flex-shrink: 0;
+        }
+        .channel-name { font-weight: 500; font-size: 15px; }
+        
+        .action-buttons {
+            display: flex;
+            gap: 8px;
+            overflow-x: auto;
+            padding-bottom: 4px;
+            scrollbar-width: none;
+        }
+        .action-buttons::-webkit-scrollbar { display: none; }
+        
+        .action-btn {
+            background: rgba(255,255,255,0.1);
+            border: none;
+            color: #fff;
+            padding: 8px 16px;
+            border-radius: 18px;
+            font-size: 13px;
+            font-weight: 500;
+            white-space: nowrap;
+            display: flex; align-items: center; gap: 6px;
+        }
+
+        .video-description {
+            background: rgba(255,255,255,0.05);
+            border-radius: 12px;
+            padding: 12px;
+            font-size: 13px;
+            line-height: 18px;
+        }
+
+        .comments-section { padding: 12px; }
+        .comments-count { font-size: 16px; font-weight: 700; margin-bottom: 16px; }
+        
+        .add-comment { display: flex; gap: 12px; margin-bottom: 24px; }
+        .comment-input-wrapper { flex: 1; }
+        .comment-input {
+            background: rgba(255,255,255,0.05);
+            border: none;
+            border-radius: 8px;
+            padding: 10px 12px;
+            color: #fff;
+            font-size: 14px;
+            width: 100%;
+            box-sizing: border-box;
+            outline: none;
+        }
+
+        .comment-list { display: flex; flex-direction: column; gap: 16px; }
+        .comment-item { display: flex; gap: 12px; }
+        .comment-text { font-size: 13px; line-height: 18px; color: #f1f1f1; margin-top: 2px; }
+
+        .sidebar-title { font-size: 15px; font-weight: 700; margin-bottom: 12px; }
+        .history-list { display: flex; flex-direction: column; gap: 12px; }
+        .history-item { display: flex; gap: 10px; text-decoration: none; color: inherit; }
+        .history-thumb {
+            width: 120px; aspect-ratio: 16/9;
+            background: #222; border-radius: 8px;
+            overflow: hidden; flex-shrink: 0;
+        }
+        .history-thumb img { width: 100%; height: 100%; object-fit: cover; }
+        .history-item-title { font-size: 13px; font-weight: 500; line-height: 16px; }
 
         #comments-overlay {
             position: absolute;
             top: 0; left: 0; width: 100%; height: 100%;
-            pointer-events: none;
-            z-index: 10;
+            pointer-events: none; z-index: 100;
             overflow: hidden;
         }
-
         .popup-comment {
             position: absolute;
-            background: rgba(0,0,0,0.08);
+            bottom: -50px; /* Start below the video */
+            background: rgba(0,0,0,0.6);
             backdrop-filter: blur(4px);
-            color: rgba(255,255,255,0.25);
-            padding: 6px 12px;
+            color: #fff;
+            padding: 8px 16px;
             border-radius: 20px;
-            font-size: 12px;
-            white-space: nowrap;
-            animation: drift 5s linear forwards;
-            border: none;
+            font-size: 14px;
+            white-space: pre-wrap;
+            max-width: 45%;
+            word-wrap: break-word;
+            animation: driftUp var(--drift-duration, 8s) linear forwards;
+            border: 1px solid rgba(255,255,255,0.1);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            z-index: 101;
         }
-        .popup-comment.self { left: auto !important; right: 15%; }
-        .popup-comment.other { left: 15% !important; }
+        
+        .popup-comment.self {
+            right: 15px;
+            border-bottom-right-radius: 4px;
+        }
+        
+        .popup-comment.other {
+            left: 15px;
+            border-bottom-left-radius: 4px;
+        }
 
-        @keyframes drift {
-            from { bottom: -50px; opacity: 0; }
+        @keyframes driftUp {
+            0% { transform: translateY(0); opacity: 0; }
             10% { opacity: 1; }
             90% { opacity: 1; }
-            to { bottom: 100%; opacity: 0; }
+            100% { transform: translateY(-350px); opacity: 0; }
         }
 
-        .yt-footer {
-            height: var(--footer-h);
-            background: rgba(18,18,18,0.97);
-            backdrop-filter: blur(24px) saturate(1.5);
-            -webkit-backdrop-filter: blur(24px) saturate(1.5);
-            padding: 14px 20px;
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-end;
-            gap: 20px;
-            z-index: 100;
-            box-sizing: border-box;
-            transition: background 0.5s, box-shadow 0.5s;
-            border-top: 1px solid rgba(255,255,255,0.08);
-        }
-        .yt-footer.status-online {
-            background: rgba(10,42,10,0.97);
-            box-shadow: 0 -4px 30px -10px rgba(76,175,80,0.2);
-        }
-        .yt-footer.status-typing {
-            background: rgba(10,26,42,0.97);
-            box-shadow: 0 -4px 30px -10px rgba(33,150,243,0.2);
-        }
-        .yt-footer.status-offline {
-            background: rgba(42,10,10,0.97);
-            box-shadow: 0 -4px 30px -10px rgba(244,67,54,0.2);
-        }
-
-        .fake-comments {
-            flex: 1;
-            display: flex;
-            flex-direction: column-reverse;
-            gap: 5px;
-            max-height: calc(var(--footer-h) - 28px);
-            overflow: hidden;
-            pointer-events: none;
-            min-width: 0;
-        }
-        .fake-comment {
-            background: rgba(255,255,255,0.07);
-            backdrop-filter: blur(8px);
-            -webkit-backdrop-filter: blur(8px);
-            color: #bbb;
-            padding: 6px 12px;
-            border-radius: 10px;
-            font-size: 11px;
-            white-space: nowrap;
-            animation: fadeInUp 0.4s ease-out;
-            border: 1px solid rgba(255,255,255,0.06);
-            flex-shrink: 0;
-        }
-        @keyframes fadeInUp {
-            from { opacity: 0; transform: translateY(8px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-
-        .controls-right {
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-            min-width: 280px;
-            max-width: 400px;
-        }
-        .input-row {
-            display: flex;
-            gap: 8px;
-            align-items: center;
-        }
-        .modern-input {
-            flex: 1;
-            background: rgba(255,255,255,0.06);
-            border: 1px solid rgba(255,255,255,0.1);
-            border-radius: 14px;
-            padding: 10px 16px;
-            color: #fff;
-            font-size: 13px;
-            outline: none;
-            transition: all 0.25s ease;
-            font-family: 'Google Sans', sans-serif;
-            min-width: 0;
-        }
-        .modern-input:focus {
-            border-color: var(--accent);
-            background: rgba(255,255,255,0.09);
-            box-shadow: 0 0 0 3px rgba(138,180,248,0.1);
-        }
-        .modern-input::placeholder { color: rgba(255,255,255,0.3); }
-        .modern-btn {
-            background: linear-gradient(135deg, var(--accent), #6ca0f0);
-            color: #000;
-            border: none;
-            padding: 10px 20px;
-            border-radius: 14px;
-            font-size: 13px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.25s ease;
-            font-family: 'Google Sans', sans-serif;
-            white-space: nowrap;
-        }
-        .modern-btn:hover { opacity: 0.88; transform: translateY(-1px); }
-        .modern-btn:active { transform: translateY(0); }
-
-        .status-indicator {
-            position: absolute;
-            top: 10px;
-            left: 10px;
-            font-size: 11px;
-            color: #aaa;
-            background: rgba(0,0,0,0.5);
-            padding: 4px 8px;
-            border-radius: 10px;
-            z-index: 20;
-            display: flex;
-            align-items: center;
-            gap: 6px;
-        }
-        .theater-icon {
-            font-size: 14px;
-        }
-
-        .sync-status {
-            position: absolute;
-            top: 10px;
-            right: 10px;
-            font-size: 10px;
-            color: var(--accent);
-            background: rgba(0,0,0,0.5);
-            padding: 4px 8px;
-            border-radius: 10px;
-            z-index: 20;
-            display: flex;
-            align-items: center;
-            gap: 4px;
-        }
-
-        .fake-comments {
-            flex: 1;
-            display: flex;
-            flex-direction: column-reverse;
-            gap: 5px;
-            max-height: calc(var(--footer-h) - 24px);
-            overflow: hidden;
-            pointer-events: none;
-        }
-        .fake-comment {
-            background: rgba(255,255,255,0.06);
-            backdrop-filter: blur(6px);
-            color: #aaa;
-            padding: 5px 10px;
-            border-radius: 8px;
-            font-size: 11px;
-            white-space: nowrap;
-            animation: fadeIn 0.4s ease-out;
-            border: 1px solid rgba(255,255,255,0.05);
-        }
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(6px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-        .controls-right {
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-            min-width: 320px;
-        }
-        .sync-status::before {
-            content: "";
-            width: 6px; height: 6px;
+        /* Easy Comment UI */
+        .easy-comment-trigger {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            width: 50px;
+            height: 50px;
+            border-radius: 25px;
             background: var(--accent);
-            border-radius: 50%;
-            animation: blink 1.5s infinite;
+            color: white;
+            border: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            z-index: 2000;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+        .easy-comment-trigger:active { transform: scale(0.9); }
+
+        .easy-comment-panel {
+            position: fixed;
+            bottom: 80px;
+            right: 20px;
+            background: #1e1e1e;
+            border: 1px solid #333;
+            border-radius: 16px;
+            padding: 12px;
+            display: none;
+            flex-direction: column;
+            gap: 8px;
+            width: 200px;
+            z-index: 2000;
+            box-shadow: 0 8px 30px rgba(0,0,0,0.6);
+            animation: slideUp 0.3s ease;
+        }
+        .easy-comment-panel.show { display: flex; }
+        
+        .easy-btn {
+            background: #2b2b2b;
+            border: none;
+            color: white;
+            padding: 10px;
+            border-radius: 8px;
+            font-size: 13px;
+            text-align: left;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .easy-btn:active { background: #3d3d3d; }
+        
+        @keyframes slideUp {
+            from { transform: translateY(20px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
         }
 
-        @media (min-width: 768px) {
-            :root {
-                --footer-h: 80px;
-            }
-            .yt-footer {
+        /* Desktop Adjustments */
+        @media (min-width: 1000px) {
+            .main-container {
                 flex-direction: row;
-                align-items: flex-end;
-                padding: 14px 30px;
+                max-width: 1280px;
+                margin: 0 auto;
+                padding: 24px;
+                gap: 24px;
             }
-            .player-outer {
-                width: 90%;
-                max-width: 1200px;
-                border-radius: 20px;
-            }
-            .main-stage {
-                background: transparent;
-            }
-        }
-
-        @media (max-width: 767px) {
-            :root {
-                --footer-h: 160px;
-            }
-            .yt-footer {
-                flex-direction: column-reverse;
-                align-items: stretch;
-                padding: 12px 14px;
-                gap: 10px;
-            }
-            .fake-comments {
-                flex-direction: row;
-                flex-wrap: nowrap;
-                max-height: 36px;
-                height: 36px;
-                gap: 8px;
-                overflow-x: auto;
-                overflow-y: hidden;
-                padding-bottom: 4px;
-                -webkit-overflow-scrolling: touch;
-                scrollbar-width: none;
-            }
-            .fake-comments::-webkit-scrollbar { display: none; }
-            .fake-comment {
-                flex-shrink: 0;
-                font-size: 10px;
-                padding: 5px 10px;
-                max-width: none;
-                overflow: visible;
-            }
-            .controls-right {
-                min-width: 0;
-                max-width: 100%;
-            }
-            .modern-input {
-                font-size: 12px;
-                padding: 9px 12px;
-            }
-            .modern-btn {
-                padding: 9px 14px;
-                font-size: 12px;
-            }
+            .primary-content { flex: 1; }
+            .secondary-content { width: 350px; padding: 0; }
+            .player-outer { border-radius: 12px; }
+            .video-info, .comments-section { padding: 12px 0; }
+            .video-title { font-size: 20px; }
+            .video-meta { flex-direction: row; justify-content: space-between; align-items: center; }
+            .channel-avatar { width: 40px; height: 40px; }
         }
     </style>
 </head>
 <body class="yt-mode">
-    <div class="cinematic-bg"></div>
-    
     <header class="yt-header">
-        <h1><span class="sparkle-logo">✦</span> Gemini Theater</h1>
+        <h1>
+            <span style="color: #ff0000; font-size: 24px;">▶</span>
+            YouTube
+        </h1>
         <div class="header-actions">
-            <a href="youtube.php" class="back-btn" id="exit-btn">Exit</a>
-            <a href="index.php" class="back-btn" id="exit-to-gemini">Exit to Gemini</a>
+            <button class="modern-btn-header" onclick="location.href='index.php'">Home</button>
+            <button class="modern-btn-header" id="exit-btn">Sign Out</button>
         </div>
     </header>
 
-        <main class="main-stage">
+    <main class="main-container">
+        <div class="primary-content">
             <div class="player-outer">
-                <div id="player"></div>
+                <div id="player" style="width:100%; height:100%;"></div>
                 <div id="comments-overlay"></div>
+                <div id="loader-overlay" class="hidden">
+                    <div class="loader-spinner"></div>
+                    <div style="margin-top: 16px;">Syncing for shared playback...</div>
+                </div>
             </div>
 
-            <div class="sync-status">Live Sync Active</div>
-            <div class="status-indicator" id="status-indicator">
-                <span class="theater-icon" id="theater-icon">👤</span>
-                <span id="status-text">Viewing alone</span>
-                <span id="status-ago"></span>
-            </div>
-        </main>
+            <div class="video-info">
+                <div class="video-title" id="display-title">YouTube Shared Theater</div>
+                <div class="video-meta">
+                    <div class="channel-info">
+                        <div class="channel-avatar" id="channel-avatar">G</div>
+                        <div>
+                            <div class="channel-name" id="theater-status-text">Gemini Theater</div>
+                            <div style="font-size: 12px; color: #aaa;" id="theater-users-count">1.2M subscribers</div>
+                        </div>
+                        <button class="subscribe-btn">Subscribe</button>
+                    </div>
+                    <div class="action-buttons">
+                        <button class="action-btn" id="toggle-comments">
+                            <span id="comment-status-icon">💬</span> 
+                            <span id="comment-status-text">Hide Chat</span>
+                        </button>
+                        <button class="action-btn" id="load-video-trigger">Share Video</button>
+                        <button class="action-btn">More</button>
+                    </div>
+                </div>
 
-    <footer class="yt-footer">
-        <div class="fake-comments" id="fake-comments"></div>
-        <div class="controls-right">
-            <div class="input-row">
-                <input type="text" id="video-url" class="modern-input" placeholder="Paste Video Link...">
-                <button id="load-video" class="modern-btn">Change Video</button>
+                <div class="video-description" id="video-desc">
+                    <strong id="video-stats">1,245,678 views  Jan 1, 2026</strong><br>
+                    <span id="video-description-text">Welcome to the private theater session. Share links and watch together in perfect sync.</span><br>
+                    <span style="color: #aaa; margin-top: 8px; display: block;">Show more</span>
+                </div>
             </div>
-            <div class="input-row">
-                <input type="text" id="comment-input" class="modern-input" placeholder="Say something...">
-                <button id="send-comment" class="modern-btn">Send</button>
+
+            <div class="comments-section">
+                <div class="comments-count">Recent Activity</div>
+                <div class="add-comment">
+                    <div class="channel-avatar" style="width: 32px; height: 32px; background: #555;" id="my-avatar">U</div>
+                    <div class="comment-input-wrapper">
+                        <input type="text" id="comment-input" class="comment-input" placeholder="Add a comment...">
+                        <div class="comment-actions" id="comment-actions">
+                            <button class="cancel-btn" id="comment-cancel">Cancel</button>
+                            <button class="comment-btn" id="send-comment">Comment</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="comment-list" id="comment-list">
+                    <!-- Comments populate here -->
+                </div>
             </div>
         </div>
-    </footer>
+
+        <div class="secondary-content">
+            <div class="sidebar-section">
+                <div class="sidebar-title">Recently Watched</div>
+                <div class="history-list" id="history-list">
+                    <!-- History populate here -->
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Easy Comment UI -->
+    <button class="easy-comment-trigger" id="easy-comment-trigger" title="Quick Comment">💬</button>
+    <div class="easy-comment-panel" id="easy-comment-panel">
+        <div class="easy-grid">
+            <button class="easy-btn" onclick="sendEasyComment('Wow! 😮')">Wow! 😮</button>
+            <button class="easy-btn" onclick="sendEasyComment('So cool! 🔥')">So cool! 🔥</button>
+            <button class="easy-btn" onclick="sendEasyComment('LMAO 😂')">LMAO 😂</button>
+            <button class="easy-btn" onclick="sendEasyComment('Wait whaaat?! 😱')">Wait whaaat?! 😱</button>
+            <button class="easy-btn" onclick="sendEasyComment('Mind = blown 🤯')">Mind = blown 🤯</button>
+            <button class="easy-btn" onclick="sendEasyComment('Agree! 💯')">Agree! 💯</button>
+        </div>
+        <div class="custom-comment-box">
+            <input type="text" id="easy-custom-input" placeholder="Type a comment..." onkeydown="if(event.key==='Enter') sendCustomEasy()">
+            <button onclick="sendCustomEasy()">➤</button>
+        </div>
+    </div>
+
+    <style>
+        .easy-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 8px; }
+        .easy-btn { 
+            background: #2b2b2b; border: 1px solid #333; color: white; padding: 8px; 
+            border-radius: 8px; font-size: 12px; cursor: pointer; transition: all 0.2s;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .easy-btn:hover { background: #3d3d3d; border-color: #444; transform: translateY(-1px); }
+        .easy-btn:active { transform: translateY(0); }
+        
+        .custom-comment-box { 
+            display: flex; gap: 6px; background: #2b2b2b; padding: 4px; 
+            border-radius: 10px; border: 1px solid #333;
+        }
+        .custom-comment-box input { 
+            background: transparent; border: none; color: white; font-size: 13px; 
+            padding: 6px; flex: 1; outline: none; width: 0;
+        }
+        .custom-comment-box button { 
+            background: var(--accent); border: none; color: white; 
+            width: 30px; height: 30px; border-radius: 8px; cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .easy-comment-panel { width: 220px; }
+    </style>
 
     <script>
         const CURRENT_USER_ID = <?php echo $user_id; ?>;
         window.CSRF_TOKEN = '<?php echo $_SESSION['csrf_token']; ?>';
         
+        const randomNames = [
+            'Movie Buff', 'Cool Cat', 'Silent Watcher', 'Tech Geek', 'Night Owl', 
+            'Happy Viewer', 'Film Fanatic', 'Daily Streamer', 'Web Surfer', 'Pixel Pal'
+        ];
+        // Fixed names for session consistency
+        const myFakeName = randomNames[CURRENT_USER_ID % randomNames.length];
+        const otherFakeName = randomNames[(CURRENT_USER_ID == 1 ? 2 : 1) % randomNames.length];
+
+        const fakeCommentsList = [
+            'Wow! 😮', 'So cool!', '🔥🔥🔥', 'This part is amazing', 'LMAO 😂',
+            'Agree!', 'First time seeing this', 'Pls subscribe!', 'So true 💯',
+            'Haha exactly', 'This is gold', 'Wait whaaat?! 😱', 'Mind = blown 🤯',
+            'YESS! FINALLY', 'So relatable 😭', 'Anyone 2026?', 'legendary 🏆',
+            'I love this song!', 'The cinematography is peak', 'Who else is watching this at 3am?',
+            'This needs more views', 'Iconic moment right here', 'The ending always gets me.'
+        ];
+
         let player;
         let isUpdating = false;
         let lastSyncTime = 0;
-        let prevOtherOnline = true;
+        let currentUrl = '';
+        let isMeReady = false;
+        let isOtherReady = false;
+        let commentsEnabled = true;
+        let realCommentsHidden = true;
+        let revealTimeout;
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const lastVideo = localStorage.getItem('yt_last_video');
+            if (lastVideo) currentUrl = lastVideo;
+            
+            document.getElementById('my-avatar').textContent = myFakeName[0];
+            
+            startSync();
+            startComments();
+            startStatus();
+            loadHistory();
+            startFakeComments();
+
+            // Heartbeat to keep user online and set theater status
+            setInterval(() => {
+                const blob = new Blob([JSON.stringify({ is_typing: 0, in_theater: 1 })], { type: 'application/json' });
+                navigator.sendBeacon(`api.php?action=update_status&_csrf=${window.CSRF_TOKEN}`, blob);
+            }, 5000);
+
+            const input = document.getElementById('comment-input');
+            const actions = document.getElementById('comment-actions');
+            input.onfocus = () => actions.style.display = 'flex';
+            document.getElementById('comment-cancel').onclick = () => {
+                input.value = '';
+                actions.style.display = 'none';
+            };
+
+            document.getElementById('send-comment').onclick = () => {
+                const txt = input.value.trim();
+                if (txt) {
+                    sendEasyComment(txt);
+                    input.value = '';
+                    actions.style.display = 'none';
+                }
+            };
+
+            document.getElementById('load-video-trigger').onclick = () => {
+                const url = prompt("Paste YouTube Video URL:");
+                if (url) loadVideo(url);
+            };
+
+            document.getElementById('toggle-comments').onclick = () => {
+                updateSync(null, !commentsEnabled);
+            };
+
+            // Easy Comment Panel Toggle
+            const trigger = document.getElementById('easy-comment-trigger');
+            const panel = document.getElementById('easy-comment-panel');
+            trigger.onclick = (e) => {
+                e.stopPropagation();
+                const wasShown = panel.classList.contains('show');
+                panel.classList.toggle('show');
+                if (!wasShown) setTimeout(() => document.getElementById('easy-custom-input').focus(), 100);
+            };
+            panel.onclick = (e) => e.stopPropagation();
+            document.addEventListener('click', () => panel.classList.remove('show'));
+        });
+
+        function revealRealComments() {
+            realCommentsHidden = false;
+            clearTimeout(revealTimeout);
+            // Refresh all currently displayed comments immediately
+            refreshCommentDisplay();
+            revealTimeout = setTimeout(() => {
+                realCommentsHidden = true;
+                refreshCommentDisplay();
+            }, 10000);
+        }
+
+        function refreshCommentDisplay() {
+            document.querySelectorAll('.comment-item[data-real-content]').forEach(el => {
+                const txtEl = el.querySelector('.comment-text');
+                const userEl = el.querySelector('.comment-user');
+                const avatarEl = el.querySelector('.channel-avatar');
+                
+                if (realCommentsHidden) {
+                    txtEl.textContent = el.dataset.fakeContent;
+                    userEl.textContent = el.dataset.fakeUser + ' • ' + el.dataset.time;
+                    avatarEl.textContent = el.dataset.fakeUser[0];
+                    avatarEl.style.background = '#444';
+                    el.style.cursor = 'pointer';
+                } else {
+                    txtEl.textContent = el.dataset.realContent;
+                    userEl.textContent = el.dataset.realUser + ' • Just now';
+                    avatarEl.textContent = el.dataset.realUser[0];
+                    avatarEl.style.background = el.dataset.isMe === 'true' ? '#3ea6ff' : '#cc0000';
+                    el.style.cursor = 'default';
+                }
+            });
+        }
+
+        async function sendEasyComment(text) {
+            await secureFetch('api.php?action=send_youtube_comment', {
+                method: 'POST', body: JSON.stringify({ content: text })
+            });
+            document.getElementById('easy-comment-panel').classList.remove('show');
+        }
+
+        function sendCustomEasy() {
+            const el = document.getElementById('easy-custom-input');
+            const txt = el.value.trim();
+            if (txt) {
+                sendEasyComment(txt);
+                el.value = '';
+            }
+        }
 
         const tag = document.createElement('script');
         tag.src = "https://www.youtube.com/iframe_api";
@@ -423,81 +541,257 @@ $user_id = $_SESSION['user_id'];
 
         function onYouTubeIframeAPIReady() {
             player = new YT.Player('player', {
-                videoId: '',
-                playerVars: {
-                    'playsinline': 1,
-                    'autoplay': 0,
-                    'controls': 1,
-                    'modestbranding': 1,
-                    'rel': 0
-                },
-                events: {
-                    'onReady': onPlayerReady,
-                    'onStateChange': onPlayerStateChange
-                }
+                videoId: extractVideoId(currentUrl),
+                playerVars: { 'playsinline': 1, 'autoplay': 0, 'controls': 1, 'modestbranding': 1, 'rel': 0 },
+                events: { 'onReady': onPlayerReady, 'onStateChange': onPlayerStateChange }
             });
         }
 
-        let heartbeatInterval;
-
-        function onPlayerReady(event) {
-            // Load last video from localStorage
-            const lastVideoId = localStorage.getItem('yt_last_video');
-            if (lastVideoId) {
-                player.loadVideoById(lastVideoId);
-                updateSync(lastVideoId);
-                document.getElementById('video-url').value = lastVideoId;
+        function onPlayerReady() {
+            if (currentUrl) {
+                const check = setInterval(() => {
+                    if (player.getPlayerState() !== -1) { setReady(true); clearInterval(check); }
+                }, 500);
             }
-            startSync();
-            startComments();
-            startStatus();
-            // Mark self as in theater
-            secureFetch('api.php?action=update_status', {
-                method: 'POST', body: JSON.stringify({ is_typing: 0, in_theater: 1 })
-            });
-            heartbeatInterval = setInterval(() => {
-                secureFetch('api.php?action=update_status', {
-                    method: 'POST', body: JSON.stringify({ is_typing: 0, in_theater: 1 })
-                });
-            }, 5000);
         }
-
-        // Exit: show comment that leaving, then redirect
-        document.getElementById('exit-btn').onclick = (e) => {
-            e.preventDefault();
-            const time = player ? Math.floor(player.getCurrentTime()) : 0;
-            secureFetch('api.php?action=send_youtube_comment', {
-                method: 'POST',
-                body: JSON.stringify({ content: `Im leaving for now, coming soon. (Left at ${time}s)` })
-            });
-            navigator.sendBeacon(`api.php?action=leave_theater_beacon&_csrf=${window.CSRF_TOKEN}`);
-            clearInterval(heartbeatInterval);
-            setTimeout(() => { window.location.href = 'index.php'; }, 500);
-        };
-
-        // Exit to Gemini: bring other to chat page too
-        document.getElementById('exit-to-gemini').onclick = (e) => {
-            e.preventDefault();
-            secureFetch('api.php?action=send_youtube_comment', {
-                method: 'POST',
-                body: JSON.stringify({ content: 'Im going to Gemini chat, come join me there!' })
-            });
-            navigator.sendBeacon(`api.php?action=leave_theater_beacon&_csrf=${window.CSRF_TOKEN}`);
-            clearInterval(heartbeatInterval);
-            setTimeout(() => { window.location.href = 'index.php'; }, 500);
-        };
-
-        // Mark as left theater when leaving
-        window.addEventListener('beforeunload', () => {
-            navigator.sendBeacon(`api.php?action=leave_theater_beacon&_csrf=${window.CSRF_TOKEN}`);
-            clearInterval(heartbeatInterval);
-        });
 
         function onPlayerStateChange(event) {
             if (isUpdating) return;
-            if (event.data === YT.PlayerState.PLAYING || event.data === YT.PlayerState.PAUSED) {
-                updateSync();
+            if (event.data === YT.PlayerState.PLAYING && (!isMeReady || !isOtherReady)) {
+                player.pauseVideo();
+                return;
             }
+            if (event.data === YT.PlayerState.PLAYING || event.data === YT.PlayerState.PAUSED) updateSync();
+        }
+
+        async function setReady(ready) {
+            isMeReady = ready;
+            await secureFetch('api.php?action=update_youtube_sync', {
+                method: 'POST', body: JSON.stringify({ ready: ready ? 1 : 0 })
+            });
+        }
+
+        function loadVideo(url, time = 0, shouldSync = true) {
+            const id = extractVideoId(url);
+            if (!id || !player.loadVideoById) return;
+            isUpdating = true;
+            currentUrl = url;
+            localStorage.setItem('yt_last_video', url);
+            setReady(false);
+            document.getElementById('loader-overlay').classList.remove('hidden');
+            player.loadVideoById(id, time);
+            player.pauseVideo();
+            
+            // Fetch title and update history
+            setTimeout(() => {
+                const title = player.getVideoData().title;
+                document.getElementById('display-title').textContent = title;
+                if (shouldSync) updateSync(url, null, title);
+            }, 2000);
+
+            const check = setInterval(() => {
+                if (player.getPlayerState() !== YT.PlayerState.UNSTARTED && player.getPlayerState() !== -1) {
+                    setReady(true); clearInterval(check); isUpdating = false;
+                }
+            }, 500);
+        }
+
+        async function updateSync(newUrl = null, newCommentsState = null, title = '') {
+            const payload = {
+                state: player && player.getPlayerState ? (player.getPlayerState() === YT.PlayerState.PLAYING ? 1 : 0) : 0,
+                current_time: player && player.getCurrentTime ? player.getCurrentTime() : 0
+            };
+            if (newUrl !== null) payload.video_id = newUrl;
+            if (newCommentsState !== null) payload.comments_enabled = newCommentsState ? 1 : 0;
+            if (title) payload.video_title = title;
+
+            await secureFetch('api.php?action=update_youtube_sync', {
+                method: 'POST', body: JSON.stringify(payload)
+            });
+        }
+
+        function startSync() {
+            setInterval(async () => {
+                const resp = await secureFetch('api.php?action=get_youtube_sync');
+                if (!resp) return;
+                const data = await resp.json();
+                
+                isOtherReady = (CURRENT_USER_ID == 1) ? !!data.ready_user2 : !!data.ready_user1;
+                isMeReady = (CURRENT_USER_ID == 1) ? !!data.ready_user1 : !!data.ready_user2;
+                
+                commentsEnabled = !!data.comments_enabled;
+                document.getElementById('comment-status-text').textContent = commentsEnabled ? "Hide Chat" : "Show Chat";
+                document.getElementById('comments-overlay').style.display = commentsEnabled ? 'block' : 'none';
+
+                if (data.video_id && data.video_id !== currentUrl) {
+                    loadVideo(data.video_id, data.current_time, false);
+                    return;
+                }
+
+                if (data.last_updated_by == CURRENT_USER_ID) return;
+                const remoteTime = parseFloat(data.updated_at);
+                if (remoteTime <= lastSyncTime) return;
+                lastSyncTime = remoteTime;
+
+                isUpdating = true;
+                if (isMeReady && isOtherReady) {
+                    document.getElementById('loader-overlay').classList.add('hidden');
+                    let target = parseFloat(data.current_time);
+                    if (data.state == 1) target += (parseFloat(data.server_time) - remoteTime);
+                    if (player && player.getCurrentTime && Math.abs(player.getCurrentTime() - target) > 1.5) player.seekTo(target, true);
+                    if (player && player.playVideo) data.state == 1 ? player.playVideo() : player.pauseVideo();
+                } else {
+                    document.getElementById('loader-overlay').classList.remove('hidden');
+                    if (player && player.pauseVideo) player.pauseVideo();
+                }
+                setTimeout(() => isUpdating = false, 500);
+            }, 1000);
+        }
+
+        async function loadHistory() {
+            const resp = await secureFetch('api.php?action=get_video_history');
+            if (!resp) return;
+            const history = await resp.json();
+            const list = document.getElementById('history-list');
+            list.innerHTML = '';
+            history.forEach(item => {
+                const div = document.createElement('a');
+                div.className = 'history-item';
+                div.onclick = () => loadVideo(item.video_id);
+                const id = extractVideoId(item.video_id);
+                div.innerHTML = `
+                    <div class="history-thumb"><img src="https://img.youtube.com/vi/${id}/mqdefault.jpg"></div>
+                    <div class="history-info">
+                        <div class="history-item-title">${item.title || 'Untitled Video'}</div>
+                        <div class="history-item-meta">Watch again</div>
+                    </div>
+                `;
+                list.appendChild(div);
+            });
+        }
+
+        function startFakeComments() {
+            const list = document.getElementById('comment-list');
+            setInterval(() => {
+                const name = randomNames[Math.floor(Math.random() * randomNames.length)];
+                const text = fakeCommentsList[Math.floor(Math.random() * fakeCommentsList.length)];
+                const div = document.createElement('div');
+                div.className = 'comment-item';
+                div.onclick = () => { if (realCommentsHidden) revealRealComments(); };
+                div.innerHTML = `
+                    <div class="channel-avatar" style="width:32px; height:32px; background:#444;">${name[0]}</div>
+                    <div class="comment-content">
+                        <div class="comment-user">${name} • ${Math.floor(Math.random()*59)+1}m ago</div>
+                        <div class="comment-text">${text}</div>
+                    </div>
+                `;
+                list.appendChild(div);
+                if (list.children.length > 50) list.removeChild(list.firstChild);
+            }, 8000);
+        }
+
+        function startComments() {
+            const seenIds = new Set();
+            setInterval(async () => {
+                const resp = await secureFetch('api.php?action=get_youtube_comments');
+                if (!resp) return;
+                const comments = await resp.json();
+                const list = document.getElementById('comment-list');
+                comments.forEach(c => {
+                    if (!seenIds.has(c.id)) {
+                        seenIds.add(c.id);
+                        const isMe = c.sender_id == CURRENT_USER_ID;
+                        const realName = isMe ? myFakeName : otherFakeName;
+                        const fName = randomNames[Math.floor(Math.random() * randomNames.length)];
+                        const fText = fakeCommentsList[Math.floor(Math.random() * fakeCommentsList.length)];
+                        const fTime = (Math.floor(Math.random()*59)+1) + 'm ago';
+                        
+                        showComment(c.content, isMe, realName);
+                        
+                        const div = document.createElement('div');
+                        div.className = 'comment-item';
+                        div.dataset.realContent = c.content;
+                        div.dataset.realUser = realName;
+                        div.dataset.isMe = isMe;
+                        div.dataset.fakeContent = fText;
+                        div.dataset.fakeUser = fName;
+                        div.dataset.time = fTime;
+                        div.onclick = () => { if (realCommentsHidden) revealRealComments(); };
+
+                        const dispUser = realCommentsHidden ? fName : realName;
+                        const dispText = realCommentsHidden ? fText : c.content;
+                        const dispAvatar = dispUser[0];
+                        const dispTime = realCommentsHidden ? fTime : 'Just now';
+                        const avatarBg = realCommentsHidden ? '#444' : (isMe ? '#3ea6ff' : '#cc0000');
+                        
+                        div.innerHTML = `
+                            <div class="channel-avatar" style="width:32px; height:32px; background:${avatarBg};">${dispAvatar}</div>
+                            <div class="comment-content">
+                                <div class="comment-user">${dispUser} • ${dispTime}</div>
+                                <div class="comment-text">${dispText}</div>
+                            </div>
+                        `;
+                        list.insertBefore(div, list.firstChild);
+                    }
+                });
+            }, 2000);
+        }
+
+        function showComment(text, isMe, displayName) {
+            if (!commentsEnabled) return;
+            const overlay = document.getElementById('comments-overlay');
+            const div = document.createElement('div');
+            
+            // Side-based classes
+            div.className = 'popup-comment ' + (isMe ? 'self' : 'other');
+            div.textContent = text;
+            
+            // Dynamic speed: Base 6s + (0.1s per character). Max 15s.
+            const duration = Math.min(15, 6 + (text.length * 0.1));
+            div.style.setProperty('--drift-duration', duration + 's');
+            
+            // Random horizontal offset within their side (0-15px jitter)
+            const jitter = Math.random() * 15;
+            if (isMe) div.style.right = (15 + jitter) + 'px';
+            else div.style.left = (15 + jitter) + 'px';
+            
+            overlay.appendChild(div);
+            
+            // Cleanup after animation
+            setTimeout(() => div.remove(), duration * 1000);
+        }
+
+        function startStatus() {
+            const avatar = document.getElementById('channel-avatar');
+            const statusText = document.getElementById('theater-status-text');
+            const countText = document.getElementById('theater-users-count');
+
+            setInterval(async () => {
+                const [resp1, resp2] = await Promise.all([
+                    secureFetch('api.php?action=get_other_status'),
+                    secureFetch('api.php?action=theater_status')
+                ]);
+                if (!resp1 || !resp2) return;
+                const status = await resp1.json();
+                const theater = await resp2.json();
+
+                if (theater.users_in_theater >= 2) {
+                    avatar.style.background = status.status === 'active' ? '#3ea6ff' : (status.status === 'typing' ? '#8ab4f8' : '#606060');
+                    statusText.textContent = status.status === 'typing' ? `${otherFakeName} is typing...` : 'Gemini Partner is Watching';
+                    countText.textContent = '2 users in theater';
+                } else {
+                    avatar.style.background = '#606060';
+                    statusText.textContent = 'Viewing Alone';
+                    countText.textContent = '1 user in theater';
+                }
+            }, 3000);
+        }
+        // ... rest of scripts unchanged
+
+        function extractVideoId(url) {
+            if (!url) return '';
+            const match = url.match(/^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/);
+            return (match && match[2].length === 11) ? match[2] : url;
         }
 
         async function secureFetch(url, options = {}) {
@@ -506,191 +800,16 @@ $user_id = $_SESSION['user_id'];
                 defaultHeaders['Content-Type'] = 'application/json';
             }
             options.headers = { ...defaultHeaders, ...(options.headers || {}) };
-            try { return await fetch(url, options); } catch (e) { return null; }
+            try {
+                const resp = await fetch(url, options);
+                return resp.ok ? resp : null;
+            } catch (e) { return null; }
         }
 
-        function extractVideoId(url) {
-            const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
-            const match = url.match(regExp);
-            return (match && match[2].length === 11) ? match[2] : url;
-        }
-
-        document.getElementById('load-video').onclick = () => {
-            const val = document.getElementById('video-url').value.trim();
-            if (!val) return;
-            const videoId = extractVideoId(val);
-            player.loadVideoById(videoId);
-            updateSync(videoId);
-            localStorage.setItem('yt_last_video', videoId);
+        document.getElementById('exit-btn').onclick = () => {
+            navigator.sendBeacon(`api.php?action=leave_theater_beacon&_csrf=${window.CSRF_TOKEN}`);
+            location.href = 'index.php';
         };
-
-        document.getElementById('send-comment').onclick = sendComment;
-        document.getElementById('comment-input').onkeypress = (e) => { if (e.key === 'Enter') sendComment(); };
-
-        async function sendComment() {
-            const input = document.getElementById('comment-input');
-            const val = input.value.trim();
-            if (!val) return;
-            input.value = '';
-            await secureFetch('api.php?action=send_youtube_comment', {
-                method: 'POST',
-                body: JSON.stringify({ content: val })
-            });
-        }
-
-        async function updateSync(newVideoId = null) {
-            if (!player || !player.getCurrentTime) return;
-            const state = player.getPlayerState();
-            const currentTime = player.getCurrentTime();
-            await secureFetch('api.php?action=update_youtube_sync', {
-                method: 'POST',
-                body: JSON.stringify({
-                    video_id: newVideoId,
-                    state: state === YT.PlayerState.PLAYING ? 1 : 0,
-                    current_time: currentTime
-                })
-            });
-            if (newVideoId) localStorage.setItem('yt_last_video', newVideoId);
-        }
-
-        function startSync() {
-            setInterval(async () => {
-                const resp = await secureFetch('api.php?action=get_youtube_sync');
-                if (!resp) return;
-                const data = await resp.json();
-                if (data.last_updated_by == CURRENT_USER_ID) return;
-                const remoteUpdatedAt = new Date(data.updated_at).getTime();
-                if (remoteUpdatedAt <= lastSyncTime) return;
-                lastSyncTime = remoteUpdatedAt;
-
-                isUpdating = true;
-                const currentVideoId = player.getVideoData().video_id;
-
-                // Pause if other user is offline
-                if (data.other_online === false) {
-                    player.pauseVideo();
-                    isUpdating = false;
-                    return;
-                }
-
-                if (data.video_id && data.video_id !== currentVideoId) {
-                    player.loadVideoById(data.video_id, data.current_time);
-                } else {
-                    const localTime = player.getCurrentTime();
-                    if (Math.abs(localTime - data.current_time) > 2) {
-                        player.seekTo(data.current_time, true);
-                    }
-                }
-                if (data.state === 1) player.playVideo(); else player.pauseVideo();
-                setTimeout(() => { isUpdating = false; }, 500);
-            }, 2000);
-        }
-
-        function startComments() {
-            const seenCommentIds = new Set();
-            setInterval(async () => {
-                const resp = await secureFetch('api.php?action=get_youtube_comments');
-                if (!resp) return;
-                const comments = await resp.json();
-                comments.reverse().forEach(c => {
-                    if (!seenCommentIds.has(c.id)) {
-                        seenCommentIds.add(c.id);
-                        showComment(c.content, c.sender_id == CURRENT_USER_ID);
-                    }
-                });
-            }, 2000);
-        }
-
-        function showComment(text, isMe = false) {
-            const overlay = document.getElementById('comments-overlay');
-            const div = document.createElement('div');
-            div.className = 'popup-comment ' + (isMe ? 'self' : 'other');
-            div.textContent = text;
-            div.style.bottom = `-50px`;
-            overlay.appendChild(div);
-            setTimeout(() => div.remove(), 6000);
-        }
-
-        // Fake live comments on left side
-        const fakeComments = [
-            'Wow! 😮', 'So cool!', '🔥🔥🔥', 'This part is amazing', 'LMAO 😂',
-            'Agree!', 'First time seeing this', 'Plo subscribe!', 'So true 💯',
-            'Haha exactly', 'This is gold', 'Wait whaaat?! 😱', 'Mind = blown 🤯',
-            'YESS! FINALLY', 'So relatable 😭', 'Anyone 2026?', 'legendary 🏆'
-        ];
-        const fakeNames = ['Gemini Fan', 'Night Owl', 'Movie Buff', 'Tech Geek', 'Happy Viewer'];
-        function startFakeComments() {
-            const container = document.getElementById('fake-comments');
-            setInterval(() => {
-                const div = document.createElement('div');
-                div.className = 'fake-comment';
-                const name = fakeNames[Math.floor(Math.random() * fakeNames.length)];
-                div.textContent = `${name}: ${fakeComments[Math.floor(Math.random() * fakeComments.length)]}`;
-                container.appendChild(div);
-                if (container.children.length > 8) container.removeChild(container.firstChild);
-                setTimeout(() => { if (div.parentNode) div.remove(); }, 8000);
-            }, 2500);
-        }
-        startFakeComments();
-
-        function startStatus() {
-            const footer = document.querySelector('.yt-footer');
-            const icon = document.getElementById('theater-icon');
-            const text = document.getElementById('status-text');
-            const ago = document.getElementById('status-ago');
-
-            setInterval(async () => {
-                const [resp1, resp2] = await Promise.all([
-                    secureFetch('api.php?action=get_other_status'),
-                    secureFetch('api.php?action=theater_status')
-                ]);
-                if (!resp1 || !resp2) return;
-                const otherStatus = await resp1.json();
-                const theaterData = await resp2.json();
-
-                footer.classList.remove('status-online','status-typing','status-offline');
-
-                // Update theater icon: 👤 alone, 👥 both
-                if (theaterData.users_in_theater >= 2) {
-                    icon.textContent = '👥';
-                    text.textContent = 'Gemini Partner is With You';
-                } else {
-                    icon.textContent = '👤';
-                    text.textContent = 'Viewing alone';
-                }
-
-                if (otherStatus.status === 'typing') {
-                    footer.classList.add('status-typing');
-                    text.textContent = 'Other is typing...';
-                } else if (otherStatus.status === 'active') {
-                    footer.classList.add('status-online');
-                } else {
-                    footer.classList.add('status-offline');
-                }
-
-                if (otherStatus.last_seen && otherStatus.status === 'offline') {
-                    const diff = Math.floor((Date.now()/1000 - otherStatus.last_seen) / 60);
-                    ago.textContent = diff <= 0 ? '(just now)' : `(${diff}m ago)`;
-                } else {
-                    ago.textContent = '';
-                }
-
-            }, 2000);
-        }
-
-        let typingTimer;
-        const commentInput = document.getElementById('comment-input');
-        commentInput.addEventListener('input', () => {
-            clearTimeout(typingTimer);
-            secureFetch('api.php?action=update_status', {
-                method: 'POST', body: JSON.stringify({ is_typing: 1 })
-            });
-            typingTimer = setTimeout(() => {
-                secureFetch('api.php?action=update_status', {
-                    method: 'POST', body: JSON.stringify({ is_typing: 0 })
-                });
-            }, 1500);
-        });
     </script>
 </body>
 </html>

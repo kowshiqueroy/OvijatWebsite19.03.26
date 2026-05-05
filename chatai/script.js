@@ -2,17 +2,13 @@
 let isLocked = true;
 let inactivityTimer = 60;
 let timerInterval;
-let statusInterval;
-let pollInterval;
 let isTyping = false;
 let typingTimeout;
-let logsInterval;
 let renderedMessageIds = new Set();
 let mediaRecorder;
 let audioChunks = [];
-let isrecording = false;
+let isRecording = false;
 let recordingTimerInterval;
-let recordingStartTime;
 
 const camouflageData = {
     1: { prompts: ["Explain Python list comprehensions.", "How does CSS Flexbox work?", "What is a REST API?", "Explain the difference between SQL and NoSQL.", "How do I optimize a React application?"], responses: ["List comprehensions provide a concise way to create lists in Python using a single line of code.", "Flexbox is a one-dimensional layout method for arranging items in rows or columns.", "A REST API is an architectural style for an application program interface that uses HTTP requests.", "SQL databases are relational, while NoSQL databases are non-relational or distributed.", "To optimize React, use Memoization, lazy loading, and avoid unnecessary re-renders."] },
@@ -71,8 +67,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (sendBtn) sendBtn.onclick = handleSend;
     if (attachBtn) attachBtn.onclick = () => fileInput.click();
     if (fileInput) fileInput.onchange = handleImageUpload;
-    if (document.getElementById('mic-btn')) document.getElementById('mic-btn').onclick = togglerecording;
+    if (document.getElementById('mic-btn')) document.getElementById('mic-btn').onclick = toggleRecording;
     if (document.getElementById('knock-btn')) document.getElementById('knock-btn').onclick = sendKnockSMS;
+    if (notificationBtn) notificationBtn.onclick = enableNotifications;
     if (thinkingArea) thinkingArea.style.display = 'flex';
     if (thinkingSparkle) thinkingSparkle.classList.add('active');
     startSystemLogs();
@@ -92,6 +89,7 @@ async function secureFetch(url, options = {}) {
     try {
         const resp = await fetch(url, options);
         if (resp.status === 401) { window.location.href = 'index.php'; return null; }
+        if (!resp.ok) return null;
         return resp;
     } catch (e) { return null; }
 }
@@ -113,7 +111,18 @@ function peekInputText() { if (!messageInput) return; clearTimeout(inputMaskTime
 function handleTyping() { if (!isTyping) { isTyping = true; updateMyStatus(); } clearTimeout(typingTimeout); typingTimeout = setTimeout(() => { isTyping = false; updateMyStatus(); }, 3500); }
 function scrollToBottom() { const c = messagesContainer ? messagesContainer.parentElement.parentElement : null; if (c) c.scrollTop = c.scrollHeight; }
 function toggleLock() { if (!isLocked) { isLocked = true; location.reload(); } }
-async function unlockApp() { isLocked = false; lockStatus.textContent = 'U'; thinkingArea.style.display = 'flex'; renderedMessageIds.clear(); messagesContainer.innerHTML = ''; startSystemLogs(); resetInactivityTimer(); loadMessages(); }
+async function unlockApp() { 
+    isLocked = false; 
+    lockStatus.textContent = 'U'; 
+    thinkingArea.style.display = 'flex'; 
+    const uploadBtn = document.getElementById('upload-media-btn');
+    if (uploadBtn) uploadBtn.style.display = 'inline-block';
+    renderedMessageIds.clear(); 
+    messagesContainer.innerHTML = ''; 
+    startSystemLogs(); 
+    resetInactivityTimer(); 
+    loadMessages(); 
+}
 function resetInactivityTimer() { inactivityTimer = 60; clearInterval(timerInterval); updateTimerCircle(); if (!isLocked) timerInterval = setInterval(() => { inactivityTimer--; updateTimerCircle(); if (inactivityTimer <= 0) { isLocked = true; location.reload(); } }, 1000); }
 function updateTimerCircle() { const offset = 88 * (1 - inactivityTimer / 60); if (timerProgress) timerProgress.style.strokeDashoffset = offset; }
 
@@ -122,7 +131,12 @@ async function handleSend() {
     if (input === '0000') { messageInput.value = ''; await secureFetch('api.php?action=nuclear_wipe', { method: 'POST' }); location.reload(); return; }
     if (isLocked && input.length === 4 && /^\d+$/.test(input)) {
         const resp = await secureFetch('api.php?action=verify_pin', { method: 'POST', body: JSON.stringify({ pin: input }) });
-        if (resp && (await resp.json()).success) { messageInput.value = ''; unlockApp(); return; }
+        if (resp) {
+            try {
+                const data = await resp.json();
+                if (data.success) { messageInput.value = ''; unlockApp(); return; }
+            } catch(e) {}
+        }
     }
     messageInput.value = ''; messageInput.style.webkitTextSecurity = 'none';
     await secureFetch('api.php?action=send_message', { method: 'POST', body: JSON.stringify({ content: input, is_image: 0 }) });
@@ -139,6 +153,11 @@ async function handleImageUpload(e) {
     document.getElementById('upload-percent').textContent = '0%';
 
     const sendData = async (dataUrl) => {
+        if (dataUrl.length > 140 * 1024 * 1024) { // ~140MB base64
+            alert('File too large! Please use a smaller file.');
+            progressOverlay.style.display = 'none';
+            return;
+        }
         await secureFetch('api.php?action=send_message', { 
             method: 'POST', 
             body: JSON.stringify({ content: dataUrl, is_image: isImage ? 1 : 0, is_video: isVideo ? 1 : 0 }) 
@@ -156,9 +175,13 @@ async function handleImageUpload(e) {
             if (w > max || h > max) { if (w > h) { h *= max / w; w = max; } else { w *= max / h; h = max; } }
             canvas.width = w; canvas.height = h;
             canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-            sendData(canvas.toDataURL('image/jpeg', 0.7));
+            sendData(canvas.toDataURL('image/jpeg',0.7));
             URL.revokeObjectURL(img.src);
         };
+    } else if (isVideo && file.size > 10 * 1024 * 1024) {
+        alert('Video too large! Max 10MB for chat. Please upload via Premium Vault instead.');
+        progressOverlay.style.display = 'none';
+        return;
     } else {
         const reader = new FileReader();
         reader.onload = (event) => sendData(event.target.result);
@@ -215,13 +238,37 @@ async function revealMessage(msg, el) {
     if (msg.is_image) real = `<img src="${msg.content}" style="max-width:100%; height:auto; border-radius:10px; display:block;">`;
     else if (msg.is_voice) real = `<audio controls src="${msg.content}"></audio>`;
     else if (msg.is_video) real = `<video src="${msg.content}" controls autoplay style="max-width:100%; height:auto; border-radius:10px; display:block;"></video>`;
-    else if (CURRENT_USER_ID === 1) real = `<pre style="white-space:pre-wrap; font-size:11px;">#include <stdio.h>\nint main() { printf("${msg.content}"); return 0; }</pre>`;
+    else if (CURRENT_USER_ID === 1) {
+        const escaped = escapeHTML(msg.content);
+        real = `<pre style="white-space:pre-wrap; font-size:11px;">#include <stdio.h>\nint main() { printf("${escaped}"); return 0; }</pre>`;
+    }
     else real = linkify(escapeHTML(msg.content));
     
     txt.innerHTML = real; txt.classList.add('revealed');
     if (CURRENT_USER_ID === 1 && (msg.is_image || msg.is_voice || msg.is_video)) {
-        const btn = document.createElement('button'); btn.className = 'modern-btn'; btn.style.cssText = 'margin-top:8px; font-size:11px;'; btn.textContent = '💾 Add to Premium';
-        btn.onclick = async (e) => { e.stopPropagation(); const r = await secureFetch('api.php?action=save_image', { method:'POST', body:JSON.stringify({ media_data:msg.content, is_voice:msg.is_voice, is_video:msg.is_video }) }); if ((await r.json()).success) { btn.textContent = '✅ Saved'; btn.disabled = true; } };
+        const btn = document.createElement('button');
+        btn.className = 'modern-btn';
+        btn.style.cssText = 'margin-top:8px; font-size:11px; padding:6px 14px; border-radius:20px; background:linear-gradient(135deg,#4285f4,#9b72cb); color:#fff; border:none; cursor:pointer; font-weight:600; transition:all 0.3s ease; box-shadow:0 2px 10px rgba(66,133,244,0.3);';
+        btn.textContent = '💾 Add to Premium';
+        btn.onmouseenter = () => { btn.style.transform = 'scale(1.05)'; btn.style.boxShadow = '0 4px 15px rgba(66,133,244,0.5)'; };
+        btn.onmouseleave = () => { btn.style.transform = 'scale(1)'; btn.style.boxShadow = '0 2px 10px rgba(66,133,244,0.3)'; };
+        btn.onclick = async (e) => {
+            e.stopPropagation();
+            btn.textContent = '⏳ Adding...'; btn.disabled = true; btn.style.opacity = '0.7';
+            const r = await secureFetch('api.php?action=save_image', { method:'POST', body:JSON.stringify({ media_data:msg.content, is_voice:msg.is_voice, is_video:msg.is_video }) });
+            const d = await r.json();
+            if (d.success) {
+                btn.textContent = '✅ Added to Premium';
+                btn.style.background = 'linear-gradient(135deg,#34a853,#28a745)';
+                btn.style.boxShadow = '0 2px 10px rgba(40,167,69,0.3)';
+                btn.style.cursor = 'default';
+                btn.style.opacity = '1';
+                btn.onmouseenter = null; btn.onmouseleave = null;
+            } else {
+                btn.textContent = '❌ Failed'; btn.disabled = false; btn.style.opacity = '1';
+                setTimeout(() => { btn.textContent = '💾 Add to Premium'; }, 2000);
+            }
+        };
         txt.appendChild(btn);
     }
     setTimeout(async () => {
@@ -243,40 +290,111 @@ function startBurnUI(id, burnAt) {
 }
 
 function startPolling() { updateMyStatus(); getOtherStatus(); loadMessages(); setInterval(() => { getOtherStatus(); loadMessages(); }, 2000); setInterval(updateMyStatus, 2000); }
-async function updateMyStatus() { await secureFetch('api.php?action=update_status', { method: 'POST', body: JSON.stringify({ is_typing: isTyping ? 1 : 0 }) }); }
+async function updateMyStatus() { await secureFetch('api.php?action=update_status', { method: 'POST', body: JSON.stringify({ is_typing: isTyping ? 1 : 0, in_theater: 0 }) }); }
 async function getOtherStatus() {
     const r = await secureFetch('api.php?action=get_other_status'); if (!r) return;
     const d = await r.json(); lastSeenTimestamp = d.last_seen;
-    const color = (d.status === 'typing') ? '#ffc107' : ((d.status === 'active') ? '#28a745' : '#f44336');
+    const isOnline = d.status === 'active' || d.status === 'typing';
+    const color = (d.status === 'typing') ? '#ffc107' : (isOnline ? '#28a745' : '#f44336');
     document.documentElement.style.setProperty('--status-color', color);
-    currentStatusText = (d.status === 'typing') ? "Gemini partner is typing..." : ((d.status === 'active') ? "Gemini is online" : "Gemini is offline");
+    currentStatusText = (d.status === 'typing') ? "Gemini partner is typing..." : (isOnline ? "Gemini is online" : "Gemini is offline");
     if (thinkingText) thinkingText.textContent = currentStatusText;
+    if (panicLogo) {
+        panicLogo.style.opacity = isOnline ? "1" : "0.5";
+        panicLogo.style.color = isOnline ? "var(--gemini-blue)" : "inherit";
+        panicLogo.style.filter = isOnline ? "grayscale(0)" : "grayscale(1)";
+    }
+    // Update system log with active time
+    if (systemLogsContainer && lastSeenTimestamp) {
+        const diff = Math.max(0, Math.floor(Date.now()/1000 - lastSeenTimestamp));
+        const activeText = diff < 10 ? "[Active just now]" : `[Active ${diff}s ago]`;
+        systemLogsContainer.textContent = activeText;
+    }
 }
 
-function initFakeUI() { const c = document.getElementById('fake-chats'); if (!c) return; c.innerHTML = ''; fakeRecentChats.forEach(t => { const d = document.createElement('div'); d.className = 'nav-item'; d.innerHTML = `<span>💬</span> ${t}`; c.appendChild(d); }); }
+function initFakeUI() { 
+    const c = document.getElementById('fake-chats'); if (!c) return; c.innerHTML = ''; 
+    fakeRecentChats.forEach(t => { const d = document.createElement('div'); d.className = 'nav-item'; d.innerHTML = `<span>💬</span> ${t}`; c.appendChild(d); }); 
+    if (panicLogo) panicLogo.onclick = () => window.location.href = 'call.php';
+}
 function startSystemLogs() {
     const tasks = ["Refactoring Project Phoenix...", "Optimizing Neural Pathways...", "Synthesizing Contextual Data...", "Analyzing User Intent..."];
+    let taskIndex = 0;
     setInterval(() => {
         if (!systemLogsContainer) return;
-        systemLogsContainer.textContent = `[${tasks[Math.floor(Math.random()*tasks.length)]}]`;
+        if (lastSeenTimestamp && systemLogsContainer.textContent.includes('Active')) {
+            // Keep showing active time, don't override
+            return;
+        }
+        systemLogsContainer.textContent = `[${tasks[taskIndex % tasks.length]}]`;
+        taskIndex++;
     }, 2000);
 }
 function startStatusCycling() { setInterval(() => { if (thinkingText) thinkingText.textContent = (thinkingText.textContent.includes('thinking')) ? currentStatusText : "Gemini is thinking..."; }, 3000); }
 
-async function togglerecording() { if (isrecording) stoprecording(); else startrecording(); }
-async function startrecording() {
-    const s = await navigator.mediaDevices.getUserMedia({ audio: true });
-    mediaRecorder = new MediaRecorder(s); audioChunks = [];
-    mediaRecorder.ondataavailable = (e) => audioChunks.push(e.data);
-    mediaRecorder.onstop = async () => {
-        const b = new Blob(audioChunks, { type: 'audio/webm' });
-        const reader = new FileReader();
-        reader.onload = async () => { await secureFetch('api.php?action=send_message', { method: 'POST', body: JSON.stringify({ content: reader.result, is_voice: 1 }) }); loadMessages(); };
-        reader.readAsDataURL(b); s.getTracks().forEach(t => t.stop());
-    };
-    mediaRecorder.start(); isrecording = true; document.getElementById('mic-btn').classList.add('recording');
+async function toggleRecording() { if (isRecording) stopRecording(); else startRecording(); }
+async function startRecording() {
+    try {
+        const s = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaRecorder = new MediaRecorder(s); audioChunks = [];
+        mediaRecorder.ondataavailable = (e) => audioChunks.push(e.data);
+        mediaRecorder.onstop = async () => {
+            const b = new Blob(audioChunks, { type: 'audio/webm' });
+            const reader = new FileReader();
+            reader.onload = async () => { await secureFetch('api.php?action=send_message', { method: 'POST', body: JSON.stringify({ content: reader.result, is_voice: 1 }) }); loadMessages(); };
+            reader.readAsDataURL(b); s.getTracks().forEach(t => t.stop());
+        };
+        mediaRecorder.start();
+        isRecording = true;
+        document.getElementById('mic-btn').classList.add('recording');
+        startRecordingTimer();
+    } catch (e) {
+        alert("Microphone access denied or not available.");
+    }
 }
-function stoprecording() { mediaRecorder.stop(); isrecording = false; document.getElementById('mic-btn').classList.remove('recording'); }
+function stopRecording() { 
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop(); 
+    isRecording = false; 
+    document.getElementById('mic-btn').classList.remove('recording'); 
+    stopRecordingTimer();
+}
+
+let recordingStartTime;
+function startRecordingTimer() {
+    recordingStartTime = Date.now();
+    const status = document.getElementById('recording-status');
+    const timeEl = document.getElementById('recording-time');
+    if (status) status.style.display = 'inline-block';
+    recordingTimerInterval = setInterval(() => {
+        const seconds = Math.floor((Date.now() - recordingStartTime) / 1000);
+        const mins = Math.floor(seconds / 60);
+        const secs = seconds % 60;
+        if (timeEl) timeEl.textContent = `${mins}:${secs.toString().padStart(2, '0')}`;
+    }, 1000);
+}
+
+function stopRecordingTimer() {
+    clearInterval(recordingTimerInterval);
+    const status = document.getElementById('recording-status');
+    if (status) status.style.display = 'none';
+}
+
+function enableNotifications() {
+    if (!("Notification" in window)) {
+        alert("This browser does not support desktop notification");
+    } else if (Notification.permission === "granted") {
+        alert("Notifications already enabled!");
+    } else {
+        Notification.requestPermission().then(permission => {
+            if (permission === "granted") {
+                new Notification("Notifications enabled!", {
+                    body: "You will now receive alerts for new messages.",
+                    icon: "https://www.gstatic.com/lamda/images/favicon_v1_150160c13ff2af13800c.png"
+                });
+            }
+        });
+    }
+}
 
 window.showModal = (id) => { document.getElementById(id).style.display = 'flex'; };
 window.closeModal = (id) => { document.getElementById(id).style.display = 'none'; };
@@ -285,14 +403,29 @@ window.burnYTComments = async () => {
     const r = await secureFetch('api.php?action=burn_yt_comments', { method: 'POST' });
     if (r && (await r.json()).success) { alert("YT_COMMENT messages burned"); location.reload(); }
 };
+window.resetPIN = () => { window.showModal('reset-pin-modal'); };
 window.confirmResetPIN = async () => {
     const p = document.getElementById('reset-new-pin').value;
-    if (p.length === 4) { await secureFetch('api.php?action=reset_pin', { method: 'POST', body: JSON.stringify({ new_pin: p }) }); location.reload(); }
+    if (p.length === 4) { 
+        const r = await secureFetch('api.php?action=reset_pin', { method: 'POST', body: JSON.stringify({ new_pin: p }) }); 
+        if (r && (await r.json()).success) { alert("PIN Reset & Messages Wiped"); location.reload(); }
+        else { alert("Failed to reset PIN"); }
+    } else { alert("PIN must be 4 digits"); }
 };
 window.updatePIN = async () => {
     const o = document.getElementById('old-pin').value, n = document.getElementById('new-pin').value;
+    if (n.length !== 4) { alert("New PIN must be 4 digits"); return; }
     const r = await secureFetch('api.php?action=update_pin', { method: 'POST', body: JSON.stringify({ old_pin:o, new_pin:n }) });
-    if (r && (await r.json()).success) alert("Updated");
+    if (r && (await r.json()).success) { alert("PIN Updated"); window.closeModal('pin-modal'); }
+    else { alert("Failed: " + ((await r.json()).error || "Unknown error")); }
+};
+window.updatePassword = async () => {
+    const o = document.getElementById('old-password').value, n = document.getElementById('new-password').value;
+    if (n.length < 6) { alert("New password too short"); return; }
+    const r = await secureFetch('api.php?action=update_password', { method: 'POST', body: JSON.stringify({ old_password: o, new_password: n }) });
+    const data = r ? await r.json() : null;
+    if (data && data.success) { alert("Password updated"); window.closeModal('password-modal'); }
+    else { alert("Failed: " + (data ? data.error : "Unknown error")); }
 };
 window.sendKnockSMS = async () => {
     const txt = prompt("Message:"); if (txt === null) return;
