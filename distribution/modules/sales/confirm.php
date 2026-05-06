@@ -12,7 +12,16 @@ if (isset($_GET['id'])) {
         redirect('modules/sales/index.php', 'Invalid or already confirmed draft.', 'danger');
     }
 
-    $items = fetch_all("SELECT * FROM sales_items WHERE draft_id = ?", [$draft_id]);
+    $items = fetch_all("SELECT i.*, p.name as product_name, p.stock_qty FROM sales_items i JOIN products p ON i.product_id = p.id WHERE i.draft_id = ?", [$draft_id]);
+    
+    // Validate Stock BEFORE starting transaction
+    foreach ($items as $item) {
+        $total_needed = $item['billed_qty'] + $item['free_qty'];
+        if ($item['stock_qty'] < $total_needed) {
+            redirect('modules/sales/index.php', "Insufficient stock for '{$item['product_name']}'. Required: $total_needed, Available: {$item['stock_qty']}", 'danger');
+        }
+    }
+
     $conn = get_db_connection();
     $conn->begin_transaction();
 
@@ -31,12 +40,12 @@ if (isset($_GET['id'])) {
             $stmt_stock->execute();
         }
 
-        // 3. Update Customer Balance (Increase Debt)
-        $stmt_balance = $conn->prepare("UPDATE customers SET balance = balance + (?) WHERE id = ?");
+        // 3. Update Customer Balance (Deduct from Wallet)
+        $stmt_balance = $conn->prepare("UPDATE customers SET balance = balance - (?) WHERE id = ?");
         $stmt_balance->bind_param("di", $draft['grand_total'], $draft['customer_id']);
         $stmt_balance->execute();
 
-        // 4. Create Transaction Record
+        // 4. Create Transaction Record (Debit = Deduction)
         $stmt_trans = $conn->prepare("INSERT INTO transactions (customer_id, type, amount, description) VALUES (?, 'Debit', ?, ?)");
         $desc = "Sales Confirmed (Draft #$draft_id)";
         $stmt_trans->bind_param("ids", $draft['customer_id'], $draft['grand_total'], $desc);

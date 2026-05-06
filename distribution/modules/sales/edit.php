@@ -31,6 +31,7 @@ $products = fetch_all("SELECT id, name, tp_rate, dp_rate, retail_rate, stock_qty
 </div>
 
 <form id="pos-form" action="update_draft.php" method="POST">
+    <?php csrf_field(); ?>
     <input type="hidden" name="draft_id" value="<?php echo $id; ?>">
     <div class="card shadow-sm mb-4">
         <div class="card-body">

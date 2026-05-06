@@ -4,6 +4,9 @@ check_login();
 check_role([ROLE_ADMIN, ROLE_MANAGER, ROLE_ACCOUNTANT]);
 
 if (isset($_POST['add_category'])) {
+    if (!isset($_POST['csrf_token']) || !validate_csrf($_POST['csrf_token'])) {
+        die("CSRF Token Validation Failed.");
+    }
     check_role([ROLE_ADMIN, ROLE_MANAGER, ROLE_ACCOUNTANT]);
     $name = sanitize($_POST['name']);
     db_query("INSERT INTO categories (name) VALUES (?)", [$name]);
@@ -20,6 +23,7 @@ $categories = fetch_all("SELECT * FROM categories WHERE isDelete = 0");
             <div class="card-header bg-white"><strong>Add Category</strong></div>
             <div class="card-body">
                 <form method="POST">
+                    <?php csrf_field(); ?>
                     <div class="mb-3">
                         <label class="form-label">Category Name</label>
                         <input type="text" name="name" class="form-control" required>

@@ -59,25 +59,46 @@ if ($report_type == 'sales') {
 } elseif ($report_type == 'ledger') {
     if ($customer_id) {
         $customer_info = fetch_one("SELECT * FROM customers WHERE id = ?", [$customer_id]);
+        
+        // Calculate balance before start date
+        $pre_trans = fetch_one("SELECT 
+            SUM(CASE WHEN type = 'Debit' THEN amount ELSE 0 END) as total_debit,
+            SUM(CASE WHEN type = 'Credit' THEN amount ELSE 0 END) as total_credit
+            FROM transactions 
+            WHERE customer_id = ? AND DATE(created_at) < ?", [$customer_id, $start_date]);
+        
+        $opening_bal = $customer_info['opening_balance'] + ($pre_trans['total_credit'] ?? 0) - ($pre_trans['total_debit'] ?? 0);
+        
         $transactions = fetch_all("SELECT * FROM transactions WHERE customer_id = ? AND DATE(created_at) BETWEEN ? AND ? ORDER BY created_at ASC", [$customer_id, $start_date, $end_date]);
-        $data = ['info' => $customer_info, 'transactions' => $transactions];
+        $data = ['info' => $customer_info, 'opening_bal' => $opening_bal, 'transactions' => $transactions];
     }
 }
 ?>
 
 <style>
     .report-filter-box { background: #f8f9fa; border: 1px solid #ddd; border-radius: 8px; }
-    .excel-table { border: 2px solid #333; width: 100%; }
-    .excel-table th { background: #e2e3e5 !important; border: 1px solid #999 !important; color: #000; font-weight: bold; text-transform: uppercase; font-size: 11px; padding: 5px; }
-    .excel-table td { border: 1px solid #ccc !important; font-size: 12px; padding: 4px 6px; }
-    .item-detail-row { background-color: #fcfcfc; font-size: 10px !important; }
+    /* A4 Print Optimization */
+    @page { size: A4; margin: 10mm; }
+    
+    .excel-table { border: 1px solid #000; width: 100%; border-collapse: collapse; }
+    .excel-table th { background: #eee !important; border: 1px solid #000 !important; color: #000; font-weight: bold; text-transform: uppercase; font-size: 10px; padding: 4px; }
+    .excel-table td { border: 1px solid #000 !important; font-size: 10px; padding: 3px 5px; vertical-align: top; }
+    .item-detail-row { background-color: #fff; font-size: 9px !important; }
     
     @media print {
-        #sidebar-wrapper, .navbar, .btn, .alert, .no-print { display: none !important; }
-        #page-content-wrapper { width: 100% !important; padding: 0 !important; }
-        body { background: #fff !important; }
-        .excel-table { width: 100% !important; border: 1px solid #000 !important; }
-        .report-header-print { display: block !important; margin-bottom: 20px; }
+        html, body, #wrapper, #page-content-wrapper, .container-fluid, .card, .card-body { 
+            background: #fff !important; 
+            background-color: #fff !important; 
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+            color: #000 !important;
+        }
+        #sidebar-wrapper, .navbar, .btn, .alert, .no-print, .report-filter-box { display: none !important; }
+        #page-content-wrapper { width: 100% !important; padding: 0 !important; margin: 0 !important; }
+        .container-fluid { padding: 0 !important; }
+        .card { border: none !important; box-shadow: none !important; }
+        .excel-table { width: 100% !important; }
+        .report-header-print { display: block !important; margin-bottom: 15px; border-bottom: 2px solid #000; padding-bottom: 10px; }
     }
     .report-header-print { display: none; }
 </style>
@@ -158,52 +179,155 @@ if ($report_type == 'sales') {
             <table class="table table-bordered excel-table mb-0">
                 <thead>
                     <tr>
-                        <th>Date</th>
-                        <th>Inv #</th>
-                        <th>Customer</th>
-                        <th>Items Details</th>
-                        <th class="text-end">Amt</th>
-                        <th class="text-end">Disc</th>
-                        <th class="text-end">Net Total</th>
-                        <th>By</th>
+                        <th style="width: 12%;">Date / Inv / By</th>
+                        <th style="width: 15%;">Customer</th>
+                        <th style="width: 50%;">Itemized Distribution Details</th>
+                        <th style="width: 13%; text-align: right;">Amt - Disc</th>
+                        <th style="width: 10%; text-align: right;">Net Total</th>
                     </tr>
                 </thead>
                 <tbody>
                     <?php 
                     $total_amt = 0;
+                    $total_invoices = count($data);
+                    $total_items_qty = 0;
+                    $total_free_qty = 0;
+                    $product_summary = [];
+
                     foreach ($data as $row): 
                     ?>
                         <tr>
-                            <td><?php echo date('d-m-y', strtotime($row['created_at'])); ?></td>
-                            <td><strong>#<?php echo $row['id']; ?></strong></td>
-                            <td><?php echo $row['customer_name']; ?></td>
+                            <td>
+                                <div class="fw-bold">#<?php echo $row['id']; ?></div>
+                                <div class="small text-muted"><?php echo date('d-m-y', strtotime($row['created_at'])); ?></div>
+                                <div class="small italic"><?php echo $row['creator_name']; ?></div>
+                            </td>
+                            <td><strong><?php echo $row['customer_name']; ?></strong></td>
                             <td class="p-0">
-                                <table class="table table-sm table-borderless mb-0" style="font-size: 10px;">
-                                    <?php foreach ($row['items'] as $item): ?>
-                                        <tr>
-                                            <td><?php echo $item['product_name']; ?></td>
-                                            <td class="text-center"><?php echo $item['billed_qty']; ?> + <?php echo $item['free_qty']; ?></td>
-                                            <td class="text-end"><?php echo number_format($item['total'], 2); ?></td>
+                                <table class="table table-sm table-borderless mb-0 w-100" style="font-size: 9px; table-layout: fixed;">
+                                    <thead>
+                                        <tr class="border-bottom">
+                                            <th style="width: 65%; padding-left: 5px;">Product</th>
+                                            <th style="width: 15%; text-align: center;">QTY</th>
+                                            <th style="width: 20%; text-align: right; padding-right: 5px;">Item Total</th>
                                         </tr>
+                                    </thead>
+                                    <tbody>
+                                    <?php foreach ($row['items'] as $item): 
+                                        $pid = $item['product_id'];
+                                        if (!isset($product_summary[$pid])) {
+                                            $product_summary[$pid] = ['name' => $item['product_name'], 'billed' => 0, 'free' => 0, 'amount' => 0];
+                                        }
+                                        $product_summary[$pid]['billed'] += $item['billed_qty'];
+                                        $product_summary[$pid]['free'] += $item['free_qty'];
+                                        $product_summary[$pid]['amount'] += $item['total'];
+
+                                        $total_items_qty += $item['billed_qty'];
+                                        $total_free_qty += $item['free_qty'];
+                                    ?>
+                                        <?php if ($item['billed_qty'] > 0): ?>
+                                        <tr>
+                                            <td style="padding-left: 5px;"><?php echo $item['product_name']; ?></td>
+                                            <td class="text-center"><?php echo $item['billed_qty']; ?></td>
+                                            <td class="text-end" style="padding-right: 5px;"><?php echo number_format($item['total'], 2); ?></td>
+                                        </tr>
+                                        <?php endif; ?>
+                                        <?php if ($item['free_qty'] > 0): ?>
+                                        <tr class="text-success italic">
+                                            <td style="padding-left: 5px;"><?php echo $item['product_name']; ?></td>
+                                            <td class="text-center"><?php echo $item['free_qty']; ?></td>
+                                            <td class="text-end fw-bold" style="padding-right: 5px;">FREE</td>
+                                        </tr>
+                                        <?php endif; ?>
                                     <?php endforeach; ?>
+                                    </tbody>
                                 </table>
                             </td>
-                            <td class="text-end"><?php echo number_format($row['total_amount'], 2); ?></td>
-                            <td class="text-end text-danger"><?php echo number_format($row['discount'], 2); ?></td>
+                            <td class="text-end">
+                                <div><?php echo number_format($row['total_amount'], 2); ?></div>
+                                <div class="text-danger small">- <?php echo number_format($row['discount'], 2); ?></div>
+                            </td>
                             <td class="text-end fw-bold"><?php echo number_format($row['grand_total'], 2); ?></td>
-                            <td><small><?php echo $row['creator_name']; ?></small></td>
                         </tr>
                         <?php $total_amt += $row['grand_total']; ?>
                     <?php endforeach; ?>
                 </tbody>
                 <tfoot class="bg-light fw-bold">
                     <tr>
-                        <td colspan="6" class="text-end">TOTAL REVENUE:</td>
-                        <td class="text-end text-primary"><?php echo format_currency($total_amt); ?></td>
-                        <td></td>
+                        <td colspan="4" class="text-end">TOTAL REVENUE (NET):</td>
+                        <td class="text-end text-primary" style="font-size: 14px;"><?php echo format_currency($total_amt); ?></td>
                     </tr>
                 </tfoot>
             </table>
+
+            <!-- Report Summary Section -->
+            <div class="mt-4 p-3 border rounded bg-white">
+                <h6 class="border-bottom pb-2 mb-3 fw-bold"><i class="fas fa-chart-pie me-2"></i> Report Summary & Item-wise Totals</h6>
+                
+                <!-- Main Metrics Table -->
+                <div class="table-responsive mb-4">
+                    <table class="table table-bordered table-sm excel-table bg-white text-center">
+                        <thead class="table-secondary">
+                            <tr>
+                                <th style="width: 25%;">Total Invoices</th>
+                                <th style="width: 25%;">Total Billed Items</th>
+                                <th style="width: 25%;">Total Free Items</th>
+                                <th style="width: 25%;">Total Net Revenue</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td class="h5 fw-bold"><?php echo number_format($total_invoices); ?></td>
+                                <td class="h5 fw-bold text-primary"><?php echo number_format($total_items_qty); ?></td>
+                                <td class="h5 fw-bold text-success"><?php echo number_format($total_free_qty); ?></td>
+                                <td class="h5 fw-bold text-dark"><?php echo number_format($total_amt, 2); ?></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Product-wise Totals Table -->
+                <div class="table-responsive">
+                    <table class="table table-bordered table-sm excel-table bg-white">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>Product Name</th>
+                                <th class="text-center" style="width: 20%;">Total Billed</th>
+                                <th class="text-center" style="width: 20%;">Total Free</th>
+                                <th class="text-end" style="width: 25%;">Total Amount</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($product_summary as $ps): ?>
+                            <tr>
+                                <td><strong><?php echo $ps['name']; ?></strong></td>
+                                <td class="text-center"><?php echo number_format($ps['billed']); ?></td>
+                                <td class="text-center text-success"><?php echo number_format($ps['free']); ?></td>
+                                <td class="text-end fw-bold"><?php echo number_format($ps['amount'], 2); ?></td>
+                            </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Signature Section -->
+            <div class="report-signatures mt-5 pt-5">
+                <div class="row text-center">
+                    <div class="col-4">
+                        <div class="border-top pt-2 mx-3">Prepared By</div>
+                    </div>
+                    <div class="col-4">
+                        <div class="border-top pt-2 mx-3">Checked By</div>
+                    </div>
+                    <div class="col-4">
+                        <div class="border-top pt-2 mx-3">Authorized Signature</div>
+                    </div>
+                </div>
+            </div>
+            <div class="text-center mt-5 mb-4 small text-muted border-top pt-3 mx-4">
+                Powered by <strong>sohojweb</strong>
+            </div>
 
             <?php elseif ($report_type == 'stock'): ?>
             <table class="table table-bordered excel-table mb-0">
@@ -253,7 +377,7 @@ if ($report_type == 'sales') {
                                 <p class="small mb-0">Type: <?php echo $data['info']['type']; ?> | Phone: <?php echo $data['info']['phone']; ?></p>
                             </div>
                             <div class="col-md-6 text-end">
-                                <h4 class="mb-0">Balance: <span class="text-danger"><?php echo format_currency($data['info']['balance']); ?></span></h4>
+                                <h4 class="mb-0">Balance: <span class="text-success"><?php echo format_currency($data['info']['balance']); ?></span></h4>
                             </div>
                         </div>
                     </div>
@@ -262,28 +386,54 @@ if ($report_type == 'sales') {
                             <tr>
                                 <th>Date</th>
                                 <th>Description</th>
-                                <th class="text-end">Debit (+)</th>
-                                <th class="text-end">Credit (-)</th>
+                                <th class="text-end">Credit (+)</th>
+                                <th class="text-end">Debit (-)</th>
                                 <th class="text-end">Running Balance</th>
                             </tr>
                         </thead>
                         <tbody>
                             <?php 
-                            $running_bal = 0; // This would ideally be calculated from opening balance
+                            $running_bal = $data['opening_bal'];
+                            ?>
+                            <tr class="table-light italic">
+                                <td><?php echo date('d-m-Y', strtotime($start_date)); ?></td>
+                                <td><em>Balance Brought Forward</em></td>
+                                <td colspan="2"></td>
+                                <td class="text-end fw-bold"><?php echo number_format($running_bal, 2); ?></td>
+                            </tr>
+                            <?php
                             foreach ($data['transactions'] as $t): 
-                                if ($t['type'] == 'Debit') $running_bal += $t['amount'];
+                                if ($t['type'] == 'Credit') $running_bal += $t['amount'];
                                 else $running_bal -= $t['amount'];
                             ?>
                                 <tr>
                                     <td><?php echo date('d-m-Y', strtotime($t['created_at'])); ?></td>
                                     <td><?php echo $t['description']; ?></td>
-                                    <td class="text-end"><?php echo $t['type'] == 'Debit' ? number_format($t['amount'], 2) : '-'; ?></td>
                                     <td class="text-end text-success"><?php echo $t['type'] == 'Credit' ? number_format($t['amount'], 2) : '-'; ?></td>
+                                    <td class="text-end text-danger"><?php echo $t['type'] == 'Debit' ? number_format($t['amount'], 2) : '-'; ?></td>
                                     <td class="text-end fw-bold"><?php echo number_format($running_bal, 2); ?></td>
                                 </tr>
                             <?php endforeach; ?>
                         </tbody>
                     </table>
+
+                    <!-- Signature Section -->
+                    <div class="report-signatures mt-5 pt-5">
+                        <div class="row text-center">
+                            <div class="col-4">
+                                <div class="border-top pt-2 mx-3">Prepared By</div>
+                            </div>
+                            <div class="col-4">
+                                <div class="border-top pt-2 mx-3">Checked By</div>
+                            </div>
+                            <div class="col-4">
+                                <div class="border-top pt-2 mx-3">Authorized Signature</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="text-center mt-5 mb-4 small text-muted border-top pt-3 mx-4">
+                        Powered by <strong>sohojweb</strong>
+                    </div>
                 <?php endif; ?>
             <?php endif; ?>
         </div>

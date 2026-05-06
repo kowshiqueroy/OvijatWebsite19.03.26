@@ -4,8 +4,21 @@ require_once '../../includes/functions.php';
 check_login();
 
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
+    if (!isset($_POST['csrf_token']) || !validate_csrf($_POST['csrf_token'])) {
+        die("CSRF Token Validation Failed.");
+    }
     $draft_id = $_POST['draft_id'];
     $customer_id = $_POST['customer_id'];
+
+    // Validate Customer
+    if (empty($customer_id)) {
+        die("Error: Please select a valid customer.");
+    }
+    $check_cust = fetch_one("SELECT id FROM customers WHERE id = ?", [$customer_id]);
+    if (!$check_cust) {
+        die("Error: The selected customer does not exist.");
+    }
+
     $total_amount = $_POST['sub_total'];
     $discount = $_POST['discount'];
     $vat = $_POST['vat_percent'];

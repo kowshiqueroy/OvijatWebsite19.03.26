@@ -3,6 +3,9 @@ require_once 'templates/header.php';
 check_login();
 
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
+    if (!isset($_POST['csrf_token']) || !validate_csrf($_POST['csrf_token'])) {
+        die("CSRF Token Validation Failed.");
+    }
     $new_pass = $_POST['new_password'];
     $confirm_pass = $_POST['confirm_password'];
 
@@ -27,6 +30,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                     <div class="alert alert-danger"><?php echo $error; ?></div>
                 <?php endif; ?>
                 <form method="POST">
+                    <?php csrf_field(); ?>
                     <div class="mb-3">
                         <label class="form-label">New Password</label>
                         <input type="password" name="new_password" class="form-control" required minlength="6">

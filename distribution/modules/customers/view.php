@@ -98,6 +98,7 @@ $sales = fetch_all("SELECT * FROM sales_drafts WHERE customer_id = ? ORDER BY cr
             <div class="card-header bg-white"><strong>Adjust Balance</strong></div>
             <div class="card-body">
                 <form action="update_balance.php" method="POST">
+                    <?php csrf_field(); ?>
                     <input type="hidden" name="customer_id" value="<?php echo $id; ?>">
                     <div class="mb-3">
                         <label class="form-label">Type</label>

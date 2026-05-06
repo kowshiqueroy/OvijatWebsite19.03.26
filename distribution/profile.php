@@ -11,6 +11,9 @@ if ($user['role'] == ROLE_CUSTOMER) {
 }
 
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
+    if (!isset($_POST['csrf_token']) || !validate_csrf($_POST['csrf_token'])) {
+        die("CSRF Token Validation Failed.");
+    }
     $phone = sanitize($_POST['phone']);
     $name = sanitize($_POST['name'] ?? '');
     $address = sanitize($_POST['address'] ?? '');
@@ -49,6 +52,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 <?php endif; ?>
                 
                 <form method="POST">
+                    <?php csrf_field(); ?>
                     <div class="mb-3">
                         <label class="form-label">Username</label>
                         <input type="text" class="form-control" value="<?php echo $user['username']; ?>" readonly disabled>

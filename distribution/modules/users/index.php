@@ -4,6 +4,9 @@ check_login();
 check_role(ROLE_ADMIN);
 
 if (isset($_POST['add_user'])) {
+    if (!isset($_POST['csrf_token']) || !validate_csrf($_POST['csrf_token'])) {
+        redirect('modules/users/index.php', 'CSRF Token Validation Failed.', 'danger');
+    }
     $username = sanitize($_POST['username']);
     $phone = sanitize($_POST['phone']);
     $password = password_hash($_POST['password'], PASSWORD_DEFAULT);
@@ -14,7 +17,7 @@ if (isset($_POST['add_user'])) {
     redirect('modules/users/index.php', 'User created successfully.');
 }
 
-$users = fetch_all("SELECT * FROM users ORDER BY created_at DESC");
+$users = fetch_all("SELECT * FROM users WHERE isDelete = 0 ORDER BY created_at DESC");
 ?>
 
 <div class="row">
@@ -74,6 +77,7 @@ $users = fetch_all("SELECT * FROM users ORDER BY created_at DESC");
 <div class="modal fade" id="addUserModal" tabindex="-1">
     <div class="modal-dialog">
         <form method="POST" class="modal-content">
+            <?php csrf_field(); ?>
             <div class="modal-header">
                 <h5 class="modal-title">Create System User</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>

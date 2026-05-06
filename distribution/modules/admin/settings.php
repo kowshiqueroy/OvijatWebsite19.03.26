@@ -4,6 +4,9 @@ check_login();
 check_role(ROLE_ADMIN);
 
 if (isset($_POST['update_settings'])) {
+    if (!isset($_POST['csrf_token']) || !validate_csrf($_POST['csrf_token'])) {
+        redirect('modules/admin/settings.php', 'CSRF Token Validation Failed.', 'danger');
+    }
     $name = sanitize($_POST['name']);
     $phone = sanitize($_POST['phone']);
     $email = sanitize($_POST['email']);
@@ -28,6 +31,7 @@ $settings = get_company_settings();
             </div>
             <div class="card-body p-4">
                 <form method="POST">
+                    <?php csrf_field(); ?>
                     <div class="row">
                         <div class="col-md-6 mb-3">
                             <label class="form-label">Company Name</label>

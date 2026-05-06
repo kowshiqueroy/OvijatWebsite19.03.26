@@ -5,6 +5,9 @@ check_role([ROLE_ADMIN, ROLE_MANAGER, ROLE_ACCOUNTANT, ROLE_VIEWER]);
 
 if (isset($_POST['add_product'])) {
     check_role([ROLE_ADMIN, ROLE_MANAGER, ROLE_ACCOUNTANT]); // Re-verify for action
+    if (!isset($_POST['csrf_token']) || !validate_csrf($_POST['csrf_token'])) {
+        redirect('modules/products/index.php', 'CSRF Token Validation Failed.', 'danger');
+    }
     $name = sanitize($_POST['name']);
     $cat_id = $_POST['category_id'];
     $tp = $_POST['tp_rate'];
@@ -96,6 +99,7 @@ $products = fetch_all("SELECT p.*, c.name as cat_name FROM products p JOIN categ
 <div class="modal fade" id="stockInModal" tabindex="-1">
     <div class="modal-dialog modal-sm">
         <form action="stock_in.php" method="POST" class="modal-content">
+            <?php csrf_field(); ?>
             <div class="modal-header bg-primary text-white">
                 <h5 class="modal-title">Stock IN</h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
@@ -140,6 +144,7 @@ document.addEventListener('DOMContentLoaded', function() {
 <div class="modal fade" id="addProductModal" tabindex="-1">
     <div class="modal-dialog">
         <form method="POST" class="modal-content">
+            <?php csrf_field(); ?>
             <div class="modal-header">
                 <h5 class="modal-title">Add New Product</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>

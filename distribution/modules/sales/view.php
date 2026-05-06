@@ -70,8 +70,14 @@ $qr_url = "https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=" . url
     .sig-col { width: 22%; text-align: center; border-top: 1px solid #000; font-size: 9px; padding-top: 5px; text-transform: uppercase; }
 
     @media print {
+        html, body, #wrapper, #page-content-wrapper, .container-fluid, .invoice-wrap, .print-table { 
+            background: #fff !important; 
+            background-color: #fff !important; 
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+        }
         #sidebar-wrapper, .navbar, .btn, .no-print, .alert { display: none !important; }
-        #page-content-wrapper { padding: 0 !important; width: 100% !important; }
+        #page-content-wrapper { padding: 0 !important; width: 100% !important; margin: 0 !important; }
         .container-fluid { padding: 0 !important; }
         .header-company h2 { color: #0d6efd !important; }
     }
@@ -146,9 +152,8 @@ $qr_url = "https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=" . url
                     <tr class="free-row">
                         <td><?php echo $i++; ?></td>
                         <td>
-                            <span class="free-badge">FREE</span>
                             <strong><?php echo $item['product_name']; ?></strong>
-                            <?php if ($item['note']): ?><br><small class="text-muted"><?php echo $item['note']; ?></small><?php endif; ?>
+                            <br><small class="text-muted">FREE</small>
                         </td>
                         <td class="text-center"><?php echo $item['free_qty']; ?></td>
                         <td class="text-end"><?php echo number_format($item['rate'], 2); ?></td>

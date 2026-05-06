@@ -11,6 +11,9 @@ if (!$category) {
 }
 
 if (isset($_POST['update_category'])) {
+    if (!isset($_POST['csrf_token']) || !validate_csrf($_POST['csrf_token'])) {
+        redirect('modules/products/categories.php', 'CSRF Token Validation Failed.', 'danger');
+    }
     $name = sanitize($_POST['name']);
     db_query("UPDATE categories SET name = ? WHERE id = ?", [$name, $id]);
     log_activity($_SESSION['user_id'], "Updated category: $name");
@@ -24,6 +27,7 @@ if (isset($_POST['update_category'])) {
             <div class="card-header bg-white"><strong>Edit Category</strong></div>
             <div class="card-body">
                 <form method="POST">
+                    <?php csrf_field(); ?>
                     <div class="mb-3">
                         <label class="form-label">Category Name</label>
                         <input type="text" name="name" class="form-control" value="<?php echo $category['name']; ?>" required>

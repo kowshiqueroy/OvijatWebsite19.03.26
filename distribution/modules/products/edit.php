@@ -11,6 +11,9 @@ if (!$product) {
 }
 
 if (isset($_POST['update_product'])) {
+    if (!isset($_POST['csrf_token']) || !validate_csrf($_POST['csrf_token'])) {
+        redirect('modules/products/index.php', 'CSRF Token Validation Failed.', 'danger');
+    }
     $name = sanitize($_POST['name']);
     $cat_id = $_POST['category_id'];
     $tp = $_POST['tp_rate'];
@@ -24,8 +27,6 @@ if (isset($_POST['update_product'])) {
     log_activity($_SESSION['user_id'], "Updated product: $name");
     redirect('modules/products/index.php', 'Product updated successfully.');
 }
-
-$categories = fetch_all("SELECT * FROM categories WHERE isDelete = 0");
 ?>
 
 <div class="row justify-content-center">
@@ -34,6 +35,7 @@ $categories = fetch_all("SELECT * FROM categories WHERE isDelete = 0");
             <div class="card-header bg-white"><strong>Edit Product</strong></div>
             <div class="card-body">
                 <form method="POST">
+                    <?php csrf_field(); ?>
                     <div class="mb-3">
                         <label class="form-label">Product Name</label>
                         <input type="text" name="name" class="form-control" value="<?php echo $product['name']; ?>" required>

@@ -8,6 +8,9 @@ if (isset($_SESSION['user_id'])) {
 }
 
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
+    if (!isset($_POST['csrf_token']) || !validate_csrf($_POST['csrf_token'])) {
+        die("CSRF Token Validation Failed.");
+    }
     $username = sanitize($_POST['username']);
     $password = $_POST['password'];
 
@@ -53,6 +56,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                     <div class="alert alert-danger"><?php echo $error; ?></div>
                 <?php endif; ?>
                 <form method="POST">
+                    <?php csrf_field(); ?>
                     <div class="mb-3">
                         <label class="form-label">Username</label>
                         <input type="text" name="username" class="form-control" required autofocus>

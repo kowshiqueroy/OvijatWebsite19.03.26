@@ -96,7 +96,12 @@ $qr_url = "https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=" . url
         .bg-draft { background: #ffc107; color: #000; }
 
         @media print {
-            body { background: #fff !important; }
+            html, body, .verify-container, .invoice-wrap, .print-table, .item-table { 
+                background: #fff !important; 
+                background-color: #fff !important; 
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+            }
             .no-print, .btn, .public-navbar, .search-box-wrap { display: none !important; }
             .verify-container { margin: 0; width: 100%; max-width: 100%; }
             .invoice-wrap { box-shadow: none !important; border: none !important; border-radius: 0; }
@@ -203,7 +208,7 @@ $qr_url = "https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=" . url
                                             <?php if ($item['free_qty'] > 0): ?>
                                             <tr style="color: #198754;">
                                                 <td><?php echo $i++; ?></td>
-                                                <td><small class="badge bg-light text-dark border me-1">FREE</small> <?php echo $item['product_name']; ?></td>
+                                                <td><strong><?php echo $item['product_name']; ?></strong><br><small class="text-muted">FREE</small></td>
                                                 <td class="text-center"><?php echo $item['free_qty']; ?></td>
                                                 <td class="text-end"><?php echo number_format($item['rate'], 2); ?></td>
                                                 <td class="text-end fw-bold">0.00</td>

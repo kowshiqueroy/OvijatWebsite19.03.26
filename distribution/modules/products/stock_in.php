@@ -5,6 +5,9 @@ check_login();
 check_role([ROLE_ADMIN, ROLE_MANAGER]);
 
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
+    if (!isset($_POST['csrf_token']) || !validate_csrf($_POST['csrf_token'])) {
+        redirect('modules/products/index.php', 'CSRF Token Validation Failed.', 'danger');
+    }
     $product_id = $_POST['product_id'];
     $qty = intval($_POST['qty']);
 

@@ -5,6 +5,9 @@ check_login();
 check_role([ROLE_ADMIN, ROLE_ACCOUNTANT]);
 
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
+    if (!isset($_POST['csrf_token']) || !validate_csrf($_POST['csrf_token'])) {
+        die("CSRF Token Validation Failed.");
+    }
     $customer_id = $_POST['customer_id'];
     $type = $_POST['trans_type']; // Credit or Debit
     $amount = floatval($_POST['amount']);
@@ -14,13 +17,13 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $conn->begin_transaction();
 
     try {
-        // Adjust Balance
+        // Adjust Balance (Wallet Model)
         if ($type == 'Credit') {
-            // Customer pays money -> Balance decreases
-            db_query("UPDATE customers SET balance = balance - ? WHERE id = ?", [$amount, $customer_id]);
-        } else {
-            // Manual debt increase
+            // Customer pays money -> Wallet balance increases
             db_query("UPDATE customers SET balance = balance + ? WHERE id = ?", [$amount, $customer_id]);
+        } else {
+            // Manual deduction from wallet
+            db_query("UPDATE customers SET balance = balance - ? WHERE id = ?", [$amount, $customer_id]);
         }
 
         // Log Transaction

@@ -5,6 +5,9 @@ check_role([ROLE_ADMIN, ROLE_MANAGER, ROLE_ACCOUNTANT, ROLE_VIEWER]);
 
 if (isset($_POST['add_customer'])) {
     check_role([ROLE_ADMIN, ROLE_MANAGER, ROLE_ACCOUNTANT]);
+    if (!isset($_POST['csrf_token']) || !validate_csrf($_POST['csrf_token'])) {
+        redirect('modules/customers/index.php', 'CSRF Token Validation Failed.', 'danger');
+    }
     $name = sanitize($_POST['name']);
     $phone = sanitize($_POST['phone']);
     $address = sanitize($_POST['address']);
@@ -112,6 +115,7 @@ $customers = fetch_all("SELECT c.*, u.is_active as user_active FROM customers c 
 <div class="modal fade" id="addCustomerModal" tabindex="-1">
     <div class="modal-dialog">
         <form method="POST" class="modal-content">
+            <?php csrf_field(); ?>
             <div class="modal-header">
                 <h5 class="modal-title">Add New Customer</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
