@@ -18,21 +18,21 @@ $user_id = $_SESSION['user_id'] ?? 0;
             --bz-dim: #999999;
             --bz-accent: #8ab4f8;
         }
-        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; margin:0; padding:0; }
-        body { background: var(--bz-bg); color: var(--bz-text); font-family: 'Roboto', sans-serif; min-height:100vh; }
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; margin: 0; padding: 0; }
+        body { background: var(--bz-bg); color: var(--bz-text); font-family: 'Roboto', sans-serif; min-height: 100vh; }
 
         /* Header */
         header {
-            height:60px;
+            height: 60px;
             background: #000;
             display: flex;
             align-items: center;
             justify-content: space-between;
-            padding:0 15px;
+            padding: 0 15px;
             position: sticky;
-            top:0;
-            z-index:1000;
-            border-bottom:1px solid #222;
+            top: 0;
+            z-index: 1000;
+            border-bottom: 1px solid #222;
         }
         .site-logo { font-size: 20px; font-weight: 900; color: #fff; text-decoration: none; }
         .site-logo span { color: var(--bz-orange); }
@@ -40,67 +40,12 @@ $user_id = $_SESSION['user_id'] ?? 0;
             background: var(--bz-orange);
             color: #000;
             border: none;
-            padding: 10px 20px;
-            border-radius: 6px;
+            padding: 8px 16px;
+            border-radius: 4px;
             font-weight: 700;
             font-size: 14px;
             cursor: pointer;
-            transition: all 0.2s;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
         }
-        .unlock-btn:hover { background: #ff9a20; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(255,138,0,0.3); }
-
-        /* Hero Section */
-        .hero {
-            padding: 60px 20px 40px;
-            text-align: center;
-            background: linear-gradient(180deg, #1a1a1a 0%, #0f0f0f 100%);
-            border-bottom: 1px solid #222;
-        }
-        .hero-badge {
-            display: inline-block;
-            background: rgba(255,138,0,0.15);
-            color: var(--bz-orange);
-            padding: 6px 12px;
-            border-radius: 20px;
-            font-size: 12px;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            margin-bottom: 16px;
-        }
-        .hero h1 {
-            font-size: 32px;
-            font-weight: 900;
-            margin-bottom: 12px;
-            background: linear-gradient(135deg, #fff 0%, #aaa 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-        }
-        .hero p {
-            font-size: 15px;
-            color: #aaa;
-            max-width: 600px;
-            margin: 0 auto 24px;
-            line-height: 1.6;
-        }
-        .hero .unlock-btn {
-            font-size: 16px;
-            padding: 14px 32px;
-        }
-        .hero-stats {
-            display: flex;
-            justify-content: center;
-            gap: 40px;
-            margin-top: 30px;
-            padding-top: 30px;
-            border-top: 1px solid #222;
-        }
-        .stat-item { text-align: center; }
-        .stat-value { font-size: 24px; font-weight: 900; color: var(--bz-orange); }
-        .stat-label { font-size: 11px; color: #666; text-transform: uppercase; letter-spacing: 1px; margin-top: 4px; }
 
         /* Sub Nav */
         .sub-nav {
@@ -110,72 +55,98 @@ $user_id = $_SESSION['user_id'] ?? 0;
             gap: 15px;
             overflow-x: auto;
             scrollbar-width: none;
-            border-bottom:1px solid #222;
+            border-bottom: 1px solid #222;
         }
         .sub-nav::-webkit-scrollbar { display: none; }
-        .nav-tab { white-space: nowrap; font-size: 13px; font-weight: 700; color: var(--bz-dim); text-transform: uppercase; cursor: pointer; padding-bottom: 2px; }
+        .nav-tab { white-space: nowrap; font-size: 13px; font-weight: 700; color: var(--bz-dim); text-transform: uppercase; }
         .nav-tab.active { color: var(--bz-orange); border-bottom: 2px solid var(--bz-orange); }
+
+        /* Fake Media Grid */
+        .media-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 1px;
+            padding-bottom: 80px;
+        }
+        @media (min-width: 768px) {
+            .media-grid { grid-template-columns: repeat(2, 1fr); }
+        }
+        @media (min-width: 1024px) {
+            .media-grid { grid-template-columns: repeat(3, 1fr); }
+        }
+        .bz-card { background: #000; }
+        .bz-thumb-container {
+            width: 100%;
+            aspect-ratio: 16/9;
+            background: #111;
+            overflow: hidden;
+            position: relative;
+        }
+        .bz-thumb { width: 100%; height: 100%; object-fit: cover; filter: brightness(0.7); }
+        .bz-info { padding: 12px 15px; }
+        .bz-title { font-size: 14px; font-weight: 700; margin-bottom: 4px; color: #eee; }
+        .bz-meta { font-size: 11px; color: var(--bz-dim); display: flex; gap: 10px; }
 
         /* PIN Modal */
         .pin-modal {
             display: none;
             position: fixed;
-            top:0; left:0;
-            width:100%; height:100%;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
             background: rgba(0,0,0,0.95);
-            z-index:5000;
+            z-index: 5000;
             flex-direction: column;
             justify-content: center;
             align-items: center;
-            padding:20px;
+            padding: 20px;
         }
         .pin-modal.active { display: flex; }
         .pin-title { font-size: 20px; font-weight: 700; margin-bottom: 20px; color: #fff; }
         .pin-input {
-            width:100%;
-            max-width:300px;
+            width: 100%;
+            max-width: 300px;
             background: #222;
-            border:1px solid #333;
-            border-radius:4px;
-            padding:15px;
+            border: 1px solid #333;
+            border-radius: 4px;
+            padding: 15px;
             color: white;
-            font-size:20px;
+            font-size: 20px;
             text-align: center;
-            margin-bottom:20px;
+            margin-bottom: 20px;
             outline: none;
         }
         .pin-submit {
-            width:100%;
-            max-width:300px;
+            width: 100%;
+            max-width: 300px;
             background: var(--bz-orange);
             color: #000;
             border: none;
-            padding:15px;
-            border-radius:4px;
-            font-weight:700;
-            font-size:16px;
+            padding: 15px;
+            border-radius: 4px;
+            font-weight: 700;
+            font-size: 16px;
             cursor: pointer;
         }
-        .pin-error { color: #ff3b30; font-size: 14px; margin-top:10px; display: none; }
+        .pin-error { color: #ff3b30; font-size: 14px; margin-top: 10px; display: none; }
 
         /* Gallery Modal */
         .gallery-modal {
             display: none;
             position: fixed;
-            top:0; left:0;
-            width:100%; height:100%;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
             background: #000;
-            z-index:6000;
+            z-index: 6000;
             flex-direction: column;
         }
         .gallery-modal.active { display: flex; }
         .gallery-header {
-            height:60px;
+            height: 60px;
             display: flex;
             align-items: center;
             justify-content: space-between;
-            padding:0 15px;
-            border-bottom:1px solid #222;
+            padding: 0 15px;
+            border-bottom: 1px solid #222;
         }
         .gallery-close { color: #fff; font-size: 24px; cursor: pointer; background: none; border: none; }
         .gallery-delete {
@@ -191,7 +162,7 @@ $user_id = $_SESSION['user_id'] ?? 0;
             display: flex;
             align-items: center;
             justify-content: center;
-            padding:10px;
+            padding: 10px;
             position: relative;
             overflow: hidden;
         }
@@ -204,15 +175,19 @@ $user_id = $_SESSION['user_id'] ?? 0;
         }
         .gallery-body audio {
             width: 90%;
-            max-width:500px;
+            max-width: 500px;
+        }
+        .gallery-body img, .gallery-body video, .gallery-body audio {
+            max-width: 100%;
+            max-height: 100%;
         }
         .gallery-nav {
-            height:60px;
+            height: 60px;
             display: flex;
             align-items: center;
             justify-content: space-between;
-            padding:0 20px;
-            border-top:1px solid #222;
+            padding: 0 20px;
+            border-top: 1px solid #222;
         }
         .gallery-nav button {
             background: none;
@@ -221,97 +196,29 @@ $user_id = $_SESSION['user_id'] ?? 0;
             font-size: 16px;
             font-weight: 700;
             cursor: pointer;
-            padding:10px 20px;
+            padding: 10px 20px;
         }
         .gallery-counter { color: var(--bz-dim); font-size: 14px; }
 
         /* Loading */
-        .loading { color: var(--bz-dim); text-align: center; padding:40px; font-size:14px; }
+        .loading { color: var(--bz-dim); text-align: center; padding: 40px; font-size: 14px; }
     </style>
 </head>
 <body>
     <header>
-        <div style="display:flex; align-items:center; gap:8px;">
-            <span style="font-size:24px;">✦</span>
-            <a href="index.php" class="site-logo" style="font-size:20px;">Gemini</a>
-        </div>
-        <div style="display:flex; gap:10px; align-items:center;">
-            <button style="background:transparent; border:1px solid #5f6368; color:#e8eaed; padding:8px 16px; border-radius:20px; font-size:13px; cursor:pointer;">Sign In</button>
-            <button class="unlock-btn" onclick="showPinModal('unlock')">Upgrade to Pro</button>
-        </div>
+        <a href="index.php" class="site-logo">PREMIUM<span>VAULT</span></a>
+        <button class="unlock-btn" onclick="showPinModal('unlock')">Unlock Gallery</button>
     </header>
 
-    <!-- Hero Section -->
-    <div class="hero">
-        <div class="hero-badge" style="background:rgba(138,180,248,0.15); color:#8ab4f8;">✦ Introducing Gemini Pro</div>
-        <h1 style="background:linear-gradient(135deg, #8ab4f8 0%, #c58af9 50%, #f9ab00 100%); -webkit-background-clip:text; -webkit-text-fill-color:transparent;">Experience the power of AI</h1>
-        <p style="max-width:700px;">Upgrade to Gemini Pro and unlock advanced capabilities, priority access, and exclusive features designed for power users.</p>
-        <div style="display:flex; gap:12px; justify-content:center; flex-wrap:wrap;">
-            <button class="unlock-btn" onclick="showPinModal('unlock')" style="font-size:16px; padding:14px 32px;">Upgrade to Pro</button>
-            <button style="background:transparent; border:1px solid #5f6368; color:#e8eaed; padding:14px 32px; border-radius:6px; font-size:16px; font-weight:500; cursor:pointer;">Learn More</button>
-        </div>
+    <div class="sub-nav">
+        <div class="nav-tab active">Recent Updates</div>
+        <div class="nav-tab">Trending</div>
+        <div class="nav-tab">Models</div>
     </div>
 
-    <!-- Pricing Section -->
-    <div style="padding:40px 20px; max-width:1200px; margin:0 auto;">
-        <h2 style="text-align:center; font-size:28px; font-weight:700; margin-bottom:8px;">Choose your plan</h2>
-        <p style="text-align:center; color:#9aa0a6; margin-bottom:40px;">Flexible options for everyone</p>
-        
-        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:20px; max-width:900px; margin:0 auto;">
-            <!-- Free Tier -->
-            <div style="background:#1a1a1a; border:1px solid #333; border-radius:12px; padding:24px;">
-                <div style="font-size:12px; color:#9aa0a6; text-transform:uppercase; letter-spacing:1px; margin-bottom:8px;">Free</div>
-                <div style="font-size:36px; font-weight:900; margin-bottom:4px;">$0</div>
-                <div style="font-size:13px; color:#9aa0a6; margin-bottom:20px;">per month</div>
-                <div style="font-size:14px; color:#e8eaed; margin-bottom:20px;">Basic AI assistance for everyone</div>
-                <ul style="list-style:none; padding:0; margin:0 0 24px 0;">
-                    <li style="padding:6px 0; font-size:13px; color:#9aa0a6;">✦ Standard response speed</li>
-                    <li style="padding:6px 0; font-size:13px; color:#9aa0a6;">✦ Basic model access</li>
-                    <li style="padding:6px 0; font-size:13px; color:#9aa0a6;">✦ Limited queries per day</li>
-                </ul>
-                <button style="width:100%; background:transparent; border:1px solid #5f6368; color:#e8eaed; padding:12px; border-radius:6px; font-size:14px; font-weight:500; cursor:pointer;">Current Plan</button>
-            </div>
-            
-            <!-- Pro Tier -->
-            <div style="background:linear-gradient(135deg, #1a1a2e 0%, #2a1a3e 100%); border:2px solid #8ab4f8; border-radius:12px; padding:24px; position:relative;">
-                <div style="position:absolute; top:-12px; left:50%; transform:translateX(-50%); background:#8ab4f8; color:#000; padding:4px 12px; border-radius:12px; font-size:11px; font-weight:700;">RECOMMENDED</div>
-                <div style="font-size:12px; color:#8ab4f8; text-transform:uppercase; letter-spacing:1px; margin-bottom:8px;">Pro</div>
-                <div style="font-size:36px; font-weight:900; margin-bottom:4px; color:#fff;">$19.99</div>
-                <div style="font-size:13px; color:#9aa0a6; margin-bottom:20px;">per month</div>
-                <div style="font-size:14px; color:#e8eaed; margin-bottom:20px;">Advanced AI for power users</div>
-                <ul style="list-style:none; padding:0; margin:0 0 24px 0;">
-                    <li style="padding:6px 0; font-size:13px; color:#e8eaed;">✦ Priority response speed</li>
-                    <li style="padding:6px 0; font-size:13px; color:#e8eaed;">✦ Advanced model access</li>
-                    <li style="padding:6px 0; font-size:13px; color:#e8eaed;">✦ Unlimited queries</li>
-                    <li style="padding:6px 0; font-size:13px; color:#e8eaed;">✦ Premium Vault access</li>
-                    <li style="padding:6px 0; font-size:13px; color:#e8eaed;">✦ Priority support</li>
-                </ul>
-                <button class="unlock-btn" onclick="showPinModal('unlock')" style="width:100%; font-size:14px; padding:12px;">Upgrade Now</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Features Section -->
-    <div style="padding:40px 20px; background:#1a1a1a;">
-        <h2 style="text-align:center; font-size:24px; font-weight:700; margin-bottom:30px;">Why upgrade to Pro?</h2>
-        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(250px, 1fr)); gap:20px; max-width:1000px; margin:0 auto;">
-            <div style="text-align:center; padding:20px;">
-                <div style="font-size:32px; margin-bottom:12px;">⚡</div>
-                <div style="font-size:16px; font-weight:600; margin-bottom:8px;">Faster Responses</div>
-                <div style="font-size:13px; color:#9aa0a6;">Priority processing with reduced latency</div>
-            </div>
-            <div style="text-align:center; padding:20px;">
-                <div style="font-size:32px; margin-bottom:12px;">🎨</div>
-                <div style="font-size:16px; font-weight:600; margin-bottom:8px;">Premium Vault</div>
-                <div style="font-size:13px; color:#9aa0a6;">Exclusive access to premium content library</div>
-            </div>
-            <div style="text-align:center; padding:20px;">
-                <div style="font-size:32px; margin-bottom:12px;">🔬</div>
-                <div style="font-size:16px; font-weight:600; margin-bottom:8px;">Advanced Models</div>
-                <div style="font-size:13px; color:#9aa0a6;">Access to Gemini Ultra and specialized models</div>
-            </div>
-        </div>
-    </div>
+    <main id="media-gallery" class="media-grid">
+        <!-- Fake media will be injected here -->
+    </main>
 
     <!-- PIN Prompt Modal -->
     <div class="pin-modal" id="pin-modal">
@@ -385,6 +292,37 @@ $user_id = $_SESSION['user_id'] ?? 0;
         // Initialize timers
         resetLogoutTimer();
 
+        // Fake media data
+        const FAKE_THUMBS = [
+            'https://images.unsplash.com/photo-1492691527719-9d1e07e534b4?q=80&w=800&auto=format&fit=crop',
+            'https://images.unsplash.com/photo-1516035069371-29a1b244cc32?q=80&w=800&auto=format&fit=crop',
+            'https://images.unsplash.com/photo-1542038783-0ad457d2f627?q=80&w=800&auto=format&fit=crop',
+            'https://images.unsplash.com/photo-1554080353-a576cf803bda?q=80&w=800&auto=format&fit=crop'
+        ];
+
+        // Load fake media on page load
+        function loadFakeMedia() {
+            const grid = document.getElementById('media-gallery');
+            grid.innerHTML = '';
+            // Generate 12 fake items
+            for (let i = 0; i < 12; i++) {
+                const card = document.createElement('div');
+                card.className = 'bz-card';
+                const fakeThumb = FAKE_THUMBS[i % FAKE_THUMBS.length];
+                card.innerHTML = `
+                    <div class="bz-thumb-container">
+                        <img src="${fakeThumb}" class="bz-thumb">
+                        <div style="position:absolute; bottom:8px; left:12px; font-size:10px; font-weight:900; color:white; background:rgba(0,0,0,0.6); padding:2px 5px;">EXCLUSIVE</div>
+                    </div>
+                    <div class="bz-info">
+                        <div class="bz-title">Membership Content Scene #${i+1}</div>
+                        <div class="bz-meta"><span>100% Rating</span><span>2026-05-05</span></div>
+                    </div>
+                `;
+                grid.appendChild(card);
+            }
+        }
+
         // Show PIN modal
         function showPinModal(action) {
             currentPinAction = action;
@@ -393,9 +331,9 @@ $user_id = $_SESSION['user_id'] ?? 0;
             const error = document.getElementById('pin-error');
             error.style.display = 'none';
             document.getElementById('pin-input').value = '';
- 
-            if (action === 'unlock') title.textContent = 'Enter PIN to Buy Premium';
- 
+
+            if (action === 'unlock') title.textContent = 'Enter PIN to Unlock Gallery';
+
             modal.classList.add('active');
             setTimeout(() => document.getElementById('pin-input').focus(), 100);
         }
@@ -603,6 +541,9 @@ $user_id = $_SESSION['user_id'] ?? 0;
         document.getElementById('pin-input').addEventListener('keypress', (e) => {
             if (e.key === 'Enter') handlePinSubmit();
         });
+
+        // Load fake media on page load
+        loadFakeMedia();
     </script>
 </body>
 </html>

@@ -136,29 +136,9 @@ $other_name = ($user_id == 1) ? 'Rai' : 'Kush';
         .btn-decline { background: #ff4d4d; color: #fff; }
 
         /* Fake Chat Area */
-        .chat-area { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
-        .message { max-width: 80%; padding: 12px 16px; border-radius: 18px; font-size: 14px; line-height: 1.5; background: rgba(255,255,255,0.05); color: #e0e0e0; animation: fadeIn 0.3s ease; }
-        .message.ai { align-self: flex-start; background: rgba(138,180,248,0.08); border: 1px solid rgba(138,180,248,0.15); }
-        .message.system { align-self: center; background: transparent; font-size: 11px; color: #666; text-transform: uppercase; letter-spacing: 1px; font-family: 'Roboto Mono', monospace; }
-        .message.log { align-self: flex-start; background: rgba(255,255,255,0.03); color: #888; font-size: 12px; font-family: 'Roboto Mono', monospace; border-left: 2px solid #3ea6ff; padding-left: 12px; }
-        .message h4 { margin: 0 0 6px 0; font-size: 13px; color: #8ab4f8; font-weight: 500; }
-        .message p { margin: 0; }
-        
-        /* Thinking Animation */
-        .thinking-container { display: flex; align-items: center; gap: 8px; padding: 12px 16px; align-self: flex-start; }
-        .thinking-dot { width: 8px; height: 8px; background: #8ab4f8; border-radius: 50%; animation: thinkBounce 1.4s infinite ease-in-out; }
-        .thinking-dot:nth-child(1) { animation-delay: 0s; }
-        .thinking-dot:nth-child(2) { animation-delay: 0.2s; }
-        .thinking-dot:nth-child(3) { animation-delay: 0.4s; }
-        @keyframes thinkBounce {
-            0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
-            40% { transform: scale(1); opacity: 1; }
-        }
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(8px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-        
+        .chat-area { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 16px; opacity: 0.8; }
+        .message { max-width: 80%; padding: 12px 16px; border-radius: 18px; font-size: 14px; line-height: 1.5; background: rgba(255,255,255,0.05); color: #aaa; }
+        .msg-system { align-self: center; background: transparent; font-size: 11px; color: #444; text-transform: uppercase; letter-spacing: 1px; }
         .input-mimic { padding: 16px; border-top: 1px solid #222; color: #444; font-size: 14px; display: flex; justify-content: space-between; flex-shrink: 0; }
     </style>
 </head>
@@ -184,12 +164,10 @@ $other_name = ($user_id == 1) ? 'Rai' : 'Kush';
         </div>
 
         <div class="chat-area" id="chat-area" onclick="handleOutsideClick()">
-            <div class="message system">[Node_Security_Active]</div>
-            <div class="thinking-container" id="init-thinking">
-                <div class="thinking-dot"></div>
-                <div class="thinking-dot"></div>
-                <div class="thinking-dot"></div>
-            </div>
+            <div class="message msg-system">[Node_Security_Active]</div>
+            <div class="message">Gemini is a private, encrypted environment. All interactions are ephemeral.</div>
+            <div class="message">System logs are synchronized across both nodes.</div>
+            <div class="message msg-system" id="last-sync-log">Last sync: <?php echo date('H:i:s'); ?></div>
         </div>
 
         <div class="input-mimic" onclick="handleOutsideClick()">
@@ -200,8 +178,8 @@ $other_name = ($user_id == 1) ? 'Rai' : 'Kush';
 
     <!-- Incoming Call Overlay -->
     <div class="call-overlay" id="incoming-overlay">
-        <div class="avatar-ring">✦</div>
-        <div class="overlay-name">Gemini Team</div>
+        <div class="avatar-ring"><?php echo $other_name[0]; ?></div>
+        <div class="overlay-name"><?php echo $other_name; ?></div>
         <div class="overlay-status">Incoming Node Request...</div>
         <div class="overlay-btns">
             <button class="overlay-btn btn-accept" onclick="acceptCall()">✔</button>
@@ -211,8 +189,8 @@ $other_name = ($user_id == 1) ? 'Rai' : 'Kush';
 
     <!-- Outgoing Call Overlay -->
     <div class="call-overlay" id="outgoing-overlay">
-        <div class="avatar-ring">✦</div>
-        <div class="overlay-name">Gemini Team</div>
+        <div class="avatar-ring"><?php echo $other_name[0]; ?></div>
+        <div class="overlay-name"><?php echo $other_name; ?></div>
         <div class="overlay-status" id="outgoing-status">Connecting to Node...</div>
         <div class="overlay-btns">
             <button class="overlay-btn btn-decline" onclick="endCall()">✖</button>
@@ -245,15 +223,9 @@ $other_name = ($user_id == 1) ? 'Rai' : 'Kush';
             if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
                 alert('Security Notice: Camera/Mic require HTTPS. Localhost is also permitted.');
             }
-            setTimeout(() => {
-                const initThink = document.getElementById('init-thinking');
-                if (initThink) initThink.remove();
-                addChatMessage('[Node_Authorized]', 'system');
-                addChatMessage('Secure node initialized. All communications are end-to-end encrypted.', 'ai');
-            }, 1500);
+            addChatMessage('[Node_Authorized]');
             initPeer();
             checkPresence();
-            setTimeout(() => playNextConversation(), 2000);
         };
 
         function showControls() {
@@ -435,11 +407,10 @@ $other_name = ($user_id == 1) ? 'Rai' : 'Kush';
 
         function handleCall(call) {
             currentCall = call;
-            hasShownEndMessage = false; // Reset for new call
             isCallUIHidden = false;
             document.getElementById('outgoing-overlay').classList.remove('show');
             document.getElementById('call-container').classList.add('active');
-            showThinking(() => addChatMessage('[Node_Connection_Established]', 'system'));
+            addChatMessage('[Node_Connection_Established]');
             showControls();
             
             call.on('stream', remoteStream => {
@@ -447,28 +418,16 @@ $other_name = ($user_id == 1) ? 'Rai' : 'Kush';
                 const remoteVideo = document.getElementById('remote-video');
                 remoteVideo.srcObject = remoteStream;
                 remoteVideo.play().then(() => {
-                    addChatMessage('[Stream_Sync: Active]', 'log');
-                    addChatMessage('Secure audio/video bridge is now active. Encrypted P2P connection established.', 'ai');
+                    addChatMessage('[Stream_Sync: Active]');
                 }).catch(e => {
                     console.warn('[Node_Stream] Autoplay blocked', e);
-                    addChatMessage('[Stream_Notice: Click to activate audio]', 'log');
+                    addChatMessage('[Stream_Notice: Click to activate audio]');
                 });
             });
-            call.on('close', () => {
-                if (!hasShownEndMessage) {
-                    hasShownEndMessage = true;
-                    showThinking(() => {
-                        addChatMessage('[Node_Session_Ended]', 'system');
-                        endCall();
-                    });
-                }
-            });
+            call.on('close', endCall);
             call.on('error', e => { 
                 console.error('[Node_Stream_Error]', e);
-                if (!hasShownEndMessage) {
-                    hasShownEndMessage = true;
-                    addChatMessage('[Call_Terminated: Node Error]', 'system'); 
-                }
+                addChatMessage('[Call_Terminated: Node Error]'); 
                 endCall(); 
             });
         }
@@ -504,11 +463,7 @@ $other_name = ($user_id == 1) ? 'Rai' : 'Kush';
             }
         }
 
-        let isEnding = false;
         function endCall() {
-            if (isEnding) return; // Prevent duplicate calls
-            isEnding = true;
-            
             console.log('[Node_Call] Ending session');
             if (currentCall) try { currentCall.close(); } catch(e){}
             if (incomingCall) try { incomingCall.close(); } catch(e){}
@@ -526,15 +481,7 @@ $other_name = ($user_id == 1) ? 'Rai' : 'Kush';
             localStream = null;
             
             clearTimeout(controlsTimer);
-            if (!hasShownEndMessage) {
-                hasShownEndMessage = true;
-                showThinking(() => {
-                    addChatMessage('[Node_Session_Ended]', 'system');
-                    isEnding = false;
-                });
-            } else {
-                isEnding = false;
-            }
+            addChatMessage('[Node_Session_Ended]');
         }
 
         function hideCallUI() {
@@ -552,72 +499,13 @@ $other_name = ($user_id == 1) ? 'Rai' : 'Kush';
             }
         }
 
-        function addChatMessage(text, type = 'system') {
+        function addChatMessage(text) {
             const area = document.getElementById('chat-area');
             const msg = document.createElement('div');
-            msg.className = 'message ' + type;
-            if (type === 'ai') {
-                msg.innerHTML = `<h4>✦ Gemini</h4><p>${text}</p>`;
-            } else {
-                msg.textContent = text;
-            }
+            msg.className = 'message msg-system';
+            msg.textContent = text;
             area.appendChild(msg);
             area.scrollTop = area.scrollHeight;
-        }
-
-        function showThinking(callback) {
-            const area = document.getElementById('chat-area');
-            const think = document.createElement('div');
-            think.className = 'thinking-container';
-            think.innerHTML = '<div class="thinking-dot"></div><div class="thinking-dot"></div><div class="thinking-dot"></div>';
-            area.appendChild(think);
-            area.scrollTop = area.scrollHeight;
-            setTimeout(() => {
-                think.remove();
-                if (callback) callback();
-            }, 1200 + Math.random() * 800);
-        }
-
-        // Simulated AI conversation flow (relative delays in ms)
-        const aiConversation = [
-            { delay: 2000, type: 'log', text: '[Nodes_Synchronized: Secure Channel]' },
-            { delay: 3000, type: 'ai', text: 'Hello! I\'m your Gemini assistant. All communications are end-to-end encrypted and ephemeral.' },
-            { delay: 3000, type: 'log', text: '[Context_Injected: Session Memory Active]' },
-            { delay: 2500, type: 'ai', text: 'I\'m analyzing the secure node connection. All systems are operational.' },
-            { delay: 3000, type: 'log', text: '[TensorFlow_Lite: Model Ready]' },
-            { delay: 3500, type: 'ai', text: 'How can I assist you today? I can help with code, research, analysis, or just chat.' },
-            { delay: 3000, type: 'log', text: '[Attention_Heads: 12/12 Active]' },
-            { delay: 4000, type: 'ai', text: 'I notice your partner node is online. Would you like me to establish a secure audio/video bridge?' },
-            { delay: 3000, type: 'log', text: '[WebRTC_Signaling: Standing By]' },
-            { delay: 3500, type: 'ai', text: 'I\'m continuously monitoring the connection quality and will optimize in real-time.' },
-            { delay: 3000, type: 'log', text: '[Inference_Engine: Latency Stable]' },
-        ];
-
-        let convIndex = 0;
-        let hasShownEndMessage = false;
-        function playNextConversation() {
-            if (convIndex >= aiConversation.length) {
-                // Repeat with system logs only
-                setInterval(() => {
-                    const logs = ['[Nodes_Heartbeat: OK]', '[Cache_Warming: Complete]', '[GPU_Cluster: Idle]', '[Memory_Pool: 2.3GB Free]', '[Entropy_Check: Passed]'];
-                    addChatMessage(logs[Math.floor(Math.random() * logs.length)], 'log');
-                }, 15000);
-                return;
-            }
-            const item = aiConversation[convIndex];
-            setTimeout(() => {
-                if (item.type === 'ai') {
-                    showThinking(() => {
-                        addChatMessage(item.text, 'ai');
-                        convIndex++;
-                        playNextConversation();
-                    });
-                } else {
-                    addChatMessage(item.text, item.type);
-                    convIndex++;
-                    playNextConversation();
-                }
-            }, item.delay);
         }
 
         async function checkPresence() {
@@ -627,7 +515,7 @@ $other_name = ($user_id == 1) ? 'Rai' : 'Kush';
                 wasOtherOnline = isOtherOnline;
                 isOtherOnline = data.status === 'active' || data.status === 'typing';
                 if (isOtherOnline && !wasOtherOnline) {
-                    showThinking(() => addChatMessage('[Node_Joined: Partner entered Secure Call]', 'system'));
+                    addChatMessage('[Node_Joined: Partner entered Secure Call]');
                 }
                 const logo = document.getElementById('sparkle-logo');
                 if (logo) {

@@ -1,0 +1,12 @@
+<FilesMatch "\.(sq3|db|sqlite)$">
+    Order deny,allow
+    Deny from all
+</FilesMatch>
+
+# Increase PHP limits for large media
+LimitRequestBody 536870912
+php_value post_max_size 512M
+php_value upload_max_filesize 512M
+php_value memory_limit 512M
+php_value max_execution_time 600
+php_value max_input_time 600
