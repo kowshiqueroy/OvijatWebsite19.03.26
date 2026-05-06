@@ -6,7 +6,7 @@ $user_id = $_SESSION['user_id'];
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Shared YouTube - Gemini</title>
     <link rel="stylesheet" href="style.css">
     <link href="https://fonts.googleapis.com/css2?family=Google+Sans:wght@400;500;600&family=Roboto:wght@300;400;500&family=Roboto+Mono&display=swap" rel="stylesheet">
@@ -15,17 +15,6 @@ $user_id = $_SESSION['user_id'];
             --yt-bg: #0f0f0f;
             --accent: #3ea6ff;
             --header-h: 56px;
-        }
-        body.yt-mode {
-            background: var(--yt-bg);
-            margin: 0;
-            padding: 0;
-            overflow-x: hidden;
-            display: flex;
-            flex-direction: column;
-            font-family: 'Roboto', Arial, sans-serif;
-            color: #fff;
-            -webkit-tap-highlight-color: transparent;
         }
         .yt-header {
             height: var(--header-h);
@@ -37,6 +26,7 @@ $user_id = $_SESSION['user_id'];
             position: sticky;
             top: 0;
             z-index: 1000;
+            border-bottom: 1px solid #222;
         }
         .yt-header h1 {
             font-size: 18px;
@@ -57,13 +47,29 @@ $user_id = $_SESSION['user_id'];
             font-weight: 500;
             cursor: pointer;
             text-decoration: none;
+            transition: background 0.2s;
         }
-
-        /* Mobile First: Single Column */
-        .main-container {
+        .modern-btn-header:hover { background: rgba(255,255,255,0.2); }
+        body.yt-mode {
+            background: var(--yt-bg);
+            margin:0;
+            padding:0;
+            overflow-x: hidden;
+            overflow-y: auto;
             display: flex;
             flex-direction: column;
-            width: 100%;
+            font-family: 'Roboto', Arial, sans-serif;
+            color: #fff;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        /* App structure */
+        .main-container { 
+            display: flex; 
+            flex-direction: column; 
+            width: 100%; 
+            min-height: 100vh;
+            overflow-y: auto;
         }
 
         .primary-content { width: 100%; }
@@ -130,6 +136,32 @@ $user_id = $_SESSION['user_id'];
         }
         .subscribe-btn:hover { background: #ff0000; }
 
+        .video-description {
+            background: rgba(255,255,255,0.05);
+            border-radius: 12px;
+            padding: 12px;
+            font-size: 13px;
+            line-height: 18px;
+        }
+
+        .comments-section { padding: 12px; }
+        .comments-count { font-size: 16px; font-weight: 700; margin-bottom: 16px; }
+        
+        .add-comment { display: flex; gap: 12px; margin-bottom: 24px; }
+        .comment-input-wrapper { flex: 1; }
+        .comment-input {
+            background: rgba(255,255,255,0.05);
+            border: none;
+            border-radius: 8px;
+            padding: 10px 12px;
+            color: #fff;
+            font-size: 14px;
+            width: 100%;
+            box-sizing: border-box;
+            outline: none;
+        }
+        .comment-input:focus { background: rgba(255,255,255,0.1); }
+
         .comment-actions {
             display: none;
             gap: 8px;
@@ -173,31 +205,6 @@ $user_id = $_SESSION['user_id'];
         }
         .delete-all-btn:hover { background: rgba(255,70,70,0.3); }
 
-        .video-description {
-            background: rgba(255,255,255,0.05);
-            border-radius: 12px;
-            padding: 12px;
-            font-size: 13px;
-            line-height: 18px;
-        }
-
-        .comments-section { padding: 12px; }
-        .comments-count { font-size: 16px; font-weight: 700; margin-bottom: 16px; }
-        
-        .add-comment { display: flex; gap: 12px; margin-bottom: 24px; }
-        .comment-input-wrapper { flex: 1; }
-        .comment-input {
-            background: rgba(255,255,255,0.05);
-            border: none;
-            border-radius: 8px;
-            padding: 10px 12px;
-            color: #fff;
-            font-size: 14px;
-            width: 100%;
-            box-sizing: border-box;
-            outline: none;
-        }
-
         .comment-list { display: flex; flex-direction: column; gap: 16px; }
         .comment-item { display: flex; gap: 12px; }
         .comment-text { font-size: 13px; line-height: 18px; color: #f1f1f1; margin-top: 2px; }
@@ -212,6 +219,7 @@ $user_id = $_SESSION['user_id'];
         }
         .history-thumb img { width: 100%; height: 100%; object-fit: cover; }
         .history-item-title { font-size: 13px; font-weight: 500; line-height: 16px; }
+        .history-item-meta { font-size: 12px; color: #aaa; margin-top: 4px; }
 
         #comments-overlay {
             position: absolute;
@@ -221,7 +229,7 @@ $user_id = $_SESSION['user_id'];
         }
         .popup-comment {
             position: absolute;
-            bottom: -50px; /* Start below the video */
+            bottom: -50px;
             background: rgba(0,0,0,0.6);
             backdrop-filter: blur(4px);
             color: #fff;
@@ -329,6 +337,30 @@ $user_id = $_SESSION['user_id'];
             .video-meta { flex-direction: row; justify-content: space-between; align-items: center; }
             .channel-avatar { width: 40px; height: 40px; }
         }
+
+        .easy-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 8px; }
+        .easy-btn { 
+            background: #2b2b2b; border: 1px solid #333; color: white; padding: 8px; 
+            border-radius: 8px; font-size: 12px; cursor: pointer; transition: all 0.2s;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .easy-btn:hover { background: #3d3d3d; border-color: #444; transform: translateY(-1px); }
+        .easy-btn:active { transform: translateY(0); }
+        
+        .custom-comment-box { 
+            display: flex; gap: 6px; background: #2b2b2b; padding: 4px; 
+            border-radius: 10px; border: 1px solid #333;
+        }
+        .custom-comment-box input { 
+            background: transparent; border: none; color: white; font-size: 13px; 
+            padding: 6px; flex: 1; outline: none; width: 0;
+        }
+        .custom-comment-box button { 
+            background: var(--accent); border: none; color: white; 
+            width: 30px; height: 30px; border-radius: 8px; cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .easy-comment-panel { width: 220px; }
     </style>
 </head>
 <body class="yt-mode">
@@ -509,7 +541,14 @@ $user_id = $_SESSION['user_id'];
 
             const input = document.getElementById('comment-input');
             const actions = document.getElementById('comment-actions');
-            input.onfocus = () => actions.style.display = 'flex';
+            const commentBox = input.closest('.add-comment');
+            input.onfocus = () => {
+                actions.style.display = 'flex';
+                // Scroll to keep input visible without pushing video
+                setTimeout(() => {
+                    commentBox.scrollIntoView({ block: 'end', behavior: 'smooth' });
+                }, 100);
+            };
             document.getElementById('comment-cancel').onclick = () => {
                 input.value = '';
                 actions.style.display = 'none';
@@ -917,6 +956,19 @@ $user_id = $_SESSION['user_id'];
             navigator.sendBeacon(`api.php?action=leave_theater_beacon&_csrf=${window.CSRF_TOKEN}`);
             location.href = 'index.php';
         };
+
+        // Auto-scroll to top on inactivity
+        let scrollTimer = null;
+        function resetScrollTimer() {
+            clearTimeout(scrollTimer);
+            scrollTimer = setTimeout(() => {
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            }, 3000); // 3 seconds of inactivity
+        }
+        ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart', 'click', 'keydown'].forEach(evt => {
+            document.addEventListener(evt, resetScrollTimer, { passive: true });
+        });
+        resetScrollTimer();
     </script>
 </body>
 </html>
