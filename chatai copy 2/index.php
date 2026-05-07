@@ -118,9 +118,6 @@ $other_user_id = ($user_id == 1) ? 2 : 1;
             <div id="theater-popup" class="theater-popup" style="display:none;">
                 <span>📺</span> <span id="theater-text">Gemini Partner is Missing You. <a href="youtube.php">Watch Theater Together.</a></span>
             </div>
-            <div id="call-popup" class="call-popup" style="display:none;">
-                <span>📞</span> <span>Join the Gemini Team is Waiting <a id="call-join-link" href="call.php">Join Now</a></span>
-            </div>
 
             <style>
             .theater-popup {
@@ -141,26 +138,6 @@ $other_user_id = ($user_id == 1) ? 2 : 1;
                 text-decoration: underline;
                 font-weight: 500;
             }
-            .call-popup {
-                background: rgba(76,175,80,0.1);
-                border-bottom: 1px solid rgba(76,175,80,0.25);
-                color: #4caf50;
-                padding: 8px 16px;
-                font-size: 13px;
-                display: flex;
-                align-items: center;
-                gap: 8px;
-                justify-content: center;
-                text-align: center;
-                animation: call-pulse 2s infinite;
-            }
-            .call-popup.show { display: flex !important; }
-            .call-popup a {
-                color: #fff;
-                text-decoration: underline;
-                font-weight: 600;
-            }
-            @keyframes call-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.7; } }
             </style>
 
             <script>
@@ -169,28 +146,11 @@ $other_user_id = ($user_id == 1) ? 2 : 1;
                     .then(r => r.json())
                     .then(data => {
                         const popup = document.getElementById('theater-popup');
-                        const callPopup = document.getElementById('call-popup');
-                        // Show theater popup only if partner is in theater but NOT in call
-                        if (data.users_in_theater === 1 && !data.partner_in_call) {
+                        // Show only if exactly 1 person is in theater (the partner)
+                        if (data.users_in_theater === 1) {
                             popup.classList.add('show');
                         } else {
                             popup.classList.remove('show');
-                        }
-                        // Show call popup when partner is in a call
-                        if (data.partner_in_call) {
-                            callPopup.classList.add('show');
-                            const link = document.getElementById('call-join-link');
-                            if (typeof isLocked !== 'undefined' && isLocked) {
-                                link.removeAttribute('href');
-                                link.style.cursor = 'default';
-                                link.style.opacity = '0.5';
-                            } else {
-                                link.href = 'call.php';
-                                link.style.cursor = 'pointer';
-                                link.style.opacity = '1';
-                            }
-                        } else {
-                            callPopup.classList.remove('show');
                         }
                     })
                     .catch(e => console.error('Theater check failed', e));

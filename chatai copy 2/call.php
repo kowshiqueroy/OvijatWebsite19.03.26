@@ -894,16 +894,5 @@ $other_name = ($user_id == 1) ? 'Rai' : 'Kush';
     }
     <?php endif; ?>
     </script>
-
-    <!-- Call Presence Module (independent – notifies partner this user is in call) -->
-    <script>
-    setInterval(() => {
-        fetch('api.php?action=update_status', {
-            method: 'POST',
-            headers: { 'X-CSRF-TOKEN': CSRF_TOKEN, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ is_typing: 0, in_theater: 1 })
-        }).catch(() => {});
-    }, 3000);
-    </script>
 </body>
 </html>

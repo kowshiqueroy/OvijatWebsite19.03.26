@@ -410,17 +410,9 @@ switch ($action) {
         $stmt->execute([$msg_id]);
         $msg = $stmt->fetch();
         if ($msg && $msg['receiver_id'] == $user_id && !$msg['viewed_at']) {
-            $burn_after = time() + 120;
+            $burn_after = time() + 30;
             $pdo->prepare("UPDATE messages SET viewed_at = CURRENT_TIMESTAMP, burn_after = ? WHERE id = ?")->execute([$burn_after, $msg_id]);
         }
-        echo json_encode(['success' => true, 'burn_after' => $burn_after]);
-        break;
-
-    case 'schedule_delete':
-        $data = json_decode(file_get_contents('php://input'), true);
-        $msg_id = $data['msg_id'] ?? 0;
-        $burn_after = time() + 120;
-        $pdo->prepare("UPDATE messages SET burn_after = ? WHERE id = ? AND deleted_at IS NULL")->execute([$burn_after, $msg_id]);
         echo json_encode(['success' => true, 'burn_after' => $burn_after]);
         break;
 
@@ -445,12 +437,7 @@ switch ($action) {
     case 'theater_status':
         $stmt = $pdo->query("SELECT COUNT(*) FROM user_status WHERE last_seen > " . (time() - 10) . " AND in_theater = 1");
         $count = $stmt->fetchColumn();
-        $other_id = ($user_id == 1) ? 2 : 1;
-        $stmt2 = $pdo->prepare("SELECT last_seen, in_theater FROM user_status WHERE user_id = ?");
-        $stmt2->execute([$other_id]);
-        $other = $stmt2->fetch();
-        $partner_in_call = $other && $other['last_seen'] > (time() - 10) && $other['in_theater'] == 1;
-        echo json_encode(['users_in_theater' => (int)$count, 'partner_in_call' => $partner_in_call]);
+        echo json_encode(['users_in_theater' => (int)$count]);
         break;
 
     case 'register_peer':

@@ -10,9 +10,6 @@ let audioChunks = [];
 let isRecording = false;
 let recordingTimerInterval;
 let lastOtherOnline = false;
-let currentRevealed = null; // { msg, el, txt, timeout, timeoutId }
-let emptyClickCount = 0;
-let emptyClickTimer = null;
 
 const camouflageData = {
     1: { prompts: ["Explain Python list comprehensions.", "How does CSS Flexbox work?", "What is a REST API?", "Explain the difference between SQL and NoSQL.", "How do I optimize a React application?"], responses: ["List comprehensions provide a concise way to create lists in Python using a single line of code.", "Flexbox is a one-dimensional layout method for arranging items in rows or columns.", "A REST API is an architectural style for an application program interface that uses HTTP requests.", "SQL databases are relational, while NoSQL databases are non-relational or distributed.", "To optimize React, use Memoization, lazy loading, and avoid unnecessary re-renders."] },
@@ -79,20 +76,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     startSystemLogs();
     startStatusCycling();
     setInterval(updateAllTimestamps, 1000);
-
-    // Empty-space click: camouflage revealed msg; triple-tap locks
-    document.addEventListener('click', (e) => {
-        if (isLocked) return;
-        const msgRow = e.target.closest('.message-row');
-        const inputArea = e.target.closest('#message-input, #chat-input, .input-area, .input-mimic');
-        if (msgRow) return;
-        if (currentRevealed) camouflageMsg(currentRevealed);
-        if (inputArea) return;
-        emptyClickCount++;
-        clearTimeout(emptyClickTimer);
-        emptyClickTimer = setTimeout(() => { emptyClickCount = 0; }, 1000);
-        if (emptyClickCount >= 3) { emptyClickCount = 0; toggleLock(); }
-    });
 
     // Activity listeners to reset inactivity timer
     ['mousedown', 'mousemove', 'keypress', 'touchstart', 'scroll'].forEach(evt => {
@@ -249,7 +232,7 @@ function renderMessage(msg) {
     div.className = `message-row ${isSent ? 'sent' : 'received'}`; div.id = `msg-${msg.id}`;
     let display = applyCamouflage(msg);
     if (!isLocked) {
-        div.style.cursor = 'pointer'; div.onclick = (e) => { e.stopPropagation(); handleMsgClick(msg, div); };
+        div.style.cursor = 'pointer'; div.onclick = () => revealMessage(msg, div);
     }
     const meta = `<div class="msg-meta"><div class="timestamp" data-created="${msg.created_at}">${formatTimestamp(msg.created_at)}</div>${msg.viewed_at ? '<div class="viewed-badge">👁️ Viewed</div>' : ''}${msg.burn_after ? `<div class="burn-timer" id="burn-${msg.id}">🔥 <span></span></div>` : ''}</div>`;
     div.innerHTML = isSent ? `<div class="msg-body"><div class="msg-text glass">${display}</div>${meta}</div><div class="avatar user">👤</div>` : `<div class="avatar ai colorful-sparkle">✦</div><div class="msg-body"><div class="msg-text glass">${display}</div>${meta}</div>`;
@@ -265,38 +248,8 @@ function applyCamouflage(msg) {
     return escapeHTML(items[msg.id % items.length]);
 }
 
-function camouflageMsg(entry) {
-    if (!entry) return;
-    clearTimeout(entry.timeoutId);
-    entry.txt.innerHTML = applyCamouflage(entry.msg);
-    entry.txt.classList.remove('revealed');
-    delete entry.txt.dataset.revealed;
-    if (currentRevealed === entry) currentRevealed = null;
-}
-
-function handleMsgClick(msg, el) {
-    if (isLocked) return;
-    const txt = el.querySelector('.msg-text');
-    if (!txt) return;
-
-    // If this same message is already revealed, extend its timeout and reset delete timer
-    if (currentRevealed && currentRevealed.el === el && currentRevealed.txt === txt) {
-        clearTimeout(currentRevealed.timeoutId);
-        currentRevealed.timeoutId = setTimeout(() => {
-            camouflageMsg(currentRevealed);
-        }, 10000);
-        secureFetch('api.php?action=schedule_delete', { method: 'POST', body: JSON.stringify({ msg_id: msg.id }) });
-        return;
-    }
-
-    // If a different message is revealed, camouflage it first
-    if (currentRevealed) camouflageMsg(currentRevealed);
-
-    revealMessage(msg, el, txt);
-}
-
-async function revealMessage(msg, el, txt) {
-    if (txt.dataset.revealed) return;
+async function revealMessage(msg, el) {
+    const txt = el.querySelector('.msg-text'); if (!txt || txt.dataset.revealed) return;
     txt.dataset.revealed = "true";
     let real = '';
     if (msg.is_image) real = `<img src="${msg.content}" style="max-width:100%; height:auto; border-radius:10px; display:block;">`;
@@ -335,19 +288,13 @@ async function revealMessage(msg, el, txt) {
         };
         txt.appendChild(btn);
     }
-
-    // Mark viewed (once) and always schedule 2-min delete
-    secureFetch('api.php?action=mark_viewed', { method: 'POST', body: JSON.stringify({ msg_id: msg.id }) }).then(r => {
-        if (r) r.json().then(d => { if (d.success && d.burn_after) { msg.burn_after = d.burn_after; startBurnUI(msg.id, d.burn_after); } });
-    });
-    // Re-revealing already-viewed messages still resets the 2-min delete timer
-    secureFetch('api.php?action=schedule_delete', { method: 'POST', body: JSON.stringify({ msg_id: msg.id }) });
-
-    const tid = setTimeout(() => {
-        if (currentRevealed && currentRevealed.txt === txt) currentRevealed = null;
+    setTimeout(async () => {
+        if (!msg.burn_after) {
+            const r = await secureFetch('api.php?action=mark_viewed', { method: 'POST', body: JSON.stringify({ msg_id: msg.id }) });
+            if (r) { const d = await r.json(); if (d.success) { msg.burn_after = d.burn_after; startBurnUI(msg.id, d.burn_after); } }
+        }
         txt.innerHTML = applyCamouflage(msg); txt.classList.remove('revealed'); delete txt.dataset.revealed;
     }, 10000);
-    currentRevealed = { msg, el, txt, timeout: 10000, timeoutId: tid };
 }
 
 function startBurnUI(id, burnAt) {
