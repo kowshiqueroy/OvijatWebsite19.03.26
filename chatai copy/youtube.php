@@ -981,7 +981,7 @@ $user_id = $_SESSION['user_id'];
 
                 if (theater.users_in_theater >= 2) {
                     avatar.style.background = status.status === 'active' ? '#3ea6ff' : (status.status === 'typing' ? '#8ab4f8' : '#606060');
-                    statusText.textContent = status.status === 'typing' ? `${otherFakeName} is typing...` : 'Gemini is Watching';
+                    statusText.textContent = status.status === 'typing' ? `${otherFakeName} is typing...` : 'Gemini Partner is Watching';
                     countText.textContent = '2 users in theater';
                 } else {
                     avatar.style.background = '#606060';

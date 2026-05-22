@@ -475,13 +475,13 @@ async function getOtherStatus() {
     const isOnline = d.status === 'active' || d.status === 'typing';
     const color = (d.status === 'typing') ? '#ffc107' : (isOnline ? '#28a745' : '#f44336');
     document.documentElement.style.setProperty('--status-color', color);
-    currentStatusText = (d.status === 'typing') ? "Gemini is typing..." : (isOnline ? "Gemini is online" : "Gemini is offline");
+    currentStatusText = (d.status === 'typing') ? "Gemini partner is typing..." : (isOnline ? "Gemini is online" : "Gemini is offline");
     if (thinkingText) thinkingText.textContent = currentStatusText;
     debugLog(`Polling: Tab=${document.hidden?'HIDDEN':'VISIBLE'} Online=${isOnline} Prev=${lastOtherOnline}`);
     if (!isInitialLoad) {
         if (isOnline && lastOtherOnline === false) { 
             debugLog("ONLINE TRANSITION DETECTED"); 
-            showSystemNotification("Gemini Online", "Node is now online."); 
+            showSystemNotification("Gemini Online", "Partner is now online."); 
         }
     }
     lastOtherOnline = isOnline;
