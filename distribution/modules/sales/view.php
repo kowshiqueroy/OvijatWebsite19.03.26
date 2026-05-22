@@ -15,6 +15,9 @@ if (!$sale) redirect('modules/sales/index.php', 'Sale not found.', 'danger');
 
 $items = fetch_all("SELECT i.*, p.name as product_name FROM sales_items i JOIN products p ON i.product_id = p.id WHERE i.draft_id = ? AND i.isDelete = 0 AND p.isDelete = 0", [$id]);
 
+// Fetch Truck Load Details
+$truck_load = fetch_one("SELECT tl.* FROM truck_loads tl JOIN truck_load_items tli ON tl.id = tli.truck_load_id WHERE tli.invoice_id = ? AND tl.isDelete = 0", [$id]);
+
 // QR Code URL (Verify Invoice)
 $verify_url = BASE_URL . "verify_invoice.php?id=" . $id;
 $qr_url = "https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=" . urlencode($verify_url);
@@ -83,10 +86,70 @@ $qr_url = "https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=" . url
     }
 </style>
 
-<div class="no-print mb-3 text-end">
-    <button onclick="window.print()" class="btn btn-dark shadow-sm"><i class="fas fa-print me-1"></i> Print Invoice (A4)</button>
-    <a href="index.php" class="btn btn-outline-secondary shadow-sm">Back</a>
+<div class="row no-print mb-4">
+    <div class="col-md-6">
+        <a href="index.php" class="btn btn-outline-secondary"><i class="fas fa-arrow-left me-1"></i> Back</a>
+    </div>
+    <div class="col-md-6 text-end">
+        <?php if (in_array($_SESSION['role'], [ROLE_ADMIN, ROLE_ACCOUNTANT])): ?>
+            <button type="button" class="btn btn-warning me-2" data-bs-toggle="modal" data-bs-target="#adminModal">
+                <i class="fas fa-user-shield me-1"></i> Accountant Tools
+            </button>
+        <?php endif; ?>
+        <button onclick="window.print()" class="btn btn-dark"><i class="fas fa-print me-1"></i> Print Invoice (A4)</button>
+    </div>
 </div>
+
+<?php if (in_array($_SESSION['role'], [ROLE_ADMIN, ROLE_ACCOUNTANT])): ?>
+<!-- Admin/Accountant Modal -->
+<div class="modal fade no-print" id="adminModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Administrative Tools</h5>
+                <button type="button" class="btn-close" data-bs-toggle="modal" data-bs-target="#adminModal"></button>
+            </div>
+            <form action="update_admin_fields.php" method="POST">
+                <?php csrf_field(); ?>
+                <input type="hidden" name="id" value="<?php echo $id; ?>">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Delivery Date</label>
+                        <input type="date" name="delivery_date" class="form-control" value="<?php echo $sale['delivery_date']; ?>" <?php echo ($sale['delivery_status'] != 'Pending') ? 'readonly' : ''; ?>>
+                        <?php if($sale['delivery_status'] != 'Pending'): ?>
+                            <small class="text-muted">Date can only be changed while status is PENDING.</small>
+                        <?php endif; ?>
+                    </div>
+                    <div class="form-check form-switch mb-3">
+                        <input class="form-check-input" type="checkbox" name="hide_from_print" id="hidePrint" <?php echo $sale['hide_from_print'] ? 'checked' : ''; ?>>
+                        <label class="form-check-label" for="hidePrint">Hide from Print/Ledger</label>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Delivery Status</label>
+                        <select name="delivery_status" class="form-select">
+                            <option value="Pending" <?php if($sale['delivery_status'] == 'Pending') echo 'selected'; ?>>Pending</option>
+                            <option value="Loading" <?php if($sale['delivery_status'] == 'Loading') echo 'selected'; ?>>Loading</option>
+                            <option value="In Transit" <?php if($sale['delivery_status'] == 'In Transit') echo 'selected'; ?>>In Transit</option>
+                            <option value="Delivered" <?php if($sale['delivery_status'] == 'Delivered') echo 'selected'; ?>>Delivered</option>
+                            <option value="Failed" <?php if($sale['delivery_status'] == 'Failed') echo 'selected'; ?>>Failed</option>
+                            <option value="Returned" <?php if($sale['delivery_status'] == 'Returned') echo 'selected'; ?>>Returned</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="submit" class="btn btn-primary">Save Changes</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+<?php endif; ?>
+
+<?php if ($sale['hide_from_print']): ?>
+    <div class="alert alert-warning no-print border-warning">
+        <i class="fas fa-eye-slash me-2"></i> This invoice is marked as <strong>HIDDEN FROM PRINT</strong> and will not appear in the ledger.
+    </div>
+<?php endif; ?>
 
 <div class="invoice-wrap">
     <table class="print-table">
@@ -118,9 +181,19 @@ $qr_url = "https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=" . url
 
                     <div class="bill-inline">
                         <strong>BILL TO:</strong> <?php echo $sale['customer_name']; ?> | 
-                        <strong>PH:</strong> <?php echo $sale['customer_phone']; ?> | 
-                        <strong>ADDR:</strong> <?php echo $sale['customer_address']; ?>
+                        <strong>PHONE:</strong> <?php echo $sale['customer_phone']; ?> | 
+                        <strong>ADDRESS:</strong> <?php echo $sale['customer_address']; ?>
                     </div>
+
+                    <?php if ($sale['status'] == 'Confirmed'): ?>
+                    <div class="bill-inline" style="background: #f8f9fa; border: 1px solid #ddd; padding: 2px; font-size: 9px; margin-top: -5px;">
+                        <strong>DELIVERY STATUS:</strong> <?php echo strtoupper($sale['delivery_status']); ?> | 
+                        <strong>DATE:</strong> <?php echo $sale['delivery_date'] ? date('d-m-Y', strtotime($sale['delivery_date'])) : 'PENDING'; ?>
+                        <?php if ($truck_load): ?>
+                            | <strong>TRUCK:</strong> <?php echo $truck_load['truck_no']; ?> | <strong>DRIVER:</strong> <?php echo $truck_load['driver_name']; ?>
+                        <?php endif; ?>
+                    </div>
+                    <?php endif; ?>
                 </td>
             </tr>
             <tr>
@@ -153,7 +226,8 @@ $qr_url = "https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=" . url
                         <td><?php echo $i++; ?></td>
                         <td>
                             <strong><?php echo $item['product_name']; ?></strong>
-                            <br><small class="text-muted">FREE</small>
+                            <?php if ($item['note']): ?><br><small class="text-muted"><?php echo $item['note']; ?></small><?php endif; ?>
+                            <br><small class="text-success fw-bold">FREE ITEM</small>
                         </td>
                         <td class="text-center"><?php echo $item['free_qty']; ?></td>
                         <td class="text-end"><?php echo number_format($item['rate'], 2); ?></td>

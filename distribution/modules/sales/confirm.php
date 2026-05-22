@@ -12,16 +12,8 @@ if (isset($_GET['id'])) {
         redirect('modules/sales/index.php', 'Invalid or already confirmed draft.', 'danger');
     }
 
-    $items = fetch_all("SELECT i.*, p.name as product_name, p.stock_qty FROM sales_items i JOIN products p ON i.product_id = p.id WHERE i.draft_id = ?", [$draft_id]);
+    $items = fetch_all("SELECT i.*, p.name as product_name, p.stock_qty FROM sales_items i JOIN products p ON i.product_id = p.id WHERE i.isDelete = 0 AND i.draft_id = ?", [$draft_id]);
     
-    // Validate Stock BEFORE starting transaction
-    foreach ($items as $item) {
-        $total_needed = $item['billed_qty'] + $item['free_qty'];
-        if ($item['stock_qty'] < $total_needed) {
-            redirect('modules/sales/index.php', "Insufficient stock for '{$item['product_name']}'. Required: $total_needed, Available: {$item['stock_qty']}", 'danger');
-        }
-    }
-
     $conn = get_db_connection();
     $conn->begin_transaction();
 
@@ -47,7 +39,9 @@ if (isset($_GET['id'])) {
 
         // 4. Create Transaction Record (Debit = Deduction)
         $stmt_trans = $conn->prepare("INSERT INTO transactions (customer_id, type, amount, description) VALUES (?, 'Debit', ?, ?)");
-        $desc = "Sales Confirmed (Draft #$draft_id)";
+        $user_info = fetch_one("SELECT username FROM users WHERE id = ?", [$_SESSION['user_id']]);
+        $acting_user = $user_info['username'] ?? 'System';
+        $desc = "Sales Confirmed (Draft #$draft_id) [Posted by: $acting_user]";
         $stmt_trans->bind_param("ids", $draft['customer_id'], $draft['grand_total'], $desc);
         $stmt_trans->execute();
 

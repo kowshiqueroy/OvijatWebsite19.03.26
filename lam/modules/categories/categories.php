@@ -6,12 +6,14 @@
 $action = $_POST['action'] ?? $_GET['action'] ?? '';
 
 if ($action === 'save' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    verify_csrf();
     $id   = (int)($_POST['cat_id'] ?? 0);
     $name = trim($_POST['name'] ?? '');
     if (!$name) { flash('error', 'Name is required.'); redirect('categories'); }
     if ($id) {
+        $old = dbFetch('SELECT name FROM categories WHERE id = ?', [$id])['name'] ?? '';
         dbUpdate('categories', ['name' => $name], 'id = ?', [$id]);
-        logAction('UPDATE', 'categories', $id, "Renamed category from '{$_POST['old_name']}' to '$name'");
+        logAction('UPDATE', 'categories', $id, "Renamed category from '$old' to '$name'");
         flash('success', 'Category updated.');
     } else {
         $newId = dbInsert('categories', ['name' => $name, 'created_at' => now()]);
@@ -22,6 +24,7 @@ if ($action === 'save' && $_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 if ($action === 'delete' && canDelete()) {
+    verify_csrf();
     $id = (int)$_GET['id'];
     dbDelete('categories', 'id = ?', [$id]);
     logAction('DELETE', 'categories', $id, "Deleted category: '{$_GET['name']}'");
@@ -57,7 +60,7 @@ require_once BASE_PATH . '/includes/header.php';
           <td>
             <a href="index.php?page=categories&edit=<?= $c['id'] ?>" class="btn btn-ghost btn-sm">✏️</a>
             <?php if (canDelete()): ?>
-            <a href="index.php?page=categories&action=delete&id=<?= $c['id'] ?>" class="btn btn-danger btn-sm" data-confirm="Delete category?">🗑️</a>
+            <a href="index.php?page=categories&action=delete&id=<?= $c['id'] ?>&csrf_token=<?= csrf_token() ?>" class="btn btn-danger btn-sm" data-confirm="Delete category?">🗑️</a>
             <?php endif ?>
           </td>
         </tr>

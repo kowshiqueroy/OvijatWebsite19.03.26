@@ -185,9 +185,9 @@ require_once BASE_PATH . '/includes/header.php';
        name="sms_balance" 
        class="form-control" 
        min="0" 
-       value="<?php echo isset($_GET['sms_balance']) && intval($_GET['sms_balance']) > 0 
-                    ? e($_GET['sms_balance'])+e($S['sms_balance']) 
-                    : e($S['sms_balance']); ?>" 
+value="<?php echo isset($_GET['sms_balance']) && intval($_GET['sms_balance']) > 0 
+                     ? e(intval($_GET['sms_balance']) + intval($S['sms_balance'])) 
+                     : e($S['sms_balance']); ?>" 
        readonly></div>
 
 <button type="submit" class="btn btn-primary">💾 Save Settings</button>

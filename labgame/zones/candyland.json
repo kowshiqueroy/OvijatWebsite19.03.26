@@ -1,0 +1,15 @@
+{
+    "name": "Candy Land",
+    "emoji": "🍭",
+    "bgColors": ["#ff69b4", "#ff1493", "#ffb6c1", "#ff69b4"],
+    "trackColor": "#fff0f5",
+    "roadColor": "#ffd1dc",
+    "roadLines": "#ff69b4",
+    "carColors": ["#ff1493", "#ff4500", "#32cd32", "#1e90ff"],
+    "finishLine": ["#ff69b4", "#ffffff"],
+    "scenery": {
+        "left": [{"emoji":"🍬","size":20,"yOff":0.1},{"emoji":"🍭","size":24,"yOff":0.25},{"emoji":"🧁","size":18,"yOff":0.4},{"emoji":"🍫","size":16,"yOff":0.55},{"emoji":"🍩","size":22,"yOff":0.7},{"emoji":"🍦","size":20,"yOff":0.85}],
+        "right": [{"emoji":"🌈","size":22,"yOff":0.05},{"emoji":"🎠","size":18,"yOff":0.2},{"emoji":"🍬","size":20,"yOff":0.35},{"emoji":"🍭","size":16,"yOff":0.5},{"emoji":"🎪","size":20,"yOff":0.65},{"emoji":"🧁","size":18,"yOff":0.8}],
+        "bgTrees": ["🌷", "🌻", "🌸", "🌺"]
+    }
+}

@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Mini Poster Maker</title>
+    <!-- Bangla Typography -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@300;400;500;600;700&family=Noto+Sans+Bengali:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- Top Header -->
+    <header class="top-bar">
+        <div class="project-info" id="btn-resize">
+            <span id="project-size">1080x1920</span>
+            <span class="icon">📐</span>
+        </div>
+        <div class="actions">
+            <button id="btn-undo" class="icon-btn" title="Undo" disabled>⟲</button>
+            <button id="btn-redo" class="icon-btn" title="Redo" disabled>⟳</button>
+            <button id="btn-export-menu" class="btn-primary">Export</button>
+        </div>
+    </header>
+
+    <!-- Main Workspace -->
+    <main class="workspace" id="workspace">
+        <div id="artboard-wrapper">
+            <div id="artboard">
+                <div id="art-bg"></div>
+                <canvas id="animation-canvas"></canvas>
+                <div id="elements-layer"></div>
+                <!-- Magnetic Guides -->
+                <div id="guide-v" class="guide"></div>
+                <div id="guide-h" class="guide"></div>
+                <div id="transform-overlay" style="display: none;">
+                    <div class="handle top-left" data-action="resize-tl"></div>
+                    <div class="handle top-right" data-action="resize-tr"></div>
+                    <div class="handle bottom-left" data-action="resize-bl"></div>
+                    <div class="handle bottom-right" data-action="resize-br"></div>
+                    <div class="handle rotate-handle" data-action="rotate">↻</div>
+                    <div class="handle delete-handle" data-action="delete">✕</div>
+                    <div class="bounding-box"></div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Bottom App Bar -->
+    <nav class="bottom-bar">
+        <button class="tool-btn" data-target="sheet-text">
+            <span class="icon">📝</span>
+            <span class="label">Text</span>
+        </button>
+        <button class="tool-btn" data-target="sheet-image">
+            <span class="icon">🖼️</span>
+            <span class="label">Image</span>
+        </button>
+        <button class="tool-btn" data-target="sheet-shape">
+            <span class="icon">🔺</span>
+            <span class="label">Shape</span>
+        </button>
+        <button class="tool-btn" data-target="sheet-bg">
+            <span class="icon">🎨</span>
+            <span class="label">BG</span>
+        </button>
+        <button class="tool-btn" data-target="sheet-motion">
+            <span class="icon">✨</span>
+            <span class="label">Motion</span>
+        </button>
+        <button class="tool-btn" data-target="sheet-layers">
+            <span class="icon">📚</span>
+            <span class="label">Layers</span>
+        </button>
+    </nav>
+
+    <!-- Bottom Sheets Overlay -->
+    <div class="sheet-backdrop" id="sheet-backdrop"></div>
+
+    <!-- Sheet: Project Settings -->
+    <div class="bottom-sheet" id="sheet-project">
+        <div class="sheet-header">
+            <div class="sheet-header-row">
+                <h3>Canvas Size</h3>
+                <button class="close-sheet">✖</button>
+            </div>
+        </div>
+        <div class="sheet-content">
+            <div class="control-group">
+                <label>Preset Ratio</label>
+                <div class="shape-grid" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px;">
+                    <button class="btn-full" data-size="1080x1920">9:16 (Story)</button>
+                    <button class="btn-full" data-size="1920x1080">16:9 (Banner)</button>
+                    <button class="btn-full" data-size="1080x1080">1:1 (Post)</button>
+                </div>
+            </div>
+            <div class="control-row">
+                <div class="control-group">
+                    <label>Width</label>
+                    <input type="number" id="project-w" value="1080">
+                </div>
+                <div class="control-group">
+                    <label>Height</label>
+                    <input type="number" id="project-h" value="1920">
+                </div>
+            </div>
+            <button id="btn-apply-size" class="btn-full btn-primary">Apply Dimensions</button>
+        </div>
+    </div>
+
+    <!-- Sheet: Text Properties -->
+    <div class="bottom-sheet" id="sheet-text">
+        <div class="sheet-header">
+            <div class="sheet-header-row">
+                <h3>Add / Edit Text</h3>
+                <button class="close-sheet">✖</button>
+            </div>
+        </div>
+        <div class="sheet-content">
+            <textarea id="text-input" placeholder="Type text here (Bangla/English)..."></textarea>
+            <div class="control-group">
+                <label>Font</label>
+                <select id="text-font">
+                    <option value="'Hind Siliguri', sans-serif">Hind Siliguri</option>
+                    <option value="'Noto Sans Bengali', sans-serif">Noto Sans Bengali</option>
+                    <option value="Arial, sans-serif">Arial</option>
+                </select>
+            </div>
+            <div class="control-row">
+                <div class="control-group">
+                    <label>Color</label>
+                    <input type="color" id="text-color" value="#ffffff">
+                </div>
+                <div class="control-group">
+                    <label>Stroke (Outline)</label>
+                    <input type="color" id="text-stroke-color" value="#000000">
+                </div>
+            </div>
+            <button id="btn-add-text" class="btn-full">Add Text</button>
+        </div>
+    </div>
+
+    <!-- Sheet: Background -->
+    <div class="bottom-sheet" id="sheet-bg">
+        <div class="sheet-header">
+            <div class="sheet-header-row">
+                <h3>Background</h3>
+                <button class="close-sheet">✖</button>
+            </div>
+        </div>
+        <div class="sheet-content">
+            <div class="control-group">
+                <label>Solid Color</label>
+                <input type="color" id="bg-color" value="#121212">
+            </div>
+            <div class="control-group">
+                <label>Or Upload Image</label>
+                <input type="file" id="bg-image-upload" accept="image/*">
+            </div>
+        </div>
+    </div>
+
+    <!-- Sheet: Motion (Loop Engine) -->
+    <div class="bottom-sheet" id="sheet-motion">
+        <div class="sheet-header">
+            <div class="sheet-header-row">
+                <h3>Loop Video Engine</h3>
+                <button class="close-sheet">✖</button>
+            </div>
+        </div>
+        <div class="sheet-content">
+            <div class="control-group">
+                <label>Particle Overlay Preset</label>
+                <select id="motion-preset">
+                    <option value="none">None</option>
+                    <option value="rain">Rain Drops</option>
+                    <option value="snow">Snowing</option>
+                    <option value="flower">Flower Dropping</option>
+                    <option value="clouds">Moving Clouds</option>
+                </select>
+            </div>
+            <div class="control-group">
+                <label>Loop Duration</label>
+                <select id="motion-duration">
+                    <option value="3">3 Seconds</option>
+                    <option value="5">5 Seconds</option>
+                    <option value="10">10 Seconds</option>
+                </select>
+            </div>
+        </div>
+    </div>
+
+    <!-- Sheet: Image -->
+    <div class="bottom-sheet" id="sheet-image">
+        <div class="sheet-header">
+            <div class="sheet-header-row">
+                <h3>Add Image</h3>
+                <button class="close-sheet">✖</button>
+            </div>
+        </div>
+        <div class="sheet-content">
+            <div class="control-group">
+                <label>Upload Image</label>
+                <input type="file" id="image-upload" accept="image/*">
+            </div>
+            <div class="control-group">
+                <label>Blend Mode</label>
+                <select id="image-blend">
+                    <option value="normal">Normal</option>
+                    <option value="multiply">Multiply</option>
+                    <option value="screen">Screen</option>
+                    <option value="overlay">Overlay</option>
+                </select>
+            </div>
+        </div>
+    </div>
+
+    <!-- Sheet: Shape -->
+    <div class="bottom-sheet" id="sheet-shape">
+        <div class="sheet-header">
+            <div class="sheet-header-row">
+                <h3>Add Shape</h3>
+                <button class="close-sheet">✖</button>
+            </div>
+        </div>
+        <div class="sheet-content">
+            <div class="shape-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                <button class="btn-full" data-shape="rect">Rectangle</button>
+                <button class="btn-full" data-shape="circle">Circle</button>
+            </div>
+            <div class="control-group mt-2">
+                <label>Fill Color</label>
+                <input type="color" id="shape-color" value="#4d90fe">
+            </div>
+            <div class="control-group">
+                <label>Border Radius</label>
+                <input type="range" id="shape-radius" min="0" max="500" value="0">
+            </div>
+        </div>
+    </div>
+
+    <!-- Sheet: Layers -->
+    <div class="bottom-sheet" id="sheet-layers">
+        <div class="sheet-header">
+            <div class="sheet-header-row">
+                <h3>Layers</h3>
+                <button class="close-sheet">✖</button>
+            </div>
+        </div>
+        <div class="sheet-content">
+            <ul id="layers-list">
+                <!-- Layer items injected here by JS -->
+            </ul>
+        </div>
+    </div>
+
+    <!-- Sheet: Export -->
+    <div class="bottom-sheet" id="sheet-export">
+        <div class="sheet-header">
+            <div class="sheet-header-row">
+                <h3>Export Options</h3>
+                <button class="close-sheet">✖</button>
+            </div>
+        </div>
+        <div class="sheet-content">
+            <div class="export-options">
+                <div class="export-card">
+                    <h4>Static Image</h4>
+                    <label>Scale Multiplier</label>
+                    <select id="export-scale">
+                        <option value="1">1x (Standard)</option>
+                        <option value="2" selected>2x (High Res)</option>
+                        <option value="3">3x (Ultra)</option>
+                    </select>
+                    <button id="btn-export-png" class="btn-full mt-2">Download PNG</button>
+                    <button id="btn-export-jpg" class="btn-full mt-1">Download JPG</button>
+                </div>
+                <div class="export-card mt-3">
+                    <h4>Looping Video (WebM)</h4>
+                    <p class="text-small">Includes alpha channel (transparency) if background is empty.</p>
+                    <button id="btn-export-video" class="btn-full btn-primary mt-2">Record & Download Video</button>
+                    <div id="recording-status" class="mt-2 text-center" style="display: none; color: #ff4444;">
+                        Recording... Please wait.
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Hidden native elements for utility -->
+    <input type="file" id="generic-file-input" style="display: none;">
+
+    <script src="script.js"></script>
+</body>
+</html>

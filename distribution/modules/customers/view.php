@@ -101,10 +101,10 @@ $sales = fetch_all("SELECT * FROM sales_drafts WHERE customer_id = ? ORDER BY cr
                     <?php csrf_field(); ?>
                     <input type="hidden" name="customer_id" value="<?php echo $id; ?>">
                     <div class="mb-3">
-                        <label class="form-label">Type</label>
+                        <label class="form-label">Adjustment Type</label>
                         <select name="trans_type" class="form-control" required>
-                            <option value="Credit">Credit (Received Money)</option>
-                            <option value="Debit">Debit (Increased Debt)</option>
+                            <option value="Credit">(+) Add Balance / Received Money</option>
+                            <option value="Debit">(-) Deduct Balance / Charge</option>
                         </select>
                     </div>
                     <div class="mb-3">
@@ -112,8 +112,9 @@ $sales = fetch_all("SELECT * FROM sales_drafts WHERE customer_id = ? ORDER BY cr
                         <input type="number" step="0.01" name="amount" class="form-control" required>
                     </div>
                     <div class="mb-3">
-                        <label class="form-label">Description</label>
-                        <textarea name="description" class="form-control" rows="2" placeholder="Reason for adjustment..."></textarea>
+                        <label class="form-label">Transaction Description (Bank Details / Reference)</label>
+                        <textarea name="description" class="form-control" rows="3" placeholder="Enter bank name, branch, deposit ref, and who authorized this... (REQUIRED)" required></textarea>
+                        <small class="text-muted">Example: DBBL Deposit #12345, Authorized by Manager John</small>
                     </div>
                     <button type="submit" class="btn btn-warning w-100">Post Transaction</button>
                 </form>

@@ -75,17 +75,6 @@ function generateInvoiceNo(): string {
     return 'INV-' . str_pad($next, 6, '0', STR_PAD_LEFT);
 }
 
-// ── QR Code URL (Google Charts free API) ─────────────────────
-function qrUrl(string $data, int $size = 150): string {
-    return 'https://api.qrserver.com/v1/create-qr-code/?size=' . $size . 'x' . $size
-         . '&data=' . urlencode($data);
-}
-
-// ── Barcode (uses a pure-CSS/JS inline barcode) ──────────────
-function barcodeValue(string $productId): string {
-    return preg_replace('/[^A-Z0-9\-]/', '', strtoupper($productId));
-}
-
 // ── Redirect helper ───────────────────────────────────────────
 function redirect(string $page, array $params = []): never {
     $url = BASE_URL . '/index.php?page=' . $page;
@@ -126,12 +115,20 @@ function paginate(string $sql, array $params, int $page, int $perPage = 20): arr
         'last_page'  => max(1, (int) ceil($total / $perPage)),
     ];
 }
- function sendHttpPost(string $url, array $data): string {
+ function sendHttpPost(string $url, array $data): string|false {
                 $ch = curl_init($url);
                 curl_setopt($ch, CURLOPT_POST, 1);
                 curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($data));
                 curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+                curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+                curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 0);
+                curl_setopt($ch, CURLOPT_TIMEOUT, 15);
                 $response = curl_exec($ch);
+                $error    = curl_error($ch);
                 curl_close($ch);
+                if ($response === false || $response === '') {
+                    error_log("sendHttpPost cURL error: " . ($error ?: 'empty response') . " | URL: $url");
+                    return '';
+                }
                 return $response;
             }

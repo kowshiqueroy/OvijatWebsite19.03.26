@@ -7,6 +7,13 @@ $user_count = fetch_one("SELECT COUNT(id) as total FROM users WHERE isDelete = 0
 $customer_count = fetch_one("SELECT COUNT(id) as total FROM customers WHERE isDelete = 0")['total'];
 $product_count = fetch_one("SELECT COUNT(id) as total FROM products WHERE isDelete = 0")['total'];
 $draft_count = fetch_one("SELECT COUNT(id) as total FROM sales_drafts WHERE status = 'Draft' AND isDelete = 0")['total'];
+
+// Total Owed to Company (Admins/Accountants only)
+$total_owed = 0;
+if (in_array($_SESSION['role'], [ROLE_ADMIN, ROLE_ACCOUNTANT])) {
+    $owed_res = fetch_one("SELECT SUM(balance) as total FROM customers WHERE isDelete = 0");
+    $total_owed = $owed_res['total'] ?? 0;
+}
 ?>
 
 <div class="row">
@@ -17,6 +24,20 @@ $draft_count = fetch_one("SELECT COUNT(id) as total FROM sales_drafts WHERE stat
 </div>
 
 <div class="row g-3">
+    <?php if (in_array($_SESSION['role'], [ROLE_ADMIN, ROLE_ACCOUNTANT])): ?>
+    <div class="col-md-3">
+        <div class="card bg-danger text-white shadow-sm h-100">
+            <div class="card-body">
+                <h6 class="card-title text-uppercase small">Total Owed (Debt)</h6>
+                <h2 class="mb-0"><?php echo format_currency($total_owed); ?></h2>
+            </div>
+            <div class="card-footer bg-transparent border-0 text-end">
+                <a href="modules/customers/index.php" class="text-white text-decoration-none small">View Ledger <i class="fas fa-arrow-right ms-1"></i></a>
+            </div>
+        </div>
+    </div>
+    <?php endif; ?>
+
     <?php if (in_array($_SESSION['role'], [ROLE_ADMIN, ROLE_MANAGER, ROLE_ACCOUNTANT, ROLE_VIEWER])): ?>
     <div class="col-md-3">
         <div class="card bg-primary text-white shadow-sm h-100">

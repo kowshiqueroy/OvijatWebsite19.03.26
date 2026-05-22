@@ -267,7 +267,7 @@ SET FOREIGN_KEY_CHECKS = 1;
   <?php if ($ran): ?>
     <div class="success">
       ✅ Setup complete!<br>
-      Default login: <strong>admin</strong> / <strong>admin123</strong><br>
+      Default login: <strong>admin</strong> / <strong>12345678</strong><br>
       Please change the password after first login.
     </div>
     <a href="index.php" class="btn">Go to App →</a>

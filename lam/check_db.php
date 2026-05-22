@@ -5,8 +5,8 @@ $tablesToCheck = ['product_entries', 'requisitions'];
 $allExist = true;
 
 foreach ($tablesToCheck as $table) {
-    $stmt = db()->query("SHOW TABLES LIKE '$table'");
-    if ($stmt->rowCount() == 0) {
+    $exists = dbFetch("SHOW TABLES LIKE ?", [$table]);
+    if (!$exists) {
         $allExist = false;
         break;
     }

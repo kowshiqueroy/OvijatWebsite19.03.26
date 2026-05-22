@@ -17,9 +17,10 @@ $statuses = [
     'failed'            => 'Failed'
 ];
 
-$editableStatuses = ['draft', 'order_confirm'];
+$editableStatuses = ['draft', 'order_confirm', 'edit_confirm', 'on_design', 'on_production', 'on_packaging', 'delivery_details'];
 
 if ($action === 'save_requisition' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    verify_csrf();
     $id               = (int)($_POST['requisition_id'] ?? 0);
     $customer_id      = (int)($_POST['customer_id'] ?? 0);
     $customer_name    = trim($_POST['customer_name'] ?? '');
@@ -42,7 +43,7 @@ if ($action === 'save_requisition' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($id) {
         $existing = dbFetch('SELECT status FROM requisitions WHERE id = ?', [$id]);
         if ($existing && !in_array($existing['status'], $editableStatuses)) {
-            flash('error', 'Cannot edit - requisition is already confirmed.');
+            flash('error', 'Cannot edit - requisition is already finalized.');
             redirect('requisition');
         }
         dbUpdate('requisitions', $data, 'id = ?', [$id]);
@@ -55,16 +56,18 @@ if ($action === 'save_requisition' && $_SERVER['REQUEST_METHOD'] === 'POST') {
         $data['requisition_no'] = $requisition_no;
         $newId = dbInsert('requisitions', $data);
         logAction('CREATE', 'requisitions', $newId, 'Created requisition: ' . $requisition_no);
-        flash('success', 'Requisition created.');
+        flash('success', 'Requisition created. Please add items.');
+        redirect('requisition', ['edit' => $newId, 'add_item' => '1']);
     }
     redirect('requisition');
 }
 
 if ($action === 'add_item' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    verify_csrf();
     $requisition_id = (int)$_POST['requisition_id'];
     $existing = dbFetch('SELECT status FROM requisitions WHERE id = ?', [$requisition_id]);
     if ($existing && !in_array($existing['status'], $editableStatuses)) {
-        flash('error', 'Cannot add items - requisition is already confirmed.');
+        flash('error', 'Cannot add items - requisition is already finalized.');
         redirect('requisition');
     }
 
@@ -94,10 +97,11 @@ if ($action === 'add_item' && $_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 if ($action === 'delete_item') {
+    verify_csrf();
     $item_id = (int)$_GET['item_id'];
     $item = dbFetch('SELECT ri.requisition_id, r.status FROM requisition_items ri JOIN requisitions r ON ri.requisition_id = r.id WHERE ri.id = ?', [$item_id]);
     if ($item && !in_array($item['status'], $editableStatuses)) {
-        flash('error', 'Cannot delete item - requisition is already confirmed.');
+        flash('error', 'Cannot delete item - requisition is already finalized.');
         redirect('requisition');
     }
     dbDelete('requisition_items', 'id = ?', [$item_id]);
@@ -107,6 +111,7 @@ if ($action === 'delete_item') {
 }
 
 if ($action === 'delete_requisition') {
+    verify_csrf();
     $id = (int)$_GET['id'];
     $itemCount = dbFetch('SELECT COUNT(*) as c FROM requisition_items WHERE requisition_id = ?', [$id])['c'] ?? 0;
     if ($itemCount > 0) {
@@ -119,7 +124,130 @@ if ($action === 'delete_requisition') {
     redirect('requisition');
 }
 
+if ($action === 'duplicate_requisition') {
+    verify_csrf();
+    $id = (int)$_GET['id'];
+    $req = dbFetch('SELECT * FROM requisitions WHERE id = ?', [$id]);
+    if ($req) {
+        $last = dbFetch('SELECT MAX(id) as max_id FROM requisitions');
+        $next = ($last['max_id'] ?? 0) + 1;
+        $requisition_no = 'REQ-' . str_pad($next, 6, '0', STR_PAD_LEFT);
+        
+        $newData = $req;
+        unset($newData['id'], $newData['created_at'], $newData['updated_at']);
+        $newData['requisition_no'] = $requisition_no;
+        $newData['status'] = 'draft';
+        
+        $newId = dbInsert('requisitions', $newData);
+        
+        $items = dbFetchAll('SELECT * FROM requisition_items WHERE requisition_id = ?', [$id]);
+        foreach ($items as $item) {
+            unset($item['id'], $item['created_at']);
+            $item['requisition_id'] = $newId;
+            dbInsert('requisition_items', $item);
+        }
+        
+        logAction('CREATE', 'requisitions', $newId, 'Duplicated from ' . $req['requisition_no']);
+        flash('success', 'Requisition duplicated as ' . $requisition_no);
+    }
+    redirect('requisition');
+}
+
+if ($action === 'convert_to_sale') {
+    verify_csrf();
+    $id = (int)$_GET['id'];
+    $req = dbFetch('SELECT * FROM requisitions WHERE id = ?', [$id]);
+    
+    if (!$req) {
+        flash('error', 'Requisition not found.');
+        redirect('requisition');
+    }
+
+    // 1. Ensure Customer exists
+    $customer_id = $req['customer_id'];
+    if (!$customer_id && !empty($req['customer_name'])) {
+        // Search by phone or name
+        $existingCust = dbFetch('SELECT id FROM customers WHERE phone = ? OR (name = ? AND phone = ?)', [$req['customer_phone'], $req['customer_name'], $req['customer_phone']]);
+        if ($existingCust) {
+            $customer_id = $existingCust['id'];
+        } else {
+            $customer_id = dbInsert('customers', [
+                'name'  => $req['customer_name'],
+                'phone' => $req['customer_phone'],
+                'email' => $req['customer_email'],
+            ]);
+        }
+        // Update requisition with the found/created customer_id
+        dbUpdate('requisitions', ['customer_id' => $customer_id], 'id = ?', [$id]);
+    }
+
+    // 2. Prepare Sale Draft
+    $lastSale = dbFetch('SELECT MAX(id) as max_id FROM sales');
+    $nextSale = ($lastSale['max_id'] ?? 0) + 1;
+    $invoice_no = 'INV-' . date('ymd') . str_pad($nextSale, 4, '0', STR_PAD_LEFT);
+    
+    $reqItems = dbFetchAll('SELECT * FROM requisition_items WHERE requisition_id = ?', [$id]);
+    $subtotal = array_sum(array_column($reqItems, 'total_price'));
+    
+    $sale_id = dbInsert('sales', [
+        'invoice_no'     => $invoice_no,
+        'customer_id'    => $customer_id,
+        'user_id'        => $_SESSION['user_id'] ?? 1,
+        'subtotal'       => $subtotal,
+        'total'          => $subtotal,
+        'status'         => 'draft',
+        'notes'          => 'From Requisition: ' . $req['requisition_no'],
+    ]);
+
+    // 3. Ensure Products exist and add Sale Items
+    foreach ($reqItems as $item) {
+        // Ensure product exists in products table by name
+        $prod = dbFetch('SELECT id FROM products WHERE name = ?', [$item['product_name']]);
+        $product_id = $prod ? $prod['id'] : null;
+        
+        if (!$product_id) {
+            $lastProd = dbFetch('SELECT MAX(id) as max_id FROM products');
+            $nextProdNo = ($lastProd['max_id'] ?? 0) + 1;
+            $product_id = dbInsert('products', [
+                'product_id' => 'PROD-' . str_pad($nextProdNo, 5, '0', STR_PAD_LEFT),
+                'name'       => $item['product_name'],
+                'active'     => 1
+            ]);
+        }
+
+        // Check for a variant (or create one for stock tracking if needed)
+        $variant = dbFetch('SELECT id FROM product_variants WHERE product_id = ? AND size = ? AND color = ?', [$product_id, $item['size'], $item['color']]);
+        $variant_id = $variant ? $variant['id'] : null;
+        if (!$variant_id) {
+            $variant_id = dbInsert('product_variants', [
+                'product_id' => $product_id,
+                'size'       => $item['size'],
+                'color'      => $item['color'],
+                'price'      => $item['unit_price'],
+                'quantity'   => 0 // Draft doesn't deduct stock yet usually, but we need a variant ID
+            ]);
+        }
+
+        dbInsert('sale_items', [
+            'sale_id'      => $sale_id,
+            'variant_id'   => $variant_id,
+            'product_name' => $item['product_name'],
+            'size'         => $item['size'],
+            'color'        => $item['color'],
+            'qty'          => $item['qty'],
+            'unit_price'   => $item['unit_price'],
+            'total_price'  => $item['total_price'],
+            'notes'        => $item['notes']
+        ]);
+    }
+
+    logAction('CREATE', 'sales', $sale_id, 'Created from Req: ' . $req['requisition_no']);
+    flash('success', 'Converted to Sales Draft: ' . $invoice_no);
+    redirect('sales');
+}
+
 if ($action === 'update_status') {
+    verify_csrf();
     $id     = (int)$_GET['id'];
     $status = $_GET['status'];
     
@@ -175,8 +303,11 @@ $requisitions = dbFetchAll("
     ORDER BY r.created_at DESC", $params);
 
 $allItems = [];
+$totalAllRequisitions = 0;
 foreach ($requisitions as $r) {
-    $allItems[$r['id']] = dbFetchAll('SELECT * FROM requisition_items WHERE requisition_id = ? ORDER BY id', [$r['id']]);
+    $items = dbFetchAll('SELECT * FROM requisition_items WHERE requisition_id = ? ORDER BY id', [$r['id']]);
+    $allItems[$r['id']] = $items;
+    $totalAllRequisitions += array_sum(array_column($items, 'total_price'));
 }
 $customers = dbFetchAll("SELECT id, name, phone, email FROM customers ORDER BY name");
 $products = dbFetchAll("SELECT id, name FROM products ORDER BY name");
@@ -241,7 +372,7 @@ require_once BASE_PATH . '/includes/header.php';
     <?php if ($search): ?>Search: <strong><?= e($search) ?></strong> | <?php endif ?>
     Date: <strong><?= fmtDate($dateFrom) ?></strong> to <strong><?= fmtDate($dateTo) ?></strong>
     <?php if ($filterStatus): ?> | Status: <strong><?= $statuses[$filterStatus] ?></strong><?php endif ?>
-    | Total: <strong><?= money($grandTotal ?? 0) ?></strong>
+    | Total: <strong><?= money($totalAllRequisitions) ?></strong>
   </p>
 </div>
 
@@ -290,19 +421,17 @@ require_once BASE_PATH . '/includes/header.php';
           <th>Notes</th>
           <th style="width:120px">Status</th>
           <th style="width:75px">Date</th>
-          <th style="width:90px" class="no-print">Actions</th>
+          <th style="width:180px" class="no-print">Actions</th>
         </tr>
       </thead>
       <tbody>
         <?php 
-        $grandTotal = 0;
-        $statusOrder = array_keys($statuses);
+        $currentGrandTotal = 0;
         foreach ($requisitions as $r): 
           $reqItems = $allItems[$r['id']] ?? [];
           $totalAmount = array_sum(array_column($reqItems, 'total_price'));
-          $grandTotal += $totalAmount;
+          $currentGrandTotal += $totalAmount;
           $rowCount = count($reqItems);
-          $currentIdx = array_search($r['status'], $statusOrder);
         ?>
         <?php if (empty($reqItems)): ?>
         <tr>
@@ -312,27 +441,32 @@ require_once BASE_PATH . '/includes/header.php';
             <small class="text-muted"><?= e($r['customer_phone']) ?></small>
           </td>
           <td><?= e($r['school_name']) ?></td>
-          <td colspan="5" class="text-muted text-center">No items</td>
+          <td colspan="6" class="text-muted text-center">No items</td>
           <td><strong><?= money($totalAmount) ?></strong></td>
           <td></td>
           <td>
-            <select name="status_disp_<?= $r['id'] ?>" class="form-control no-print" style="width:120px;padding:4px 6px;font-size:11px" onchange="window.location='index.php?page=requisition&action=update_status&id=<?= $r['id'] ?>&status='+this.value">
-              <?php foreach ($statuses as $k => $v): 
+            <select name="status_disp_<?= $r['id'] ?>" class="form-control no-print" style="width:120px;padding:4px 6px;font-size:11px" onchange="window.location='index.php?page=requisition&action=update_status&id=<?= $r['id'] ?>&status='+this.value+'&csrf_token=<?= csrf_token() ?>'">
+              <?php 
+              $statusOrder = array_keys($statuses);
+              $currentIdx = array_search($r['status'], $statusOrder);
+              foreach ($statuses as $k => $v): 
                 $optIdx = array_search($k, $statusOrder);
-                if ($optIdx >= $currentIdx):
               ?>
-                <option value="<?= $k ?>" <?= $r['status'] === $k ? 'selected' : '' ?>><?= $v ?></option>
-              <?php endif; endforeach ?>
+                <option value="<?= $k ?>" <?= $r['status'] === $k ? 'selected' : '' ?> <?= $optIdx < $currentIdx ? 'disabled' : '' ?>><?= $v ?></option>
+              <?php endforeach ?>
             </select>
             <span class="status-badge status-<?= $r['status'] ?>" style="display:none"><?= $statuses[$r['status']] ?? $r['status'] ?></span>
           </td>
           <td><?= fmtDate($r['created_at']) ?></td>
-          <td class="no-print">
-            <a href="index.php?page=requisition&edit=<?= $r['id'] ?>" class="btn btn-ghost btn-sm">👁️</a>
+          <td class="no-print" style="white-space:nowrap">
+            <a href="index.php?page=requisition&edit=<?= $r['id'] ?>" class="btn btn-ghost btn-sm" title="View">👁️</a>
+            <a href="index.php?page=requisition&action=duplicate_requisition&id=<?= $r['id'] ?>&csrf_token=<?= csrf_token() ?>" class="btn btn-ghost btn-sm" title="Duplicate">👯</a>
+            <a href="index.php?page=requisition&action=convert_to_sale&id=<?= $r['id'] ?>&csrf_token=<?= csrf_token() ?>" class="btn btn-ghost btn-sm" title="Convert to Sale" data-confirm="Create a sales draft from this requisition?">💰</a>
             <?php if (in_array($r['status'], $editableStatuses)): ?>
-            <a href="index.php?page=requisition&edit=<?= $r['id'] ?>&edit_modal=1" class="btn btn-ghost btn-sm">✏️</a>
+            <a href="index.php?page=requisition&edit=<?= $r['id'] ?>&add_item=1" class="btn btn-primary btn-sm" title="Add Item">➕ Item</a>
+            <a href="index.php?page=requisition&edit=<?= $r['id'] ?>&edit_modal=1" class="btn btn-ghost btn-sm" title="Edit Info">✏️</a>
             <?php endif ?>
-            <a href="index.php?page=requisition&action=delete_requisition&id=<?= $r['id'] ?>" class="btn btn-danger btn-sm" data-confirm="Delete this empty requisition?">🗑️</a>
+            <a href="index.php?page=requisition&action=delete_requisition&id=<?= $r['id'] ?>&csrf_token=<?= csrf_token() ?>" class="btn btn-danger btn-sm" data-confirm="Delete this empty requisition?" title="Delete">🗑️</a>
           </td>
         </tr>
         <?php else: ?>
@@ -356,21 +490,26 @@ require_once BASE_PATH . '/includes/header.php';
             <td><?= e($item['notes']) ?></td>
             <?php if ($idx === 0): ?>
             <td rowspan="<?= $rowCount ?>">
-              <select name="status_disp_<?= $r['id'] ?>" class="form-control no-print" style="width:120px;padding:4px 6px;font-size:11px" onchange="window.location='index.php?page=requisition&action=update_status&id=<?= $r['id'] ?>&status='+this.value">
-                <?php foreach ($statuses as $k => $v): 
+              <select name="status_disp_<?= $r['id'] ?>" class="form-control no-print" style="width:120px;padding:4px 6px;font-size:11px" onchange="window.location='index.php?page=requisition&action=update_status&id=<?= $r['id'] ?>&status='+this.value+'&csrf_token=<?= csrf_token() ?>'">
+                <?php 
+                $statusOrder = array_keys($statuses);
+                $currentIdx = array_search($r['status'], $statusOrder);
+                foreach ($statuses as $k => $v): 
                   $optIdx = array_search($k, $statusOrder);
-                  if ($optIdx >= $currentIdx):
                 ?>
-                  <option value="<?= $k ?>" <?= $r['status'] === $k ? 'selected' : '' ?>><?= $v ?></option>
-                <?php endif; endforeach ?>
+                  <option value="<?= $k ?>" <?= $r['status'] === $k ? 'selected' : '' ?> <?= $optIdx < $currentIdx ? 'disabled' : '' ?>><?= $v ?></option>
+                <?php endforeach ?>
               </select>
               <span class="status-badge status-<?= $r['status'] ?>" style="display:none"><?= $statuses[$r['status']] ?? $r['status'] ?></span>
             </td>
             <td rowspan="<?= $rowCount ?>"><?= fmtDate($r['created_at']) ?></td>
-            <td rowspan="<?= $rowCount ?>" class="no-print">
-              <a href="index.php?page=requisition&edit=<?= $r['id'] ?>" class="btn btn-ghost btn-sm">👁️</a>
+            <td rowspan="<?= $rowCount ?>" class="no-print" style="white-space:nowrap">
+              <a href="index.php?page=requisition&edit=<?= $r['id'] ?>" class="btn btn-ghost btn-sm" title="View">👁️</a>
+              <a href="index.php?page=requisition&action=duplicate_requisition&id=<?= $r['id'] ?>&csrf_token=<?= csrf_token() ?>" class="btn btn-ghost btn-sm" title="Duplicate">👯</a>
+              <a href="index.php?page=requisition&action=convert_to_sale&id=<?= $r['id'] ?>&csrf_token=<?= csrf_token() ?>" class="btn btn-ghost btn-sm" title="Convert to Sale" data-confirm="Create a sales draft from this requisition?">💰</a>
               <?php if (in_array($r['status'], $editableStatuses)): ?>
-              <a href="index.php?page=requisition&edit=<?= $r['id'] ?>&edit_modal=1" class="btn btn-ghost btn-sm">✏️</a>
+              <a href="index.php?page=requisition&edit=<?= $r['id'] ?>&add_item=1" class="btn btn-primary btn-sm" title="Add Item">➕ Item</a>
+              <a href="index.php?page=requisition&edit=<?= $r['id'] ?>&edit_modal=1" class="btn btn-ghost btn-sm" title="Edit Info">✏️</a>
               <?php endif ?>
             </td>
             <?php endif ?>
@@ -379,9 +518,9 @@ require_once BASE_PATH . '/includes/header.php';
         <?php endif ?>
         <?php endforeach ?>
         <?php if ($requisitions): ?>
-        <tr style="font-weight:bold;background:#f5f5f5">
+        <tr style="font-weight:bold;background:var(--surface2)">
           <td colspan="9" class="text-right">Grand Total:</td>
-          <td><?= money($grandTotal) ?></td>
+          <td><?= money($currentGrandTotal) ?></td>
           <td colspan="4"></td>
         </tr>
         <?php endif ?>
@@ -442,7 +581,7 @@ document.addEventListener('DOMContentLoaded', function() {
         <td><?= e($item['notes']) ?></td>
         <td>
           <?php if (in_array($editing['status'], $editableStatuses)): ?>
-          <a href="index.php?page=requisition&action=delete_item&item_id=<?= $item['id'] ?>" class="btn btn-danger btn-sm" data-confirm="Delete this item?">🗑️</a>
+          <a href="index.php?page=requisition&action=delete_item&item_id=<?= $item['id'] ?>&csrf_token=<?= csrf_token() ?>" class="btn btn-danger btn-sm" data-confirm="Delete this item?">🗑️</a>
           <?php endif ?>
         </td>
       </tr>
@@ -469,7 +608,7 @@ document.addEventListener('DOMContentLoaded', function() {
       <form method="POST" id="requisitionForm">
         <input type="hidden" name="action" value="save_requisition">
         <input type="hidden" name="requisition_id" value="<?= $editing['id'] ?? '' ?>">
-        
+        <input type="hidden" name="csrf_token" value="<?= csrf_token() ?>">
         <div class="grid-2" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
           <div class="form-group">
             <label class="form-label">Customer Name *</label>
@@ -524,11 +663,16 @@ document.addEventListener('DOMContentLoaded', function() {
       <form method="POST" id="addItemForm">
         <input type="hidden" name="action" value="add_item">
         <input type="hidden" name="requisition_id" value="<?= $editing['id'] ?? '' ?>">
+        <input type="hidden" name="csrf_token" value="<?= csrf_token() ?>">
 
         <div class="form-group">
           <label class="form-label">Product Name *</label>
-          <input type="text" name="product_name" class="form-control" required id="productNameInput" list="productList" autocomplete="off" placeholder="Type to search or enter new...">
-          <datalist id="productList"></datalist>
+          <input type="text" name="product_name" class="form-control" required list="productListItems" autocomplete="off" placeholder="Type or select product...">
+          <datalist id="productListItems">
+            <?php foreach ($products as $p): ?>
+              <option value="<?= e($p['name']) ?>"></option>
+            <?php endforeach ?>
+          </datalist>
         </div>
 
         <div class="grid-2" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
@@ -574,10 +718,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
 <script>
 const customers = <?= $customerJson ?>;
-const products = <?= $productJson ?>;
 
 const customerList = document.getElementById('customerList');
-const productList = document.getElementById('productList');
 
 customers.forEach(c => {
   const opt = document.createElement('option');
@@ -585,12 +727,6 @@ customers.forEach(c => {
   opt.dataset.phone = c.phone || '';
   opt.dataset.email = c.email || '';
   customerList.appendChild(opt);
-});
-
-products.forEach(p => {
-  const opt = document.createElement('option');
-  opt.value = p.name;
-  productList.appendChild(opt);
 });
 
 document.getElementById('customerNameInput').addEventListener('change', function() {

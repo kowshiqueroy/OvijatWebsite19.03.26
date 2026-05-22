@@ -14,7 +14,8 @@ $all_customers = fetch_all("SELECT id, name, phone FROM customers WHERE isDelete
 
 $data = [];
 if ($report_type == 'sales') {
-    $sql = "SELECT s.*, c.name as customer_name, u.username as creator_name 
+    $sql = "SELECT s.*, c.name as customer_name, u.username as creator_name, 
+            (SELECT CONCAT(truck_no, ' (', driver_name, ')') FROM truck_loads tl JOIN truck_load_items tli ON tl.id = tli.truck_load_id WHERE tli.invoice_id = s.id AND tl.isDelete = 0 LIMIT 1) as truck_info
             FROM sales_drafts s 
             JOIN customers c ON s.customer_id = c.id 
             JOIN users u ON s.created_by = u.id 
@@ -40,37 +41,57 @@ if ($report_type == 'sales') {
     }
     $data = $sales;
 } elseif ($report_type == 'stock') {
-    $sql = "SELECT se.*, p.name as product_name, u.username as creator_name, cat.name as cat_name
+    // Union Stock Entries and Damages
+    $sql_base = "SELECT 'Entry' as source, se.id, se.created_at, se.quantity, p.name as product_name, u.username as creator_name, cat.name as cat_name
             FROM stock_entries se 
             JOIN products p ON se.product_id = p.id 
             JOIN categories cat ON p.category_id = cat.id
             JOIN users u ON se.user_id = u.id 
             WHERE se.isDelete = 0 
-            AND DATE(se.created_at) BETWEEN ? AND ?";
-    $params = [$start_date, $end_date];
+            AND DATE(se.created_at) BETWEEN ? AND ?
+            UNION ALL
+            SELECT 'Damage' as source, sd.id, sd.created_at, sd.quantity * -1 as quantity, p.name as product_name, u.username as creator_name, cat.name as cat_name
+            FROM stock_damages sd
+            JOIN products p ON sd.product_id = p.id 
+            JOIN categories cat ON p.category_id = cat.id
+            JOIN users u ON sd.user_id = u.id 
+            WHERE sd.isDelete = 0 
+            AND DATE(sd.created_at) BETWEEN ? AND ?";
+    
+    $params = [$start_date, $end_date, $start_date, $end_date];
 
     if ($search_query) {
-        $sql .= " AND (p.name LIKE ? OR cat.name LIKE ?)";
+        $sql = "SELECT * FROM ($sql_base) as combined WHERE (product_name LIKE ? OR cat_name LIKE ? OR creator_name LIKE ?) ORDER BY created_at DESC";
         $params[] = "%$search_query%";
         $params[] = "%$search_query%";
+        $params[] = "%$search_query%";
+    } else {
+        $sql = "SELECT * FROM ($sql_base) as combined ORDER BY created_at DESC";
     }
-    $sql .= " ORDER BY se.created_at DESC";
     $data = fetch_all($sql, $params);
 } elseif ($report_type == 'ledger') {
     if ($customer_id) {
         $customer_info = fetch_one("SELECT * FROM customers WHERE id = ?", [$customer_id]);
         
-        // Calculate balance before start date
+        // Calculate balance before start date (Wallet Model: Credit increases, Debit/Invoice decreases)
         $pre_trans = fetch_one("SELECT 
-            SUM(CASE WHEN type = 'Debit' THEN amount ELSE 0 END) as total_debit,
-            SUM(CASE WHEN type = 'Credit' THEN amount ELSE 0 END) as total_credit
+            SUM(CASE WHEN type = 'Credit' THEN amount ELSE 0 END) as total_credit,
+            SUM(CASE WHEN type = 'Debit' THEN amount ELSE 0 END) as total_debit
             FROM transactions 
-            WHERE customer_id = ? AND DATE(created_at) < ?", [$customer_id, $start_date]);
+            WHERE customer_id = ? AND DATE(created_at) < ? AND isDelete = 0", [$customer_id, $start_date]);
         
-        $opening_bal = $customer_info['opening_balance'] + ($pre_trans['total_credit'] ?? 0) - ($pre_trans['total_debit'] ?? 0);
+        $pre_sales = fetch_one("SELECT SUM(grand_total) as total_sales FROM sales_drafts WHERE customer_id = ? AND status = 'Confirmed' AND DATE(confirmed_at) < ? AND isDelete = 0", [$customer_id, $start_date]);
+
+        $opening_bal = $customer_info['opening_balance'] + ($pre_trans['total_credit'] ?? 0) - ($pre_trans['total_debit'] ?? 0) - ($pre_sales['total_sales'] ?? 0);
         
-        $transactions = fetch_all("SELECT * FROM transactions WHERE customer_id = ? AND DATE(created_at) BETWEEN ? AND ? ORDER BY created_at ASC", [$customer_id, $start_date, $end_date]);
-        $data = ['info' => $customer_info, 'opening_bal' => $opening_bal, 'transactions' => $transactions];
+        // Fetch both transactions and invoices for the period
+        $trans = fetch_all("SELECT created_at, description, amount, type FROM transactions WHERE customer_id = ? AND DATE(created_at) BETWEEN ? AND ? AND isDelete = 0", [$customer_id, $start_date, $end_date]);
+        $invoices = fetch_all("SELECT confirmed_at as created_at, CONCAT('Invoice #', id) as description, grand_total as amount, 'Debit' as type FROM sales_drafts WHERE customer_id = ? AND status = 'Confirmed' AND DATE(confirmed_at) BETWEEN ? AND ? AND isDelete = 0", [$customer_id, $start_date, $end_date]);
+        
+        $combined = array_merge($trans, $invoices);
+        usort($combined, function($a, $b) { return strtotime($a['created_at']) - strtotime($b['created_at']); });
+
+        $data = ['info' => $customer_info, 'opening_bal' => $opening_bal, 'transactions' => $combined];
     }
 }
 ?>
@@ -118,7 +139,7 @@ if ($report_type == 'sales') {
                 <label class="form-label small fw-bold">Report Type</label>
                 <select name="report_type" class="form-select form-select-sm" onchange="this.form.submit()">
                     <option value="sales" <?php echo $report_type == 'sales' ? 'selected' : ''; ?>>Sales Report</option>
-                    <option value="stock" <?php echo $report_type == 'stock' ? 'selected' : ''; ?>>Stock In Report</option>
+                    <option value="stock" <?php echo $report_type == 'stock' ? 'selected' : ''; ?>>Stock In/Damage</option>
                     <option value="ledger" <?php echo $report_type == 'ledger' ? 'selected' : ''; ?>>Customer Ledger</option>
                 </select>
             </div>
@@ -161,7 +182,7 @@ if ($report_type == 'sales') {
     <h4 class="text-uppercase border-bottom pb-2">
         <?php 
             if($report_type == 'sales') echo 'Sales & Itemized Distribution Report';
-            elseif($report_type == 'stock') echo 'Stock Inward Report';
+            elseif($report_type == 'stock') echo 'Stock Inward & Damage Report';
             else echo 'Customer Ledger Report';
         ?>
     </h4>
@@ -180,7 +201,7 @@ if ($report_type == 'sales') {
                 <thead>
                     <tr>
                         <th style="width: 12%;">Date / Inv / By</th>
-                        <th style="width: 15%;">Customer</th>
+                        <th style="width: 15%;">Customer / Delivery</th>
                         <th style="width: 50%;">Itemized Distribution Details</th>
                         <th style="width: 13%; text-align: right;">Amt - Disc</th>
                         <th style="width: 10%; text-align: right;">Net Total</th>
@@ -202,7 +223,15 @@ if ($report_type == 'sales') {
                                 <div class="small text-muted"><?php echo date('d-m-y', strtotime($row['created_at'])); ?></div>
                                 <div class="small italic"><?php echo $row['creator_name']; ?></div>
                             </td>
-                            <td><strong><?php echo $row['customer_name']; ?></strong></td>
+                            <td>
+                                <strong><?php echo $row['customer_name']; ?></strong>
+                                <div class="small mt-1 text-uppercase fw-bold" style="font-size: 8px;">
+                                    <?php echo $row['delivery_status']; ?>
+                                    <?php if($row['truck_info']): ?>
+                                        <br><span class="text-muted"><?php echo $row['truck_info']; ?></span>
+                                    <?php endif; ?>
+                                </div>
+                            </td>
                             <td class="p-0">
                                 <table class="table table-sm table-borderless mb-0 w-100" style="font-size: 9px; table-layout: fixed;">
                                     <thead>
@@ -335,6 +364,7 @@ if ($report_type == 'sales') {
                     <tr>
                         <th># ID</th>
                         <th>Date</th>
+                        <th>Type</th>
                         <th>Category</th>
                         <th>Product Name</th>
                         <th class="text-center">Quantity</th>
@@ -349,9 +379,16 @@ if ($report_type == 'sales') {
                         <tr>
                             <td>#<?php echo $row['id']; ?></td>
                             <td><?php echo date('d-m-Y H:i', strtotime($row['created_at'])); ?></td>
+                            <td>
+                                <span class="badge <?php echo $row['source'] == 'Entry' ? 'bg-success' : 'bg-danger'; ?>">
+                                    <?php echo $row['source']; ?>
+                                </span>
+                            </td>
                             <td><?php echo $row['cat_name']; ?></td>
                             <td><strong><?php echo $row['product_name']; ?></strong></td>
-                            <td class="text-center fw-bold"><?php echo $row['quantity']; ?></td>
+                            <td class="text-center fw-bold <?php echo $row['quantity'] < 0 ? 'text-danger' : 'text-success'; ?>">
+                                <?php echo $row['quantity']; ?>
+                            </td>
                             <td><?php echo $row['creator_name']; ?></td>
                         </tr>
                         <?php $total_qty += $row['quantity']; ?>
@@ -359,7 +396,7 @@ if ($report_type == 'sales') {
                 </tbody>
                 <tfoot class="bg-light fw-bold">
                     <tr>
-                        <td colspan="4" class="text-end">TOTAL QUANTITY IN:</td>
+                        <td colspan="5" class="text-end">NET QUANTITY CHANGE:</td>
                         <td class="text-center text-primary"><?php echo $total_qty; ?></td>
                         <td></td>
                     </tr>
@@ -377,7 +414,7 @@ if ($report_type == 'sales') {
                                 <p class="small mb-0">Type: <?php echo $data['info']['type']; ?> | Phone: <?php echo $data['info']['phone']; ?></p>
                             </div>
                             <div class="col-md-6 text-end">
-                                <h4 class="mb-0">Balance: <span class="text-success"><?php echo format_currency($data['info']['balance']); ?></span></h4>
+                                <h4 class="mb-0">Current Balance: <span class="text-primary"><?php echo format_currency($data['info']['balance']); ?></span></h4>
                             </div>
                         </div>
                     </div>

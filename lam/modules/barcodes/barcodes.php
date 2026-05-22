@@ -98,7 +98,7 @@ $shopName    = $S['shop_name']        ?? '';
 $shopAddress = $S['shop_address']     ?? '';
 $shopPhone   = $S['shop_phone']       ?? '';
 $shopEmail   = $S['shop_email']       ?? '';
-$shopLogo    = $S['logo_url']         ?? '';
+$shopLogo    = $S['shop_logo_url']    ?? '';
 
 $categories  = dbFetchAll('SELECT id, name FROM categories ORDER BY name');
 $brands      = dbFetchAll('SELECT id, name FROM brands ORDER BY name');

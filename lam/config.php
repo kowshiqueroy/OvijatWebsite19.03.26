@@ -5,24 +5,27 @@
 
 define('APP_NAME',    'SohojWeb POS');
 define('APP_VERSION', '3.2.1');
-if (strpos($_SERVER['HTTP_HOST'], 'localhost') !== false) {
-    define('BASE_URL',    'http://localhost/lam');
-    define('DB_NAME', 'pos_db');
-    define('DB_USER', 'root');
-define('DB_PASS', '');
-} else {
-    // define('BASE_URL',    ' https://lam.sohojweb.com');
-   define('BASE_URL',    ' https://7e3c-202-191-127-232.ngrok-free.app/lam');
-    define('DB_NAME', 'pos_db');
-    define('DB_USER', 'root');
-    define('DB_PASS', '');
-}
 
-define('BASE_PATH',   __DIR__);
+// ── Auto-detect BASE_URL (works on localhost, ngrok, and real domain) ──
+$protocol = (
+    (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ||
+    $_SERVER['SERVER_PORT'] == 443 ||
+    (!empty($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https') ||
+    (!empty($_SERVER['HTTP_X_FORWARDED_SSL']) && strtolower($_SERVER['HTTP_X_FORWARDED_SSL']) === 'on')
+) ? 'https' : 'http';
+$host     = $_SERVER['HTTP_HOST'] ?? 'localhost';
+$basePath = rtrim(dirname($_SERVER['SCRIPT_NAME']), '/\\');
+define('BASE_URL', $protocol . '://' . $host . $basePath);
 
 // ── Database ─────────────────────────────────────────────────
 define('DB_HOST', 'localhost');
+define('DB_NAME', 'pos_db');
+define('DB_USER', 'root');
+define('DB_PASS', '');
 
+define('BASE_PATH',   __DIR__);
+
+// ── Charset ──────────────────────────────────────────────────
 define('DB_CHARSET', 'utf8mb4');
 
 // ── Currency & Tax ────────────────────────────────────────────

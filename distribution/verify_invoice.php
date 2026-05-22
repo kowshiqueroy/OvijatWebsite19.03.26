@@ -5,6 +5,7 @@ require_once 'includes/functions.php';
 $id = $_GET['id'] ?? '';
 $sale = null;
 $items = [];
+$truck_load = null;
 $company = get_company_settings();
 
 if ($id) {
@@ -16,7 +17,8 @@ if ($id) {
                        WHERE s.id = ? AND s.isDelete = 0", [$id]);
 
     if ($sale) {
-        $items = fetch_all("SELECT i.*, p.name as product_name FROM sales_items i JOIN products p ON i.product_id = p.id WHERE i.draft_id = ? AND i.isDelete = 0", [$id]);
+        $items = fetch_all("SELECT i.*, p.name as product_name FROM sales_items i JOIN products p ON i.product_id = p.id WHERE i.draft_id = ? AND i.isDelete = 0 AND p.isDelete = 0", [$id]);
+        $truck_load = fetch_one("SELECT tl.* FROM truck_loads tl JOIN truck_load_items tli ON tl.id = tli.truck_load_id WHERE tli.invoice_id = ? AND tl.isDelete = 0", [$id]);
     }
 }
 
@@ -170,11 +172,21 @@ $qr_url = "https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=" . url
                                 </div>
                             </div>
 
-                            <div class="bill-inline">
+                            <div class="bill-inline text-center">
                                 <strong>BILL TO:</strong> <?php echo $sale['customer_name']; ?> | 
-                                <strong>PH:</strong> <?php echo $sale['customer_phone']; ?> | 
-                                <strong>ADDR:</strong> <?php echo $sale['customer_address']; ?>
+                                <strong>PHONE:</strong> <?php echo $sale['customer_phone']; ?> | 
+                                <strong>ADDRESS:</strong> <?php echo $sale['customer_address']; ?>
                             </div>
+
+                            <?php if ($sale['status'] == 'Confirmed'): ?>
+                            <div class="bill-inline text-center" style="background: #f8f9fa; border: 1px solid #ddd; padding: 2px; font-size: 9px; margin-top: -10px;">
+                                <strong>DELIVERY STATUS:</strong> <?php echo strtoupper($sale['delivery_status']); ?> | 
+                                <strong>DATE:</strong> <?php echo $sale['delivery_date'] ? date('d-m-Y', strtotime($sale['delivery_date'])) : 'PENDING'; ?>
+                                <?php if ($truck_load): ?>
+                                    | <strong>TRUCK:</strong> <?php echo $truck_load['truck_no']; ?> | <strong>DRIVER:</strong> <?php echo $truck_load['driver_name']; ?>
+                                <?php endif; ?>
+                            </div>
+                            <?php endif; ?>
                         </td>
                     </tr>
                 </thead>

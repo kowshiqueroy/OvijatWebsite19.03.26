@@ -117,6 +117,7 @@ if ($action === 'save_product' && $_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 if ($action === 'delete' && canDelete()) {
+    verify_csrf();
     $id = (int)($_GET['id'] ?? 0);
     $prod = dbFetch('SELECT name FROM products WHERE id = ?', [$id]);
     dbDelete('products', 'id = ?', [$id]);
@@ -255,7 +256,7 @@ require_once BASE_PATH . '/includes/header.php';
                 ]);
                 $label = implode(' / ', $label) ?: '—';
               ?>
-              <span class="badge badge-info" title="Cost: <?= $pv['cost'] ?> | Price: <?= $pv['price'] ?> | Regular: <?= $pv['regular'] ?> | Qty: <?= $pv['quantity'] ?>"
+              <span class="badge badge-info" title="Cost: <?= e($pv['cost']) ?> | Price: <?= e($pv['price']) ?> | Regular: <?= e($pv['regular']) ?> | Qty: <?= e($pv['quantity']) ?>"
                     style="font-size:.7rem;cursor:default">
                 <?= e($label) ?> ×<?= (int)$pv['quantity'] ?>
               </span>
@@ -296,7 +297,7 @@ require_once BASE_PATH . '/includes/header.php';
             <a href="index.php?page=barcodes&id=<?= $p['id'] ?>" class="btn btn-ghost btn-sm">🖨️</a>
             <?php if (canDelete()): ?>
             <a href="index.php?page=products&edit=<?= $p['id'] ?>" class="btn btn-ghost btn-sm">✏️</a>
-            <a href="index.php?page=products&action=delete&id=<?= $p['id'] ?>"
+            <a href="index.php?page=products&action=delete&id=<?= $p['id'] ?>&csrf_token=<?= csrf_token() ?>"
                class="btn btn-danger btn-sm"
                data-confirm="Delete this product and all variants?">🗑️</a>
             <?php endif ?>

@@ -30,11 +30,14 @@ if ($_SESSION['role'] == ROLE_CUSTOMER) {
                         <th>Type</th>
                         <th>Amount</th>
                         <th>Description</th>
+                        <?php if (in_array($_SESSION['role'], [ROLE_ADMIN, ROLE_ACCOUNTANT])): ?>
+                        <th>Print Status</th>
+                        <?php endif; ?>
                     </tr>
                 </thead>
                 <tbody>
                     <?php foreach ($transactions as $t): ?>
-                    <tr>
+                    <tr class="<?php echo $t['hide_from_print'] ? 'table-warning opacity-75' : ''; ?>">
                         <td><?php echo date('d M Y, h:i A', strtotime($t['created_at'])); ?></td>
                         <td><strong><?php echo $t['customer_name']; ?></strong></td>
                         <td>
@@ -43,7 +46,20 @@ if ($_SESSION['role'] == ROLE_CUSTOMER) {
                             </span>
                         </td>
                         <td class="fw-bold"><?php echo format_currency($t['amount']); ?></td>
-                        <td><?php echo $t['description']; ?></td>
+                        <td>
+                            <?php echo $t['description']; ?>
+                        </td>
+                        <?php if (in_array($_SESSION['role'], [ROLE_ADMIN, ROLE_ACCOUNTANT])): ?>
+                        <td>
+                            <a href="toggle_print.php?id=<?php echo $t['id']; ?>" class="btn btn-sm <?php echo $t['hide_from_print'] ? 'btn-danger' : 'btn-outline-secondary'; ?>">
+                                <i class="fas <?php echo $t['hide_from_print'] ? 'fa-eye-slash' : 'fa-eye'; ?>"></i>
+                                <?php echo $t['hide_from_print'] ? 'Hidden' : 'Visible'; ?>
+                            </a>
+                            <?php if ($_SESSION['role'] == ROLE_ADMIN): ?>
+                                <a href="../admin/delete_record.php?table=transactions&id=<?php echo $t['id']; ?>" class="btn btn-sm btn-outline-danger ms-1" onclick="return confirm('Delete this transaction? Note: This will NOT revert the customer balance automatically.')"><i class="fas fa-trash"></i></a>
+                            <?php endif; ?>
+                        </td>
+                        <?php endif; ?>
                     </tr>
                     <?php endforeach; ?>
                 </tbody>

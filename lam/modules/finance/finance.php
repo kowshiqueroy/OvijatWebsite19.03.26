@@ -18,7 +18,7 @@ const ENTRY_TYPES = [
     'income'   => ['label'=>'Income',   'badge'=>'badge-success'],
     'expense'  => ['label'=>'Expense',  'badge'=>'badge-danger'],
     'transfer' => ['label'=>'Transfer', 'badge'=>'badge-info'],
-    'opening'  => ['label'=>'Opening',  'badge'=>'badge-warn'],
+    'opening'  => ['label'=>'Opening',  'badge'=>'badge-warning'],
 ];
 const EXPENSE_CATS   = ['Rent','Salary','Utilities','Purchase','Transport','Maintenance','Marketing','Miscellaneous'];
 const INCOME_CATS    = ['Sale','Loan Received','Capital Injection','Refund','Miscellaneous'];
@@ -29,6 +29,7 @@ $cur    = getAllSettings()['currency_symbol'] ?? '$';
 
 // ── Save entry ─────────────────────────────────────────────────
 if ($action === 'save_entry' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    verify_csrf();
     $id   = (int)($_POST['entry_id'] ?? 0);
     $type = in_array($_POST['type']??'', array_keys(ENTRY_TYPES)) ? $_POST['type'] : 'expense';
 
@@ -39,7 +40,7 @@ if ($action === 'save_entry' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     $data = [
         'type'        => $type,
         'category'    => trim($_POST['category']    ?? ''),
-        'account'     => $type === 'transfer' ? $fromAcc : ($type === 'income' ? ($fromAcc) : $fromAcc),
+        'account'     => $fromAcc,
         'to_account'  => $type === 'transfer' ? $toAcc   : null,
         'party'       => in_array($_POST['party']??'', ['shop','owner','customer','supplier']) ? $_POST['party'] : 'shop',
         'amount'      => (float)($_POST['amount']   ?? 0),
@@ -62,6 +63,7 @@ if ($action === 'save_entry' && $_SERVER['REQUEST_METHOD'] === 'POST') {
 
 // ── Set opening balance ────────────────────────────────────────
 if ($action === 'save_opening' && isAdmin() && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    verify_csrf();
     foreach (array_keys(ACCOUNTS) as $acc) {
         $bal = (float)($_POST['opening_'.$acc] ?? 0);
         if ($bal == 0) continue;
@@ -87,6 +89,7 @@ if ($action === 'save_opening' && isAdmin() && $_SERVER['REQUEST_METHOD'] === 'P
 }
 
 if ($action === 'delete' && canDelete()) {
+    verify_csrf();
     $id = (int)$_GET['id'];
     $entry = dbFetch('SELECT * FROM finance_entries WHERE id=? AND ref_sale_id IS NULL', [$id]);
     if ($entry) { dbDelete('finance_entries','id=?',[$id]); logAction('DELETE','finance',$id,'Deleted finance entry'); flash('success','Deleted.'); }
@@ -117,14 +120,21 @@ $entries = dbFetchAll(
 
 // ── Account balances ──────────────────────────────────────────
 function accountBalance(string $acc, string $upTo = ''): float {
-    $cond   = $upTo ? "AND entry_date <= '$upTo'" : '';
-    // Opening + income/transfer-in = credit; expense/transfer-out = debit
-    $credit = (float)(dbFetch("SELECT COALESCE(SUM(amount),0) AS t FROM finance_entries
-        WHERE (account=? AND type IN ('opening','income')) $cond", [$acc])['t'] ?? 0);
-    $creditTransfer = (float)(dbFetch("SELECT COALESCE(SUM(amount),0) AS t FROM finance_entries
-        WHERE to_account=? AND type='transfer' $cond", [$acc])['t'] ?? 0);
-    $debit  = (float)(dbFetch("SELECT COALESCE(SUM(amount),0) AS t FROM finance_entries
-        WHERE account=? AND type IN ('expense','transfer') $cond", [$acc])['t'] ?? 0);
+    if ($upTo) {
+        $credit = (float)(dbFetch("SELECT COALESCE(SUM(amount),0) AS t FROM finance_entries
+            WHERE (account=? AND type IN ('opening','income')) AND entry_date <= ?", [$acc, $upTo])['t'] ?? 0);
+        $creditTransfer = (float)(dbFetch("SELECT COALESCE(SUM(amount),0) AS t FROM finance_entries
+            WHERE to_account=? AND type='transfer' AND entry_date <= ?", [$acc, $upTo])['t'] ?? 0);
+        $debit  = (float)(dbFetch("SELECT COALESCE(SUM(amount),0) AS t FROM finance_entries
+            WHERE account=? AND type IN ('expense','transfer') AND entry_date <= ?", [$acc, $upTo])['t'] ?? 0);
+    } else {
+        $credit = (float)(dbFetch("SELECT COALESCE(SUM(amount),0) AS t FROM finance_entries
+            WHERE account=? AND type IN ('opening','income')", [$acc])['t'] ?? 0);
+        $creditTransfer = (float)(dbFetch("SELECT COALESCE(SUM(amount),0) AS t FROM finance_entries
+            WHERE to_account=? AND type='transfer'", [$acc])['t'] ?? 0);
+        $debit  = (float)(dbFetch("SELECT COALESCE(SUM(amount),0) AS t FROM finance_entries
+            WHERE account=? AND type IN ('expense','transfer')", [$acc])['t'] ?? 0);
+    }
     return $credit + $creditTransfer - $debit;
 }
 $balances = [];
@@ -258,7 +268,7 @@ require_once BASE_PATH . '/includes/header.php';
             <?php if (!$en['ref_sale_id']): ?>
             <a href="index.php?page=finance&edit=<?= $en['id'] ?>" class="btn btn-ghost btn-sm">✏️</a>
             <?php if (canDelete()): ?>
-            <a href="index.php?page=finance&action=delete&id=<?= $en['id'] ?>" class="btn btn-danger btn-sm" data-confirm="Delete this entry?">🗑️</a>
+            <a href="index.php?page=finance&action=delete&id=<?= $en['id'] ?>&csrf_token=<?= csrf_token() ?>" class="btn btn-danger btn-sm" data-confirm="Delete this entry?">🗑️</a>
             <?php endif ?>
             <?php else: ?>
             <span class="text-muted" style="font-size:.73rem">auto</span>

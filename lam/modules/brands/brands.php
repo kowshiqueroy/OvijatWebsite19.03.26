@@ -6,12 +6,14 @@
 $action = $_POST['action'] ?? $_GET['action'] ?? '';
 
 if ($action === 'save' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    verify_csrf();
     $id   = (int)($_POST['cat_id'] ?? 0);
     $name = trim($_POST['name'] ?? '');
     if (!$name) { flash('error', 'Name is required.'); redirect('brands'); }
     if ($id) {
+        $old = dbFetch('SELECT name FROM brands WHERE id = ?', [$id])['name'] ?? '';
         dbUpdate('brands', ['name' => $name], 'id = ?', [$id]);
-        logAction('UPDATE', 'brands', $id, "Renamed brand from '{$_POST['old_name']}' to '$name'");
+        logAction('UPDATE', 'brands', $id, "Renamed brand from '$old' to '$name'");
         flash('success', 'brand updated.');
     } else {
         $newId = dbInsert('brands', ['name' => $name, 'created_at' => now()]);
@@ -22,6 +24,7 @@ if ($action === 'save' && $_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 if ($action === 'delete' && canDelete()) {
+    verify_csrf();
     $id = (int)$_GET['id'];
     dbDelete('brands', 'id = ?', [$id]);
     logAction('DELETE', 'brands', $id, "Deleted brand: '{$_GET['name']}'");
@@ -57,7 +60,7 @@ require_once BASE_PATH . '/includes/header.php';
           <td>
             <a href="index.php?page=brands&edit=<?= $c['id'] ?>" class="btn btn-ghost btn-sm">✏️</a>
             <?php if (canDelete()): ?>
-            <a href="index.php?page=brands&action=delete&id=<?= $c['id'] ?>" class="btn btn-danger btn-sm" data-confirm="Delete brand?">🗑️</a>
+            <a href="index.php?page=brands&action=delete&id=<?= $c['id'] ?>&csrf_token=<?= csrf_token() ?>" class="btn btn-danger btn-sm" data-confirm="Delete brand?">🗑️</a>
             <?php endif ?>
           </td>
         </tr>

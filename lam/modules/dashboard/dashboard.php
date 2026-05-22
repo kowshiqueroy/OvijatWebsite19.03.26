@@ -20,7 +20,7 @@ $monthSales = dbFetch(
 $totalProducts = dbFetch("SELECT COUNT(*) AS c FROM products WHERE active=1")['c'];
 $lowStock      = dbFetchAll("SELECT p.name, v.size, v.color, v.quantity FROM product_variants v JOIN products p ON p.id=v.product_id WHERE v.quantity <= 5 ORDER BY v.quantity LIMIT 10");
 $recentSales   = dbFetchAll(
-    "SELECT s.invoice_no, s.total, s.status, s.created_at, c.name AS customer_name
+    "SELECT s.id, s.invoice_no, s.total, s.status, s.created_at, c.name AS customer_name
      FROM sales s LEFT JOIN customers c ON c.id=s.customer_id
      ORDER BY s.id DESC LIMIT 8"
 );
@@ -67,7 +67,7 @@ require_once BASE_PATH . '/includes/header.php';
         <tbody>
           <?php foreach ($recentSales as $s): ?>
           <tr>
-            <td><a href="index.php?page=invoice&id=<?= /* need to get id */ 0 ?>"><?= e($s['invoice_no']) ?></a></td>
+            <td><a href="index.php?page=invoice&id=<?= $s['id'] ?>"><?= e($s['invoice_no']) ?></a></td>
             <td><?= e($s['customer_name'] ?? 'Walk-in') ?></td>
             <td class="text-right"><?= money($s['total']) ?></td>
             <td><span class="badge badge-<?= $s['status']==='completed'?'success':'warning' ?>"><?= $s['status'] ?></span></td>

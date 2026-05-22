@@ -66,6 +66,7 @@ $tables = [
         type ENUM('TP', 'DP', 'Retail') NOT NULL,
         opening_balance DECIMAL(15,2) DEFAULT 0.00,
         balance DECIMAL(15,2) DEFAULT 0.00,
+        credit_limit DECIMAL(15,2) DEFAULT 0.00,
         is_active TINYINT(1) DEFAULT 1,
         isDelete TINYINT(1) DEFAULT 0,
         FOREIGN KEY (user_id) REFERENCES users(id),
@@ -81,6 +82,9 @@ $tables = [
         vat DECIMAL(15,2) DEFAULT 0.00,
         grand_total DECIMAL(15,2) DEFAULT 0.00,
         status ENUM('Draft', 'Confirmed') DEFAULT 'Draft',
+        delivery_status ENUM('Pending', 'Loading', 'In Transit', 'Delivered', 'Failed', 'Returned') DEFAULT 'Pending',
+        delivery_date DATE NULL,
+        hide_from_print TINYINT(1) DEFAULT 0,
         confirmed_by INT NULL,
         confirmed_at DATETIME NULL,
         isDelete TINYINT(1) DEFAULT 0,
@@ -108,6 +112,7 @@ $tables = [
         type ENUM('Credit', 'Debit') NOT NULL,
         amount DECIMAL(15,2) NOT NULL,
         description TEXT,
+        hide_from_print TINYINT(1) DEFAULT 0,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         isDelete TINYINT(1) DEFAULT 0,
         FOREIGN KEY (customer_id) REFERENCES customers(id)
@@ -129,6 +134,38 @@ $tables = [
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (product_id) REFERENCES products(id),
         FOREIGN KEY (user_id) REFERENCES users(id)
+    )",
+    "truck_loads" => "CREATE TABLE IF NOT EXISTS truck_loads (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        truck_no VARCHAR(50) NOT NULL,
+        driver_name VARCHAR(100),
+        source_location VARCHAR(255),
+        destination_location VARCHAR(255),
+        remarks TEXT,
+        status ENUM('Draft', 'Loaded', 'Departed', 'Completed') DEFAULT 'Draft',
+        created_by INT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        isDelete TINYINT(1) DEFAULT 0,
+        FOREIGN KEY (created_by) REFERENCES users(id)
+    )",
+    "truck_load_items" => "CREATE TABLE IF NOT EXISTS truck_load_items (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        truck_load_id INT,
+        invoice_id INT,
+        isDelete TINYINT(1) DEFAULT 0,
+        FOREIGN KEY (truck_load_id) REFERENCES truck_loads(id),
+        FOREIGN KEY (invoice_id) REFERENCES sales_drafts(id)
+    )",
+    "stock_damages" => "CREATE TABLE IF NOT EXISTS stock_damages (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        product_id INT,
+        user_id INT,
+        quantity INT NOT NULL,
+        reason TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        isDelete TINYINT(1) DEFAULT 0,
+        FOREIGN KEY (product_id) REFERENCES products(id),
+        FOREIGN KEY (user_id) REFERENCES users(id)
     )"
 ];
 
@@ -139,16 +176,6 @@ foreach ($tables as $name => $sql) {
         echo "Error creating table '$name': " . $conn->error . "<br>";
     }
 }
-
-// Fix for existing tables missing isDelete
-$conn->query("ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS isDelete TINYINT(1) DEFAULT 0 AFTER address");
-$conn->query("ALTER TABLE activity_logs ADD COLUMN IF NOT EXISTS isDelete TINYINT(1) DEFAULT 0 AFTER action");
-$conn->query("ALTER TABLE users MODIFY COLUMN role ENUM('Admin', 'Manager', 'Accountant', 'Sales Representative', 'Customer', 'Viewer') NOT NULL");
-$conn->query("ALTER TABLE customers ADD COLUMN IF NOT EXISTS opening_balance DECIMAL(15,2) DEFAULT 0.00 AFTER type");
-$conn->query("ALTER TABLE customers ADD INDEX IF NOT EXISTS (isDelete)");
-$conn->query("ALTER TABLE products ADD INDEX IF NOT EXISTS (isDelete)");
-$conn->query("ALTER TABLE sales_drafts ADD INDEX IF NOT EXISTS (isDelete)");
-$conn->query("ALTER TABLE transactions ADD INDEX IF NOT EXISTS (isDelete)");
 
 // Create Default Admin
 $admin_user = 'admin';

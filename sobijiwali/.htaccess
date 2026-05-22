@@ -1,0 +1,11 @@
+# Enable Rewriting
+RewriteEngine On
+RewriteBase /sobijiwali/
+
+# Prevent directory browsing
+Options -Indexes
+
+# Route all non-file/non-directory requests to index.php
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^(.*)$ index.php?url=$1 [QSA,L]

@@ -46,6 +46,7 @@ $templates = [
 // ── Send SMS ──────────────────────────────────────────────────
 if ($S['sms_enabled'] === '1' && !empty($S['api_key_sms'])
     && $action === 'send_sms' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    verify_csrf();
 
     $apiKey       = $S['api_key_sms'];
     $templateType = $_POST['template_type'] ?? '';
@@ -98,16 +99,6 @@ if ($S['sms_enabled'] === '1' && !empty($S['api_key_sms'])
         redirect('sms');
     }
 
-    function requestsms($url, $params) {
-        $ch = curl_init($url);
-        curl_setopt($ch, CURLOPT_POST, 1);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($params));
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        $response = curl_exec($ch);
-        curl_close($ch);
-        return $response;
-    }
-
     if ($count > 0 && $baseMsg) {
         $logActionType = $count > 1 ? 'BULK_SMS' : 'SINGLE_SMS';
         $successCount  = 0;
@@ -147,7 +138,7 @@ if ($S['sms_enabled'] === '1' && !empty($S['api_key_sms'])
             if ((float)($S['sms_balance'] ?? 0) < 1) {
                 $response = ['error' => 1, 'msg' => 'Insufficient SMS balance'];
             } else {
-                $response = json_decode(requestsms('https://api.sms.net.bd/sendsms', [
+                $response = json_decode(sendHttpPost('https://api.sms.net.bd/sendsms', [
                     'api_key' => $apiKey, 'msg' => $personalMsg, 'to' => $phone,
                 ]), true);
             }
@@ -383,6 +374,7 @@ require_once BASE_PATH . '/includes/header.php';
 
 <form method="POST" enctype="multipart/form-data" id="smsForm" onsubmit="return validateForm()">
   <input type="hidden" name="action" value="send_sms">
+  <input type="hidden" name="csrf_token" value="<?= csrf_token() ?>">
   <input type="hidden" name="language" id="hiddenLang" value="en">
   <input type="hidden" name="template_type" id="hiddenTpl" value="">
 

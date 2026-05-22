@@ -287,7 +287,7 @@ if ($pm)     $activeFilters[] = "Payment: <strong>".strtoupper($pm)."</strong>";
   <?php if ($paged['last_page'] > 1): ?>
   <div class="pagination no-print">
     <?php for ($i = 1; $i <= $paged['last_page']; $i++): ?>
-      <a href="?page=sales&p=<?= $i ?>&from=<?= $from ?>&to=<?= $to ?>&status=<?= urlencode($status) ?>&q=<?= urlencode($search) ?>&pm=<?= urlencode($pm) ?>"
+      <a href="?page=sales&p=<?= $i ?>&from=<?= urlencode($from) ?>&to=<?= urlencode($to) ?>&status=<?= urlencode($status) ?>&q=<?= urlencode($search) ?>&pm=<?= urlencode($pm) ?>"
          class="page-btn <?= $i === $page ? 'active' : '' ?>"><?= $i ?></a>
     <?php endfor ?>
   </div>

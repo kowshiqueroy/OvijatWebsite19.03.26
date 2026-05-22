@@ -47,7 +47,7 @@ window.addEventListener('online', function() {
 
 
 </script>
-<?php if (!empty($extraJs)): ?>
+<?php $extraJs ??= ''; if ($extraJs): ?>
   <script><?= $extraJs ?></script>
 <?php endif ?>
 </body>

@@ -96,7 +96,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'final
     $vatVal     = (float)($_POST['vat_val']       ?? 0);
     $pointsUsed = (int)($_POST['points_used']     ?? 0);
     $notes      = trim($_POST['notes']            ?? '');
-    $sms        = isset($_POST['sms']) ? 1 : 0;
+    $sms        = ($_POST['sms'] ?? '0') === '1' ? 1 : 0;
 
     $payMethods = (array)($_POST['payment_methods'] ?? ['cash']);
     $payMethods = array_values(array_filter($payMethods, fn($m) => in_array($m, ['cash','card','transfer'])));
@@ -214,9 +214,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'final
                         $response = json_decode(sendHttpPost($url, $params), true);
                         if (isset($response['error']) && $response['error'] === 0) {
                             $rate = strlen($params['msg']) <= 160 ? 1 : ceil(strlen($params['msg']) / 160);
-                            logAction('SINGLE_SMS', 'SMS', $rate, "To: {$params['to']}");
+                            logAction('SINGLE_SMS', 'SMS', $rate, "To: {$params['to']} | Msg: {$params['msg']}");
                             dbQuery('UPDATE settings SET value = value - ? WHERE `key` = ?', [$rate, 'sms_balance']);
+                        } else {
+                            logAction('SMS_FAIL', 'SMS', 0, "To: {$params['to']} | Response: " . json_encode($response));
                         }
+                    } else {
+                        logAction('SMS_FAIL', 'SMS', 0, "To: {$params['to']} — low balance: " . ($S['sms_balance'] ?? 0));
                     }
                 }
                 redirect('invoice', ['id' => $editSaleId]);
@@ -298,23 +302,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'final
         logAction('SALE', 'pos', $saleId, "Invoice $invoiceNo — $status");
 
         if ($status === 'completed') {
-            if ($sms && ($S['api_key_sms'] ?? '') != '' && ($S['sms_enabled'] ?? '') === '1' && preg_match('/^01\d{9}$/', $customerPhone)) {
-                $points = dbFetch('SELECT points FROM customers WHERE id = ?', [$customerId])['points'] ?? 0;
-                $url = 'https://api.sms.net.bd/sendsms';
-                $params = [
-                    'api_key' => $S['api_key_sms'],
-                    'msg' => 'Thank you for shopping at ' . $S['shop_name'] . ' Total: ' . $total . ' BDT ' . (intval($points) > 0 ? ' Got ' . $points . ' Points ' : '') . ' Contact: ' . ($S['shop_phone'] ?? ''),
-                    'to' => $customerPhone,
-                ];
-                if (($S['sms_balance'] ?? 0) >= 1) {
-                    $response = json_decode(sendHttpPost($url, $params), true);
-                    if (isset($response['error']) && $response['error'] === 0) {
-                        $rate = strlen($params['msg']) <= 160 ? 1 : ceil(strlen($params['msg']) / 160);
-                        logAction('SINGLE_SMS', 'SMS', $rate, "To: {$params['to']} | Msg: {$params['msg']}");
-                        dbQuery('UPDATE settings SET value = value - ? WHERE `key` = ?', [$rate, 'sms_balance']);
+                if ($sms && ($S['api_key_sms'] ?? '') != '' && ($S['sms_enabled'] ?? '') === '1' && preg_match('/^01\d{9}$/', $customerPhone)) {
+                    $points = dbFetch('SELECT points FROM customers WHERE id = ?', [$customerId])['points'] ?? 0;
+                    $url = 'https://api.sms.net.bd/sendsms';
+                    $params = [
+                        'api_key' => $S['api_key_sms'],
+                        'msg' => 'Thank you for shopping at ' . $S['shop_name'] . ' Total: ' . $total . ' BDT ' . (intval($points) > 0 ? ' Got ' . $points . ' Points ' : '') . ' Contact: ' . ($S['shop_phone'] ?? ''),
+                        'to' => $customerPhone,
+                    ];
+                    if (($S['sms_balance'] ?? 0) >= 1) {
+                        $response = json_decode(sendHttpPost($url, $params), true);
+                        if (isset($response['error']) && $response['error'] === 0) {
+                            $rate = strlen($params['msg']) <= 160 ? 1 : ceil(strlen($params['msg']) / 160);
+                            logAction('SINGLE_SMS', 'SMS', $rate, "To: {$params['to']} | Msg: {$params['msg']}");
+                            dbQuery('UPDATE settings SET value = value - ? WHERE `key` = ?', [$rate, 'sms_balance']);
+                        } else {
+                            logAction('SMS_FAIL', 'SMS', 0, "To: {$params['to']} | Response: " . json_encode($response));
+                        }
+                    } else {
+                        logAction('SMS_FAIL', 'SMS', 0, "To: {$params['to']} — low balance: " . ($S['sms_balance'] ?? 0));
                     }
                 }
-            }
             redirect('invoice', ['id' => $saleId]);
         } else {
             flash('success', 'Draft saved.');
@@ -883,7 +891,7 @@ body, html { background-color: var(--pos-bg) !important; color: var(--pos-text) 
 // ============================================================================
 // CONFIG
 // ============================================================================
-const CURRENCY        = '<?= addslashes($cur) ?>';
+const CURRENCY        = <?= json_encode($cur) ?>;
 const POINTS_RATE     = <?= (float)($S['points_redeem_rate'] ?? 0.01) ?>;
 const POINTS_MIN      = <?= (int)($S['points_min_redeem'] ?? 0) ?>;
 const MAX_REDEEM_PCT  = <?= (float)($S['points_max_redeem_pct'] ?? 100) ?>;
@@ -1500,15 +1508,6 @@ document.addEventListener('DOMContentLoaded', () => {
   // Default focus
   document.getElementById('barcodeInput')?.focus();
 
-  // Mobile nav
-  const navToggle  = document.getElementById('navToggle');
-  const sideNav    = document.getElementById('sideNav');
-  const navOverlay = document.getElementById('navOverlay');
-  const toggleMenu = () => { sideNav?.classList.toggle('open'); navOverlay?.classList.toggle('open'); };
-  const closeMenu  = () => { sideNav?.classList.remove('open'); navOverlay?.classList.remove('open'); };
-  navToggle?.addEventListener('click', e => { e.preventDefault(); toggleMenu(); });
-  navOverlay?.addEventListener('click', closeMenu);
-  document.querySelectorAll('.nav-link').forEach(l => l.addEventListener('click', closeMenu));
 });
 
 document.addEventListener('wheel', function(e) {

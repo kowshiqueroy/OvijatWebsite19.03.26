@@ -11,7 +11,9 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $customer_id = $_POST['customer_id'];
     $type = $_POST['trans_type']; // Credit or Debit
     $amount = floatval($_POST['amount']);
-    $desc = sanitize($_POST['description']);
+    $user_info = fetch_one("SELECT username FROM users WHERE id = ?", [$_SESSION['user_id']]);
+    $acting_user = $user_info['username'] ?? 'Unknown';
+    $desc = sanitize($_POST['description']) . " [Posted by: $acting_user]";
 
     $conn = get_db_connection();
     $conn->begin_transaction();

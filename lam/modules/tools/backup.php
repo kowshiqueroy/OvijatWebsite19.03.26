@@ -183,7 +183,7 @@ function splitSqlStatements(string $sql): array {
 }
 
 // ── Download ─────────────────────────────────────────────────
-if ($action === 'download_sql') {
+if ($action === 'download_sql' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     $slug     = preg_replace('/[^a-zA-Z0-9_-]/', '_', APP_NAME);
     $filename = 'backup_' . $slug . '_' . date('Y-m-d_His') . '.sql';
 
@@ -426,6 +426,7 @@ require_once BASE_PATH . '/includes/header.php';
 .bk-upload input[type=file] { display: none; }
 .bk-upl { font-size: 15px; color: var(--text-muted, #64748b); }
 .bk-upl strong { color: #3b82f6; font-weight: 600; }
+.bk-upload-icon { font-size: 32px; display: block; margin-bottom: 12px; }
 .bk-ufile {
     display: none;
     margin-top: 14px;
@@ -570,9 +571,9 @@ code.inline { background: var(--surface-bg, #f1f5f9); padding: 2px 8px; border-r
                     <input type="hidden" name="confirm_token" value="<?= htmlspecialchars($restoreToken) ?>">
 
                     <label class="bk-upload" id="uploadArea" for="sqlFile">
-                        <input type="file" name="sql_file" id="sqlFile" accept=".sql" onchange="onFileSelected(this)">
+                        <input type="file" name="sql_file" id="sqlFile" accept=".sql">
                         <div class="bk-upl">
-                            <span style="font-size:32px;display:block;margin-bottom:12px">📂</span>
+                            <span class="bk-upload-icon">📂</span>
                             <strong>Click to select</strong> or drag &amp; drop a .sql file
                         </div>
                         <div class="bk-ufile" id="selectedFile"></div>
@@ -583,6 +584,23 @@ code.inline { background: var(--surface-bg, #f1f5f9); padding: 2px 8px; border-r
                             🔄 Restore Database
                         </button>
                         <span class="bk-hint" id="restoreHint">Select a .sql file to enable restore.</span>
+                    </div>
+
+                    <div class="bk-backdrop" id="modal">
+                        <div class="bk-modal">
+                            <h2>⚠️ Confirm Restore</h2>
+                            <p>
+                                You are about to <strong>overwrite the entire database</strong> with<br>
+                                <strong id="modalFile" style="word-break:break-all; color:#0f172a;">—</strong>.<br><br>
+                                Type <code class="inline">RESTORE</code> to confirm. This cannot be undone.
+                            </p>
+                            <input type="text" class="bk-cinput" id="confirmInput"
+                                   placeholder="Type RESTORE to confirm" autocomplete="off">
+                            <div class="bk-mfoot">
+                                <button type="button" class="bk-btn" onclick="closeModal()">Cancel</button>
+                                <button type="button" class="bk-btn danger" id="doRestore" disabled>🔄 Yes, Restore</button>
+                            </div>
+                        </div>
                     </div>
                 </form>
             </div>
@@ -632,41 +650,15 @@ code.inline { background: var(--surface-bg, #f1f5f9); padding: 2px 8px; border-r
     </div>
 </div>
 
-<div class="bk-backdrop" id="modal">
-    <div class="bk-modal">
-        <h2>⚠️ Confirm Restore</h2>
-        <p>
-            You are about to <strong>overwrite the entire database</strong> with<br>
-            <strong id="modalFile" style="word-break:break-all; color:#0f172a;">—</strong>.<br><br>
-            Type <code class="inline">RESTORE</code> to confirm. This cannot be undone.
-        </p>
-        <input type="text" class="bk-cinput" id="confirmInput"
-               placeholder="Type RESTORE to confirm" oninput="checkConfirm(this)" autocomplete="off">
-        <div class="bk-mfoot">
-            <button type="button" class="bk-btn" onclick="closeModal()">Cancel</button>
-            <button type="button" class="bk-btn danger" id="doRestore" disabled onclick="submitRestore()">🔄 Yes, Restore</button>
-        </div>
-    </div>
-</div>
-
 <script>
-function onFileSelected(input) {
-    const file = input.files[0] || null;
-    const sf   = document.getElementById('selectedFile');
-    const btn  = document.getElementById('restoreBtn');
-    const hint = document.getElementById('restoreHint');
-    
-    if (file) {
-        sf.textContent = '✅ ' + file.name + ' (' + fmtSize(file.size) + ')';
-        sf.style.display = 'inline-block';
-        btn.disabled = false;
-        hint.textContent = 'Ready — click Restore to proceed.';
-    } else {
-        sf.style.display = 'none';
-        btn.disabled = true;
-        hint.textContent = 'Select a .sql file to enable restore.';
-    }
-}
+var sqlFile    = document.getElementById('sqlFile');
+var selected   = document.getElementById('selectedFile');
+var restoreBtn = document.getElementById('restoreBtn');
+var restoreHint = document.getElementById('restoreHint');
+var area       = document.getElementById('uploadArea');
+var modal      = document.getElementById('modal');
+var confirmInp = document.getElementById('confirmInput');
+var doRestore  = document.getElementById('doRestore');
 
 function fmtSize(b) {
     if (b >= 1048576) return (b/1048576).toFixed(2) + ' MB';
@@ -674,55 +666,72 @@ function fmtSize(b) {
     return b + ' B';
 }
 
-// Drag & drop logic
-const area = document.getElementById('uploadArea');
-area.addEventListener('dragover', e => { e.preventDefault(); area.classList.add('over'); });
-area.addEventListener('dragleave', () => area.classList.remove('over'));
-area.addEventListener('drop', e => {
-    e.preventDefault(); 
+function uiFileSelected() {
+    var file = sqlFile.files[0] || null;
+    if (file) {
+        selected.textContent = '\u2705 ' + file.name + ' (' + fmtSize(file.size) + ')';
+        selected.style.display = 'inline-block';
+        restoreBtn.disabled = false;
+        restoreHint.textContent = 'Ready \u2014 click Restore to proceed.';
+    } else {
+        selected.style.display = 'none';
+        restoreBtn.disabled = true;
+        restoreHint.textContent = 'Select a .sql file to enable restore.';
+    }
+}
+
+sqlFile.addEventListener('change', uiFileSelected);
+
+area.addEventListener('dragover', function(e) { e.preventDefault(); area.classList.add('over'); });
+area.addEventListener('dragleave', function() { area.classList.remove('over'); });
+area.addEventListener('drop', function(e) {
+    e.preventDefault();
     area.classList.remove('over');
-    
-    const f = e.dataTransfer.files[0];
+    var f = e.dataTransfer.files[0];
     if (f && f.name.endsWith('.sql')) {
-        const fileInput = document.getElementById('sqlFile');
-        const dt = new DataTransfer(); 
+        var dt = new DataTransfer();
         dt.items.add(f);
-        fileInput.files = dt.files;
-        onFileSelected(fileInput);
+        sqlFile.files = dt.files;
+        uiFileSelected();
     }
 });
 
 function openModal() {
-    const fileInput = document.getElementById('sqlFile');
-    
-    if (!fileInput.files || !fileInput.files.length) {
-        alert("Please select a valid SQL file first.");
+    if (!sqlFile.files || !sqlFile.files.length) {
+        alert('Please select a valid SQL file first.');
         return;
     }
-    
-    document.getElementById('modalFile').textContent = fileInput.files[0].name;
-    document.getElementById('confirmInput').value    = '';
-    document.getElementById('doRestore').disabled    = true;
-    document.getElementById('modal').classList.add('open');
+    document.getElementById('modalFile').textContent = sqlFile.files[0].name;
+    confirmInp.value = '';
+    doRestore.disabled = true;
+    modal.classList.add('open');
+    confirmInp.focus();
 }
 
 function closeModal() {
-    document.getElementById('modal').classList.remove('open');
+    modal.classList.remove('open');
 }
 
-function checkConfirm(input) {
-    document.getElementById('doRestore').disabled = (input.value.trim() !== 'RESTORE');
-}
+confirmInp.addEventListener('input', function() {
+    doRestore.disabled = (confirmInp.value.trim() !== 'RESTORE');
+});
 
-function submitRestore() {
-    const btn = document.getElementById('doRestore');
-    btn.disabled = true;
-    btn.textContent = 'Restoring...';
+confirmInp.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter' && !doRestore.disabled) {
+        doRestore.click();
+    }
+});
+
+doRestore.addEventListener('click', function() {
+    doRestore.disabled = true;
+    doRestore.textContent = 'Restoring...';
+    restoreBtn.disabled = true;
+    closeModal();
     document.getElementById('restoreForm').submit();
-}
+});
 
-document.getElementById('modal').addEventListener('click', e => {
-    if (e.target === document.getElementById('modal')) closeModal();
+modal.addEventListener('click', function(e) {
+    if (e.target === modal) closeModal();
 });
 </script>
 

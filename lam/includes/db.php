@@ -41,8 +41,9 @@ function dbQuery(string $sql, array $params = []): PDOStatement {
             flash('error', $errorMsg);
         }
 
-        // Safely redirect back to the previous page, or to index.php if unknown
-        $redirectUrl = $_SERVER['HTTP_REFERER'] ?? BASE_URL . '/index.php';
+        // Safely redirect (only use referer if same-origin)
+        $ref = $_SERVER['HTTP_REFERER'] ?? '';
+        $redirectUrl = $ref && str_starts_with($ref, BASE_URL) ? $ref : BASE_URL . '/index.php';
         header("Location: " . $redirectUrl);
         exit;
     }

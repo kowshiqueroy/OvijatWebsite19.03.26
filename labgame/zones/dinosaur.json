@@ -1,0 +1,15 @@
+{
+    "name": "Dinosaur Jungle",
+    "emoji": "🦕",
+    "bgColors": ["#2d5a27", "#4a7c3f", "#6b8e23", "#3b6f2e"],
+    "trackColor": "#f5deb3",
+    "roadColor": "#8b7355",
+    "roadLines": "#556b2f",
+    "carColors": ["#8b0000", "#ff8c00", "#006400", "#4b0082"],
+    "finishLine": ["#8b4513", "#ffd700"],
+    "scenery": {
+        "left": [{"emoji":"🌴","size":28,"yOff":0.08},{"emoji":"🌿","size":22,"yOff":0.22},{"emoji":"🌳","size":30,"yOff":0.38},{"emoji":"🌴","size":26,"yOff":0.52},{"emoji":"🌿","size":20,"yOff":0.68},{"emoji":"🌳","size":28,"yOff":0.82}],
+        "right": [{"emoji":"🦕","size":24,"yOff":0.1},{"emoji":"🌺","size":18,"yOff":0.25},{"emoji":"🦖","size":26,"yOff":0.42},{"emoji":"🌴","size":28,"yOff":0.58},{"emoji":"🍃","size":16,"yOff":0.72},{"emoji":"🌿","size":22,"yOff":0.88}],
+        "bgTrees": ["🌴", "🌳", "🌿", "🍃"]
+    }
+}

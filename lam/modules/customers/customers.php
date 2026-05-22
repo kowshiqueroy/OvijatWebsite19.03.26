@@ -6,6 +6,7 @@
 $action = $_POST['action'] ?? $_GET['action'] ?? '';
 
 if ($action === 'save_customer' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    verify_csrf();
     $id   = (int)($_POST['customer_id_db'] ?? 0);
     $data = [
         'name'  => trim($_POST['name']),
@@ -26,9 +27,11 @@ if ($action === 'save_customer' && $_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 if ($action === 'delete' && canDelete()) {
+    verify_csrf();
     $id = (int)$_GET['id'];
+    $customer = dbFetch('SELECT name, phone, email FROM customers WHERE id = ?', [$id]);
     dbDelete('customers', 'id = ?', [$id]);
-    logAction('DELETE', 'customers', $id, 'Deleted customer: ' . $data['name']. ' with data: ' . json_encode($data));
+    logAction('DELETE', 'customers', $id, 'Deleted customer: ' . ($customer['name'] ?? 'unknown'));
     flash('success', 'Customer deleted.');
     redirect('customers');
 }
@@ -71,7 +74,7 @@ require_once BASE_PATH . '/includes/header.php';
           <td>
             <a href="index.php?page=customers&edit=<?= $c['id'] ?>" class="btn btn-ghost btn-sm">✏️</a>
             <?php if (canDelete()): ?>
-            <a href="index.php?page=customers&action=delete&id=<?= $c['id'] ?>" class="btn btn-danger btn-sm" data-confirm="Delete customer?">🗑️</a>
+            <a href="index.php?page=customers&action=delete&id=<?= $c['id'] ?>&csrf_token=<?= csrf_token() ?>" class="btn btn-danger btn-sm" data-confirm="Delete customer?">🗑️</a>
             <?php endif ?>
           </td>
         </tr>

@@ -66,9 +66,7 @@ require_once BASE_PATH . '/includes/header.php';
           <td><?= fmtDate($u['created_at']) ?></td>
           <td>
             <a href="index.php?page=users&edit=<?= $u['id'] ?>" class="btn btn-ghost btn-sm">✏️ Edit</a>
-            <?php if ($u['id'] !== currentUser()['id']): ?>
-            <a href="index.php?page=users&action=delete&id=<?= $u['id'] ?>" class="btn btn-danger btn-sm" data-confirm="Ask Developer to delete this user.">🗑️</a>
-            <?php endif ?>
+
           </td>
         </tr>
         <?php endforeach ?>

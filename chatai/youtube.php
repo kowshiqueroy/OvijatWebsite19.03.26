@@ -8,6 +8,7 @@ $user_id = $_SESSION['user_id'];
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Shared YouTube - Gemini</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>✦</text></svg>">
     <link rel="stylesheet" href="style.css">
     <link href="https://fonts.googleapis.com/css2?family=Google+Sans:wght@400;500;600&family=Roboto:wght@300;400;500&family=Roboto+Mono&display=swap" rel="stylesheet">
     <style>
@@ -382,7 +383,6 @@ $user_id = $_SESSION['user_id'];
                 <div id="comments-overlay"></div>
                 <div id="loader-overlay" class="hidden">
                     <div class="loader-spinner"></div>
-                    <div style="margin-top: 16px;">Syncing for shared playback...</div>
                 </div>
             </div>
 
@@ -535,7 +535,7 @@ $user_id = $_SESSION['user_id'];
 
             // Heartbeat to keep user online and set theater status
             setInterval(() => {
-                const blob = new Blob([JSON.stringify({ is_typing: 0, in_theater: 1 })], { type: 'application/json' });
+                const blob = new Blob([JSON.stringify({ is_typing: 0, in_theater: 1, in_call: 0 })], { type: 'application/json' });
                 navigator.sendBeacon(`api.php?action=update_status&_csrf=${window.CSRF_TOKEN}`, blob);
             }, 5000);
 
@@ -665,13 +665,34 @@ $user_id = $_SESSION['user_id'];
         const firstScriptTag = document.getElementsByTagName('script')[0];
         firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
 
+        function extractVideoId(url) {
+            if (!url) return '';
+            url = url.trim();
+            try {
+                if (url.startsWith('http') || url.startsWith('www')) {
+                    let fullUrl = url;
+                    if (!fullUrl.startsWith('http')) fullUrl = 'https://' + fullUrl;
+                    const u = new URL(fullUrl);
+                    if (u.hostname.includes('youtube.com')) {
+                        if (u.pathname === '/watch') return u.searchParams.get('v');
+                        if (u.pathname.startsWith('/embed/')) return u.pathname.split('/')[2];
+                        if (u.pathname.startsWith('/v/')) return u.pathname.split('/')[2];
+                        if (u.pathname.startsWith('/live/')) return u.pathname.split('/')[2];
+                    } else if (u.hostname === 'youtu.be') {
+                        return u.pathname.substring(1);
+                    }
+                }
+            } catch (e) {}
+            const match = url.match(/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/i);
+            return (match && match[1]) ? match[1] : (url.length === 11 ? url : '');
+        }
+
         function onYouTubeIframeAPIReady() {
             const playerVars = {
                 'playsinline': 1, 'autoplay': 0, 'controls': 1, 'modestbranding': 1, 'rel': 0,
-                'origin': window.location.origin || 'http://localhost'
+                'origin': window.location.origin,
+                'enablejsapi': 1
             };
-            // Uncomment below and add your API key to reduce bot checks
-            // playerVars.key = 'YOUR_YOUTUBE_API_KEY';
             player = new YT.Player('player', {
                 videoId: extractVideoId(currentUrl),
                 playerVars: playerVars,
@@ -705,29 +726,54 @@ $user_id = $_SESSION['user_id'];
 
         function loadVideo(url, time = 0, shouldSync = true) {
             const id = extractVideoId(url);
-            if (!id || !player.loadVideoById) return;
+            if (!id) {
+                if (shouldSync) alert("Invalid YouTube URL");
+                return;
+            }
+            if (!player || !player.loadVideoById) return;
+            
             isUpdating = true;
             currentUrl = url;
             localStorage.setItem('yt_last_video', url);
             setReady(false);
-            document.getElementById('loader-overlay').classList.remove('hidden');
+            
+            // Only show loader if partner might be watching
+            checkTheaterStatus().then(data => {
+                if (data.other_in_theater) document.getElementById('loader-overlay').classList.remove('hidden');
+            });
+
             player.loadVideoById(id, time);
             player.pauseVideo();
             
-            // Fetch title and update history
-            setTimeout(() => {
-                const title = player.getVideoData().title;
-                document.getElementById('display-title').textContent = title;
-                if (shouldSync) updateSync(url, null, title);
-                // Also save history directly
-                saveToHistory(url, title);
-            }, 2000);
+            // Fetch title and update history with retries
+            let titleAttempts = 0;
+            const fetchTitle = setInterval(() => {
+                if (!player || !player.getVideoData) { clearInterval(fetchTitle); return; }
+                const videoData = player.getVideoData();
+                const title = videoData ? videoData.title : '';
+                if (title || titleAttempts > 10) {
+                    clearInterval(fetchTitle);
+                    if (title) {
+                        document.getElementById('display-title').textContent = title;
+                        if (shouldSync) updateSync(url, null, title);
+                        saveToHistory(url, title);
+                    }
+                }
+                titleAttempts++;
+            }, 1000);
 
             const check = setInterval(() => {
-                if (player.getPlayerState() !== YT.PlayerState.UNSTARTED && player.getPlayerState() !== -1) {
+                if (!player || !player.getPlayerState) { clearInterval(check); return; }
+                const state = player.getPlayerState();
+                if (state !== YT.PlayerState.UNSTARTED && state !== -1) {
                     setReady(true); clearInterval(check); isUpdating = false;
                 }
             }, 500);
+        }
+
+        async function checkTheaterStatus() {
+            const resp = await secureFetch('api.php?action=get_youtube_sync');
+            return resp ? await resp.json() : { other_in_theater: false };
         }
 
         async function updateSync(newUrl = null, newCommentsState = null, title = '') {
@@ -739,10 +785,9 @@ $user_id = $_SESSION['user_id'];
             if (newCommentsState !== null) payload.comments_enabled = newCommentsState ? 1 : 0;
             if (title) payload.video_title = title;
 
-            const resp = await secureFetch('api.php?action=update_youtube_sync', {
+            await secureFetch('api.php?action=update_youtube_sync', {
                 method: 'POST', body: JSON.stringify(payload)
             });
-            if (!resp) console.error('updateSync failed');
         }
 
         function startSync() {
@@ -769,7 +814,11 @@ $user_id = $_SESSION['user_id'];
                 lastSyncTime = remoteTime;
 
                 isUpdating = true;
-                if (isMeReady && isOtherReady) {
+                
+                // NEW: Only block playback if BOTH are in theater and someone isn't ready
+                const mustSync = data.other_in_theater;
+                
+                if (!mustSync || (isMeReady && isOtherReady)) {
                     document.getElementById('loader-overlay').classList.add('hidden');
                     let target = parseFloat(data.current_time);
                     if (data.state == 1) target += (parseFloat(data.server_time) - remoteTime);
@@ -793,7 +842,16 @@ $user_id = $_SESSION['user_id'];
         async function loadHistory() {
             const resp = await secureFetch('api.php?action=get_video_history');
             if (!resp) { console.error('loadHistory: failed to fetch'); return; }
-            const history = await resp.json();
+            
+            let history = [];
+            try {
+                const text = await resp.text();
+                if (text) history = JSON.parse(text);
+            } catch (e) {
+                console.error('loadHistory: parse error', e);
+                return;
+            }
+
             console.log('loadHistory:', history);
             const list = document.getElementById('history-list');
             list.innerHTML = '';
@@ -933,12 +991,6 @@ $user_id = $_SESSION['user_id'];
             }, 3000);
         }
         // ... rest of scripts unchanged
-
-        function extractVideoId(url) {
-            if (!url) return '';
-            const match = url.match(/^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/);
-            return (match && match[2].length === 11) ? match[2] : url;
-        }
 
         async function secureFetch(url, options = {}) {
             const defaultHeaders = { 'X-CSRF-TOKEN': window.CSRF_TOKEN || '' };
