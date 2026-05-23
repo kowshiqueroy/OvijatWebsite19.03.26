@@ -109,6 +109,11 @@ switch ($action) {
         $messages = $stmt->fetchAll();
         $now = time();
         foreach ($messages as $key => $msg) {
+            // Explicitly verify user belongs to this message thread
+            if ($msg['sender_id'] != $user_id && $msg['receiver_id'] != $user_id) {
+                unset($messages[$key]);
+                continue;
+            }
             if ($msg['burn_after'] !== null && $now >= $msg['burn_after']) {
                 if ($msg['is_image'] || $msg['is_voice'] || $msg['is_video']) {
                     $filePath = $msg['content'];
@@ -144,9 +149,16 @@ switch ($action) {
     case 'schedule_delete':
         $data = json_decode(file_get_contents('php://input'), true);
         $msg_id = $data['msg_id'] ?? 0;
-        $burn_after = time() + 120;
-        $pdo->prepare("UPDATE messages SET burn_after = ? WHERE id = ? AND deleted_at IS NULL")->execute([$burn_after, $msg_id]);
-        echo json_encode(['success' => true, 'burn_after' => $burn_after]);
+        $stmt = $pdo->prepare("SELECT receiver_id FROM messages WHERE id = ? AND deleted_at IS NULL");
+        $stmt->execute([$msg_id]);
+        $msg = $stmt->fetch();
+        if ($msg && $msg['receiver_id'] == $user_id) {
+            $burn_after = time() + 120;
+            $pdo->prepare("UPDATE messages SET burn_after = ? WHERE id = ? AND deleted_at IS NULL")->execute([$burn_after, $msg_id]);
+            echo json_encode(['success' => true, 'burn_after' => $burn_after]);
+        } else {
+            echo json_encode(['success' => false, 'error' => 'Unauthorized']);
+        }
         break;
 
     case 'delete_my_unseen':

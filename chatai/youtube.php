@@ -372,7 +372,7 @@ $user_id = $_SESSION['user_id'];
         </h1>
         <div class="header-actions">
             <button class="modern-btn-header" onclick="location.href='index.php'">Home</button>
-            <button class="modern-btn-header" id="exit-btn">Sign Out</button>
+            <button class="modern-btn-header" id="exit-btn">Exit</button>
         </div>
     </header>
 
@@ -710,9 +710,13 @@ $user_id = $_SESSION['user_id'];
 
         function onPlayerStateChange(event) {
             if (isUpdating) return;
-            if (event.data === YT.PlayerState.PLAYING && (!isMeReady || !isOtherReady)) {
-                player.pauseVideo();
-                return;
+            // Relaxed blocking: only block if BOTH are in theater and one is significantly not ready
+            if (event.data === YT.PlayerState.PLAYING) {
+                checkTheaterStatus().then(data => {
+                    if (data.other_in_theater && (!isMeReady || !isOtherReady)) {
+                        player.pauseVideo();
+                    }
+                });
             }
             if (event.data === YT.PlayerState.PLAYING || event.data === YT.PlayerState.PAUSED) updateSync();
         }
@@ -772,8 +776,12 @@ $user_id = $_SESSION['user_id'];
         }
 
         async function checkTheaterStatus() {
-            const resp = await secureFetch('api.php?action=get_youtube_sync');
-            return resp ? await resp.json() : { other_in_theater: false };
+            try {
+                const resp = await secureFetch('api.php?action=get_youtube_sync');
+                return resp ? await resp.json() : { other_in_theater: false };
+            } catch (e) {
+                return { other_in_theater: false };
+            }
         }
 
         async function updateSync(newUrl = null, newCommentsState = null, title = '') {
@@ -1008,19 +1016,6 @@ $user_id = $_SESSION['user_id'];
             navigator.sendBeacon(`api.php?action=leave_theater_beacon&_csrf=${window.CSRF_TOKEN}`);
             location.href = 'index.php';
         };
-
-        // Auto-scroll to top on inactivity
-        let scrollTimer = null;
-        function resetScrollTimer() {
-            clearTimeout(scrollTimer);
-            scrollTimer = setTimeout(() => {
-                window.scrollTo({ top: 0, behavior: 'smooth' });
-            }, 3000); // 3 seconds of inactivity
-        }
-        ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart', 'click', 'keydown'].forEach(evt => {
-            document.addEventListener(evt, resetScrollTimer, { passive: true });
-        });
-        resetScrollTimer();
     </script>
 </body>
 </html>

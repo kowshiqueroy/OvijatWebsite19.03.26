@@ -50,7 +50,7 @@ let currentRevealed = null; // { msg, el, txt, timeout, timeoutId }
 let emptyClickCount = 0;
 let emptyClickTimer = null;
 let isInitialLoad = true;
-setTimeout(() => { isInitialLoad = false; }, 4000); // Wait 4s before allowing notifications
+let currentProtocol = localStorage.getItem('active_protocol') || (CURRENT_USER_ID === 2 ? 'chatgpt' : 'gemini');
 
 // Create Debug Console UI
 const debugConsole = document.createElement('div');
@@ -73,8 +73,88 @@ window.toggleDebugConsole = () => {
     debugLog("Debug Console Toggled");
 };
 
+setTimeout(() => { isInitialLoad = false; }, 4000); // Wait 4s before allowing notifications
+
+function setProtocol(theme) {
+    currentProtocol = theme;
+    localStorage.setItem('active_protocol', theme);
+    document.documentElement.setAttribute('data-theme', theme);
+    
+    const isGPT = theme === 'chatgpt';
+    const themeName = isGPT ? 'ChatGPT' : 'Gemini';
+
+    // Update Head (Title and Favicon)
+    document.title = isGPT ? "ChatGPT" : "Gemini";
+    const favicon = document.querySelector('link[rel="icon"]');
+    if (favicon) {
+        const icon = isGPT ? '◎' : '✦';
+        favicon.href = `data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>${icon}</text></svg>`;
+    }
+
+    // Update Header
+    const title = document.getElementById('header-title');
+    if (title) title.textContent = isGPT ? 'ChatGPT 4' : 'Gemini';
+    
+    const logo = document.getElementById('panic-logo');
+    if (logo) {
+        logo.textContent = isGPT ? '◎' : '✦';
+        logo.className = isGPT ? 'sparkle-logo' : 'sparkle-logo active'; 
+    }
+
+    const badge = document.getElementById('ai-pro-badge');
+    if (badge) badge.textContent = isGPT ? 'GPT-4' : 'AI PRO';
+
+    // Update Sidebar
+    const sideTitle = document.getElementById('sidebar-title');
+    if (sideTitle) sideTitle.textContent = isGPT ? 'ChatGPT' : 'Gemini';
+    
+    const sideIcon = document.getElementById('sidebar-icon');
+    if (sideIcon) sideIcon.textContent = isGPT ? '◎' : '✦';
+
+    const recentTitle = document.getElementById('recent-title');
+    if (recentTitle) recentTitle.textContent = isGPT ? 'Previous Chats' : '[ RECENT_NODES ]';
+
+    const newChatBtn = document.getElementById('new-chat-btn');
+    if (newChatBtn) newChatBtn.style.display = isGPT ? 'block' : 'none';
+
+    const uploadMediaBtn = document.getElementById('upload-media-btn');
+    if (uploadMediaBtn) {
+        uploadMediaBtn.textContent = isGPT ? '◎' : '✦';
+        uploadMediaBtn.style.background = isGPT ? 'none' : '';
+        uploadMediaBtn.style.webkitTextFillColor = isGPT ? '#fff' : '';
+        uploadMediaBtn.style.opacity = isGPT ? '0.8' : '1';
+    }
+
+    const thinkingSparkle = document.getElementById('thinking-sparkle');
+    if (thinkingSparkle) {
+        thinkingSparkle.textContent = isGPT ? '◎' : '✦';
+        thinkingSparkle.className = isGPT ? 'thinking-sparkle' : 'thinking-sparkle active';
+    }
+
+    const tText = document.getElementById('thinking-text');
+    if (tText && !tText.querySelector('.signal-noise')) {
+        tText.textContent = `${themeName} is ready`;
+    }
+
+    const settingsTitle = document.querySelector('#settings-modal h2');
+    if (settingsTitle) settingsTitle.textContent = `${themeName} Settings`;
+
+    const voiceReviewText = document.querySelector('#audio-confirm-modal p');
+    if (voiceReviewText) voiceReviewText.textContent = `Review your recording before sending it to the ${themeName} team.`;
+
+    // Refresh UI
+    renderedMessageIds.clear();
+    messagesContainer.innerHTML = '';
+    loadMessages();
+    debugLog(`Protocol Switched: ${theme.toUpperCase()}`);
+}
+
+window.toggleProtocol = () => {
+    setProtocol(currentProtocol === 'gemini' ? 'chatgpt' : 'gemini');
+};
+
 const camouflageData = {
-    1: { 
+    'gemini': {
         prompts: [
             "Explain Python list comprehensions.", "How does CSS Flexbox work?", "What is a REST API?", "Explain the difference between SQL and NoSQL.", "How do I optimize a React application?",
             "What are Docker containers used for?", "How does the Git rebase command work?", "Explain the concept of 'hoisting' in JavaScript.", "What is the difference between a process and a thread?", "How does public-key cryptography work?",
@@ -92,23 +172,19 @@ const camouflageData = {
             "Async/await provides a way to write asynchronous code that looks and behaves like synchronous code.", "A service worker is a script that runs in the background, separate from the web page.", "Microservices is an architectural style that structures an application as a collection of services.", "Rate limiting is used to control the rate of traffic sent or received by a network interface.", "A stack is used for static memory allocation; a heap is used for dynamic memory allocation."
         ] 
     },
-    2: { 
+    'chatgpt': {
         prompts: [
-            "What is quantum entanglement?", "Explain the theory of general relativity.", "How do black holes form?", "What is the Higgs Boson?", "Explain the double-slit experiment.",
-            "What is the Big Bang theory?", "How does a nuclear reactor work?", "What is the function of DNA?", "Explain the laws of thermodynamics.", "What is the significance of the Fibonacci sequence?",
-            "How does a solar cell convert light to electricity?", "What are the main types of plate boundaries?", "Explain the process of photosynthesis.", "What is the difference between dark matter and dark energy?", "How does the immune system recognize pathogens?",
-            "What is the role of ribosomes in a cell?", "Explain the concept of 'osmosis'.", "How does the Doppler effect work?", "What is the difference between 'mitosis' and 'meiosis'?", "Explain the concept of 'half-life' in radioactive decay.",
-            "What are the main components of the human nervous system?", "How does an airplane wing generate lift?", "What is the significance of the 'Ozone layer'?", "Explain the process of 'cellular respiration'.", "What is the difference between 'mass' and 'weight'?",
-            "How do 'enzymes' work in biological reactions?", "What is the 'Greenhouse effect'?", "Explain the concept of 'tectonic plates'.", "What are the four states of matter?", "How does the 'carbon cycle' function?"
-        ], 
+            "What was the impact of the Industrial Revolution?", "Summarize the key themes of 'The Great Gatsby'.", "How does photosynthesis work in simple terms?", "What are the three branches of the US government?", "Can you explain the theory of supply and demand?",
+            "What is the capital of France?", "Who wrote 'To Kill a Mockingbird'?", "How do volcanoes erupt?", "What is the largest mammal on Earth?", "Explain the water cycle to a child.",
+            "What are the benefits of daily meditation?", "How do I bake a chocolate cake?", "Summarize the rules of chess.", "What is the distance between the Earth and the Moon?", "Who painted the Mona Lisa?",
+            "Explain the difference between weather and climate.", "What is the purpose of the United Nations?", "How does a GPS system work?", "What are the symptoms of a common cold?", "Who was the first person to walk on the moon?"
+        ],
         responses: [
-            "Quantum entanglement is a phenomenon where particles become linked and share their state instantly.", "General relativity is Einstein's theory of gravity, describing space-time as a curved fabric.", "Black holes form when a massive star collapses under its own gravity at the end of its life cycle.", "The Higgs Boson is a fundamental particle that gives other particles mass via the Higgs field.", "The double-slit experiment demonstrates that light and matter can display characteristics of both waves and particles.",
-            "The Big Bang theory is the prevailing cosmological model for the observable universe from its earliest known periods.", "Nuclear reactors use controlled chain reactions to generate heat, which produces steam for electricity.", "DNA carries the genetic instructions for the development, functioning, and reproduction of all known organisms.", "The laws of thermodynamics define how fundamental physical quantities (temperature, energy, and entropy) behave.", "The Fibonacci sequence is a series of numbers where each number is the sum of the two preceding ones.",
-            "Solar cells use the photovoltaic effect to generate an electric current when exposed to light.", "Plate boundaries are where tectonic plates meet, categorized as divergent, convergent, or transform.", "Photosynthesis is the process by which green plants use sunlight to synthesize nutrients from CO2 and water.", "Dark matter interacts via gravity; dark energy is a repulsive force driving the expansion of the universe.", "The immune system uses specialized cells and proteins to identify and neutralize foreign invaders.",
-            "Ribosomes are the protein-synthesizing machines of the cell, translating genetic information.", "Osmosis is the spontaneous net movement of solvent molecules through a semi-permeable membrane.", "The Doppler effect is the change in frequency of a wave in relation to an observer moving relative to its source.", "Mitosis results in two identical daughter cells; meiosis results in four genetically unique gametes.", "Half-life is the time required for half of the radioactive atoms in a sample to decay.",
-            "The nervous system consists of the brain, spinal cord, and a complex network of nerves.", "Lift is generated by pressure differences between the upper and lower surfaces of an airfoil.", "The ozone layer absorbs most of the sun's harmful ultraviolet radiation before it reaches Earth.", "Cellular respiration is the process by which cells break down glucose to release energy (ATP).", "Mass is the amount of matter in an object; weight is the force of gravity acting on that object.",
-            "Enzymes are biological catalysts that speed up chemical reactions by lowering activation energy.", "The greenhouse effect is the process by which radiation from a planet's atmosphere warms the surface.", "Tectonic plates are massive, irregularly shaped slabs of solid rock that make up the Earth's lithosphere.", "The four states of matter are solid, liquid, gas, and plasma.", "The carbon cycle describes the process in which carbon atoms travel from the atmosphere to the Earth and back."
-        ] 
+            "The Industrial Revolution shifted societies from agrarian to industrial, leading to massive urbanization and technological growth.", "Key themes include the American Dream, social class divide, and the corruption of idealism in the 1920s.", "Photosynthesis is how plants use sunlight, water, and CO2 to create oxygen and energy in the form of sugar.", "The US government is divided into the Legislative, Executive, and Judicial branches to ensure checks and balances.", "Supply and demand is an economic model where price is determined by the availability of a product and the desire for it.",
+            "The capital of France is Paris, known for its art, fashion, and culture.", "Harper Lee wrote 'To Kill a Mockingbird', published in 1960.", "Volcanoes erupt when magma from the Earth's mantle rises to the surface due to pressure build-up.", "The blue whale is the largest mammal on Earth, reaching lengths of up to 100 feet.", "The water cycle is how water moves from the ground to the sky as clouds and falls back as rain.",
+            "Meditation can reduce stress, improve focus, and promote emotional health and well-being.", "To bake a chocolate cake, you need flour, sugar, cocoa powder, eggs, milk, and butter.", "Chess is a strategy game played on an 8x8 grid where the goal is to checkmate the opponent's king.", "The average distance is about 238,855 miles (384,400 kilometers).", "Leonardo da Vinci painted the Mona Lisa in the early 16th century.",
+            "Weather is the short-term state of the atmosphere, while climate is the average weather over a long period.", "The UN aims to maintain international peace, security, and develop friendly relations among nations.", "GPS uses a network of satellites that broadcast signals to receivers on Earth to determine precise location.", "Common symptoms include a runny nose, sneezing, sore throat, and a mild cough.", "Neil Armstrong was the first person to walk on the moon during the Apollo 11 mission in 1969."
+        ]
     }
 };
 
@@ -148,15 +224,21 @@ let currentStatusText = "Gemini is offline";
 let lastSeenTimestamp = 0;
 let inputMaskTimeout;
 
+
 function initFakeUI() { 
     const c = document.getElementById('fake-chats'); if (!c) return; c.innerHTML = ''; 
     fakeRecentChats.forEach(t => { const d = document.createElement('div'); d.className = 'nav-item'; d.innerHTML = `<span>💬</span> ${t}`; c.appendChild(d); }); 
     if (panicLogo) panicLogo.onclick = () => window.location.href = 'call.php?v=' + Date.now();
 }
 
-async function startApp() {
+function startApp() {
     initDOMElements();
     initFakeUI();
+    
+    // Initialize Theme
+    document.documentElement.setAttribute('data-theme', currentProtocol);
+    setProtocol(currentProtocol);
+
     startPolling();
     resetInactivityTimer();
     
@@ -172,7 +254,7 @@ async function startApp() {
         messageInput.onfocus = () => { if (/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)) setTimeout(scrollToBottom, 300); };
     }
     
-    if (viewTextBtn) viewTextBtn.onclick = peekInputText;
+    if (viewTextBtn) viewTextBtn.onclick = toggleInputMask;
     if (sendBtn) sendBtn.onclick = handleSend;
     if (attachBtn) attachBtn.onclick = () => fileInput.click();
     
@@ -219,6 +301,7 @@ async function startApp() {
     }
     
     debugLog("App Initialized");
+    checkPendingUplinks();
 }
 
 if (document.readyState === 'loading') {
@@ -235,6 +318,11 @@ async function handleSend() {
             if (resp) {
                 const data = await resp.json();
                 if (data.success) { unlockApp(); messageInput.value = ''; return; }
+                else if (data.error && data.error.includes('Too many')) {
+                    alert(data.error);
+                    messageInput.disabled = true;
+                    setTimeout(() => messageInput.disabled = false, 30000);
+                }
             }
         }
     }
@@ -269,8 +357,14 @@ function getTimeAgo(ts) {
 function updateAllTimestamps() { document.querySelectorAll('.timestamp[data-created]').forEach(el => { el.textContent = `${formatTimestamp(el.dataset.created)} • ${getTimeAgo(el.dataset.created)}`; }); }
 function toggleSidebar() { sidebar.classList.toggle('active'); sidebarOverlay.classList.toggle('active'); }
 function closeSidebar() { sidebar.classList.remove('active'); sidebarOverlay.classList.remove('active'); }
-function handleInputPrivacy() { if (messageInput) messageInput.style.webkitTextSecurity = 'disc'; }
-function peekInputText() { if (!messageInput) return; clearTimeout(inputMaskTimeout); messageInput.style.webkitTextSecurity = 'none'; inputMaskTimeout = setTimeout(() => { messageInput.style.webkitTextSecurity = 'disc'; }, 2000); }
+function handleInputPrivacy() { if (messageInput) messageInput.style.webkitTextSecurity = isInputMasked ? 'disc' : 'none'; }
+let isInputMasked = true;
+function toggleInputMask() {
+    if (!messageInput || !viewTextBtn) return;
+    isInputMasked = !isInputMasked;
+    messageInput.style.webkitTextSecurity = isInputMasked ? 'disc' : 'none';
+    viewTextBtn.textContent = isInputMasked ? '[•]' : '[A]';
+}
 function handleTyping() { if (!isTyping) { isTyping = true; updateMyStatus(); } clearTimeout(typingTimeout); typingTimeout = setTimeout(() => { isTyping = false; updateMyStatus(); }, 3500); }
 function scrollToBottom() { const c = messagesContainer ? messagesContainer.parentElement.parentElement : null; if (c) c.scrollTop = c.scrollHeight; }
 function toggleLock() { if (!isLocked) { isLocked = true; location.reload(); } }
@@ -313,35 +407,178 @@ async function handleImageUpload(e) {
     pendingUploadFile = file; showModal('upload-choice-modal');
 }
 
-window.confirmUploadDestination = async (destination) => {
-    closeModal('upload-choice-modal'); if (!pendingUploadFile) return;
-    const file = pendingUploadFile; progressOverlay.style.display = 'block';
-    const CHUNK_SIZE = 2 * 1024 * 1024; const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+// Uplink Manager for Resumable & Background Uploads (using IndexedDB for Large Files)
+const UPLINK_DB = 'gemini_uplink_db', UPLINK_STORE = 'active_uplinks';
+let activeUplinkTask = null;
+let uplinkQueue = [];
+
+function openUplinkDB() {
+    return new Promise((resolve, reject) => {
+        const req = indexedDB.open(UPLINK_DB, 1);
+        req.onupgradeneeded = () => req.result.createObjectStore(UPLINK_STORE, { keyPath: 'uploadId' });
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+    });
+}
+
+async function startUplink(file, destination) {
     const uploadId = Date.now() + '_' + Math.floor(Math.random() * 1000000);
-    let currentChunk = 0;
-    const uploadNextChunk = async () => {
-        const start = currentChunk * CHUNK_SIZE, end = Math.min(start + CHUNK_SIZE, file.size), chunk = file.slice(start, end);
+    const CHUNK_SIZE = 2 * 1024 * 1024;
+    const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+    
+    // Create Local Progress Bubble
+    const tempId = 'uplink_' + uploadId;
+    const div = document.createElement('div');
+    div.className = 'message-row sent'; div.id = tempId;
+    const meta = `<div class="msg-meta"><div class="timestamp">${formatTimestamp(new Date())}</div></div>`;
+    const terminal = `
+        <div class="uplink-terminal" style="width:100%; max-width:100%; padding:10px; border:none; background:transparent; font-size:11px;">
+            <div class="uplink-header">[ DATA UPLINK: ${file.name.substring(0, 10)}... ]</div>
+            <div class="stat-row">STATUS:   <span class="u-status">QUEUED</span></div>
+            <div class="stat-row">PACKET:   <span class="u-packet">00 / ${totalChunks.toString().padStart(2, '0')}</span></div>
+            <div class="stat-row">SPEED:    <span class="u-speed">0.0 MB/s</span></div>
+            <div class="stat-row">PROGRESS: <span class="u-bar">[>         ]</span></div>
+            <div class="stat-row">PERCENT:  [ <span class="u-percent">0.0%</span> ]</div>
+        </div>`;
+    div.innerHTML = `<div class="msg-body"><div class="msg-text glass" style="min-width:200px;">${terminal}</div>${meta}</div><div class="avatar user">👤</div>`;
+    messagesContainer.appendChild(div);
+    scrollToBottom();
+
+    // Save state to IndexedDB for resumability
+    const state = { uploadId, filename: file.name, totalChunks, currentChunk: 0, destination, fileBlob: file, tempId };
+    const db = await openUplinkDB();
+    const tx = db.transaction(UPLINK_STORE, 'readwrite');
+    tx.objectStore(UPLINK_STORE).put(state);
+    
+    uplinkQueue.push(state);
+    processUplinkQueue();
+}
+
+async function processUplinkQueue() {
+    if (activeUplinkTask || uplinkQueue.length === 0) return;
+    activeUplinkTask = uplinkQueue.shift();
+    await runUplink(activeUplinkTask);
+    activeUplinkTask = null;
+    processUplinkQueue();
+}
+
+async function runUplink(state) {
+    const bubble = document.getElementById(state.tempId);
+    if (!bubble) {
+        const div = document.createElement('div');
+        div.className = 'message-row sent'; div.id = state.tempId;
+        const meta = `<div class="msg-meta"><div class="timestamp">${formatTimestamp(new Date())}</div></div>`;
+        const terminal = `
+            <div class="uplink-terminal" style="width:100%; max-width:100%; padding:10px; border:none; background:transparent; font-size:11px;">
+                <div class="uplink-header">[ DATA UPLINK: ${state.filename.substring(0, 10)}... ]</div>
+                <div class="stat-row">STATUS:   <span class="u-status">RECONNECTING</span></div>
+                <div class="stat-row">PACKET:   <span class="u-packet">00 / ${state.totalChunks.toString().padStart(2, '0')}</span></div>
+                <div class="stat-row">SPEED:    <span class="u-speed">0.0 MB/s</span></div>
+                <div class="stat-row">PROGRESS: <span class="u-bar">[>         ]</span></div>
+                <div class="stat-row">PERCENT:  [ <span class="u-percent">0.0%</span> ]</div>
+            </div>`;
+        div.innerHTML = `<div class="msg-body"><div class="msg-text glass" style="min-width:200px;">${terminal}</div>${meta}</div><div class="avatar user">👤</div>`;
+        messagesContainer.appendChild(div);
+        scrollToBottom();
+    }
+
+    const statusEl = document.querySelector(`#${state.tempId} .u-status`);
+    const packetEl = document.querySelector(`#${state.tempId} .u-packet`);
+    const speedEl = document.querySelector(`#${state.tempId} .u-speed`);
+    const barEl = document.querySelector(`#${state.tempId} .u-bar`);
+    const percentEl = document.querySelector(`#${state.tempId} .u-percent`);
+    
+    const CHUNK_SIZE = 2 * 1024 * 1024;
+    const statuses = ["ENCRYPTING", "BUFFERING", "COMMITTING", "SIGNAL_SYNC", "VERIFYING"];
+
+    while (state.currentChunk < state.totalChunks) {
+        const start = state.currentChunk * CHUNK_SIZE;
+        const end = Math.min(start + CHUNK_SIZE, state.fileBlob.size);
+        const chunkBlob = state.fileBlob.slice(start, end);
+        const chunkStartTime = Date.now();
+        
         const formData = new FormData();
-        formData.append('chunk', chunk); formData.append('chunkIndex', currentChunk); formData.append('totalChunks', totalChunks);
-        formData.append('uploadId', uploadId); formData.append('filename', file.name);
-        formData.append('targetDir', destination === 'vault' ? 'premium_vault' : 'uploads');
-        document.getElementById('upload-percent').textContent = `${Math.round((currentChunk / totalChunks) * 100)}%`;
+        formData.append('chunk', chunkBlob);
+        formData.append('chunkIndex', state.currentChunk);
+        formData.append('totalChunks', state.totalChunks);
+        formData.append('uploadId', state.uploadId);
+        formData.append('filename', state.filename);
+        formData.append('targetDir', state.destination === 'vault' ? 'premium_vault' : 'uploads');
+
+        if (statusEl) statusEl.textContent = statuses[state.currentChunk % statuses.length];
+        if (packetEl) packetEl.textContent = `${(state.currentChunk + 1).toString().padStart(2, '0')} / ${state.totalChunks.toString().padStart(2, '0')}`;
+        const percent = ((state.currentChunk / state.totalChunks) * 100);
+        if (percentEl) percentEl.textContent = percent.toFixed(1) + '%';
+        
+        const barSize = 10;
+        const filledSize = Math.floor((state.currentChunk / state.totalChunks) * barSize);
+        if (barEl) barEl.textContent = '[' + '='.repeat(filledSize) + '>' + ' '.repeat(Math.max(0, barSize - filledSize - 1)) + ']';
+
         try {
             const resp = await secureFetch('api.php?action=upload_chunk', { method: 'POST', body: formData });
             if (resp) {
                 const data = await resp.json();
                 if (data.success) {
-                    if (data.status === 'partial') { currentChunk++; await uploadNextChunk(); } 
-                    else {
-                        const chatMsg = (destination === 'vault') ? `📎 Vault: ${file.name}||${data.path}` : data.path;
-                        await secureFetch('api.php?action=send_message', { method: 'POST', body: JSON.stringify({ content: chatMsg, is_image: (!data.is_video && !data.is_voice) ? 1 : 0, is_video: data.is_video ? 1 : 0, is_voice: data.is_voice ? 1 : 0 })});
-                        progressOverlay.style.display = 'none'; loadMessages();
+                    const duration = (Date.now() - chunkStartTime) / 1000;
+                    const speed = (chunkBlob.size / (1024 * 1024)) / duration;
+                    if (speedEl) speedEl.textContent = speed.toFixed(1) + ' MB/s';
+
+                    if (data.status === 'partial') {
+                        state.currentChunk++;
+                        const db = await openUplinkDB();
+                        const tx = db.transaction(UPLINK_STORE, 'readwrite');
+                        tx.objectStore(UPLINK_STORE).put(state);
+                    } else {
+                        if (percentEl) percentEl.textContent = '100.0%';
+                        if (statusEl) statusEl.textContent = 'COMPLETE';
+                        
+                        const isVid = state.filename.match(/\.(mp4|webm|mov)$/i);
+                        const isAud = state.filename.match(/\.(mp3|wav|ogg|m4a|webm)$/i);
+                        const chatMsg = (state.destination === 'vault') ? `📎 Vault: ${state.filename}||${data.path}` : data.path;
+                        await secureFetch('api.php?action=send_message', { method: 'POST', body: JSON.stringify({ content: chatMsg, is_image: (!isVid && !isAud) ? 1 : 0, is_video: isVid ? 1 : 0, is_voice: isAud ? 1 : 0 })});
+                        
+                        const db = await openUplinkDB();
+                        const tx = db.transaction(UPLINK_STORE, 'readwrite');
+                        tx.objectStore(UPLINK_STORE).delete(state.uploadId);
+                        
+                        setTimeout(() => {
+                            const b = document.getElementById(state.tempId);
+                            if (b) b.remove();
+                            loadMessages();
+                        }, 1000);
+                        return;
                     }
                 } else throw new Error(data.error);
+            } else throw new Error("Connection Lost");
+        } catch (err) {
+            if (statusEl) statusEl.textContent = 'RETRYING...';
+            await new Promise(r => setTimeout(r, 3000));
+        }
+    }
+}
+
+async function checkPendingUplinks() {
+    try {
+        const db = await openUplinkDB();
+        const tx = db.transaction(UPLINK_STORE, 'readonly');
+        const req = tx.objectStore(UPLINK_STORE).getAll();
+        req.onsuccess = () => {
+            if (req.result && req.result.length > 0) {
+                req.result.forEach(state => {
+                    if (!uplinkQueue.some(q => q.uploadId === state.uploadId)) {
+                        uplinkQueue.push(state);
+                    }
+                });
+                processUplinkQueue();
             }
-        } catch (err) { alert('Upload failed: ' + err.message); progressOverlay.style.display = 'none'; }
-    };
-    await uploadNextChunk(); pendingUploadFile = null;
+        };
+    } catch (e) { debugLog("Uplink Resume Fail"); }
+}
+
+window.confirmUploadDestination = async (destination) => {
+    closeModal('upload-choice-modal'); if (!pendingUploadFile) return;
+    startUplink(pendingUploadFile, destination);
+    pendingUploadFile = null;
 };
 
 async function loadMessages() {
@@ -350,7 +587,19 @@ async function loadMessages() {
     msgs.forEach(msg => {
         if (!renderedMessageIds.has(msg.id)) {
             renderMessage(msg); renderedMessageIds.add(msg.id); scrollToBottom();
-            if (!isInitialLoad && document.hidden && msg.sender_id !== CURRENT_USER_ID) showSystemNotification("New AI Nodes", "");
+            
+            if (msg.sender_id !== CURRENT_USER_ID) {
+                const themeName = currentProtocol === 'chatgpt' ? 'ChatGPT' : 'Gemini';
+                const themeIcon = currentProtocol === 'chatgpt' ? '◎' : '✦';
+                
+                // Show In-App Notification if tab is visible
+                if (!document.hidden) {
+                    showInAppNotification(`${themeName} Update`, 'New data fragment received.', themeIcon, 'system');
+                } else {
+                    // Show System Notification if tab is hidden
+                    showSystemNotification(`Incoming Bitstream`, `New ${themeName} data synchronized.`);
+                }
+            }
         } else {
             const el = document.getElementById(`msg-${msg.id}`);
             if (el && msg.viewed_at && !el.querySelector('.fetch-pill')) {
@@ -370,35 +619,186 @@ function renderMessage(msg) {
     if (!isLocked) { div.style.cursor = 'pointer'; div.onclick = (e) => { e.stopPropagation(); handleMsgClick(msg, div); }; }
     const meta = `<div class="msg-meta"><div class="timestamp" data-created="${msg.created_at}">${formatTimestamp(msg.created_at)}</div>${msg.viewed_at ? `<div class="fetch-pill" id="fetch-${msg.id}"><div class="fetch-icon-wrapper">⭳<div class="fetch-icon-fill">⭳</div></div><span>│ FETCH [0%]</span></div>` : ''}</div>`;
     
-    // Skeleton placeholder
-    const skeleton = `<div class="skeleton-text long"></div><div class="skeleton-text medium"></div>`;
+    // Dual-Layer structure: Real Layer defines height, Camouflage Layer overlays
+    const contentHtml = `
+        <div class="real-layer"></div>
+        <div class="camouflage-layer">${applyCamouflage(msg)}</div>
+    `;
     
-    div.innerHTML = isSent ? `<div class="msg-body"><div class="msg-text glass">${skeleton}</div>${meta}</div><div class="avatar user">👤</div>` : `<div class="avatar ai colorful-sparkle">✦</div><div class="msg-body"><div class="msg-text glass">${skeleton}</div>${meta}</div>`;
+    const aiAvatarIcon = (currentProtocol === 'chatgpt') ? '◎' : '✦';
+    const aiAvatarClass = (currentProtocol === 'chatgpt') ? 'ai white-sparkle' : 'ai colorful-sparkle';
+
+    div.innerHTML = isSent ? `<div class="msg-body"><div class="msg-text">${contentHtml}</div>${meta}</div><div class="avatar user">👤</div>` : `<div class="avatar ${aiAvatarClass}">${aiAvatarIcon}</div><div class="msg-body"><div class="msg-text">${contentHtml}</div>${meta}</div>`;
     messagesContainer.appendChild(div);
 
-    // Briefly show skeleton before camouflage text
-    setTimeout(() => {
-        const textEl = div.querySelector('.msg-text');
-        if (textEl && !textEl.classList.contains('revealed')) {
-            textEl.innerHTML = applyCamouflage(msg);
-        }
-    }, 800);
+    // Populate the real layer in background to set the bubble height
+    updateRealLayer(msg, div.querySelector('.real-layer'));
 
     if (msg.burn_after) startBurnUI(msg.id, msg.burn_after);
 }
 
+async function updateRealLayer(msg, layer) {
+    if (!layer) return;
+    let mediaContent = msg.content, caption = '', sepIdx = msg.content.indexOf('||');
+    if (sepIdx !== -1) { caption = msg.content.substring(0, sepIdx); mediaContent = msg.content.substring(sepIdx + 2); }
+    
+    const cached = mediaCache.get(msg.id);
+    let displayUrl = cached ? (cached.blobUrl || mediaContent) : mediaContent;
+    if (!cached && (mediaContent.startsWith('uploads/') || mediaContent.startsWith('premium_vault/'))) {
+        const parts = mediaContent.split('/');
+        displayUrl = `view.php?dir=${encodeURIComponent(parts[0])}&file=${encodeURIComponent(parts[1] || '')}`;
+    }
+
+    let real = '';
+    const safeUrl = escapeHTML(displayUrl);
+    if (msg.is_image) real = `<img src="${safeUrl}" style="display:block;">`;
+    else if (msg.is_voice) real = `<audio controls src="${safeUrl}" style="display:block; width:100%;"></audio>`;
+    else if (msg.is_video) real = `<video src="${safeUrl}" controls muted playsinline style="display:block;"></video>`;
+    else if (CURRENT_USER_ID === 1) real = `<pre style="white-space:pre-wrap; font-size:11px; margin:0;">#include <stdio.h>\nint main() { printf("${escapeHTML(msg.content)}"); return 0; }</pre>`;
+    else real = linkify(escapeHTML(msg.content));
+    if (caption) real += `<div style="font-size:11px;color:#aaa;margin-top:8px;text-align:center;">${escapeHTML(caption)}</div>`;
+    layer.innerHTML = real;
+}
+
+const mediaCache = new Map();
+const MEDIA_FETCH_CACHE = 'gemini-media-fetch-v1';
+let preloadQueue = [];
+let isProcessingPreload = false;
+
 function applyCamouflage(msg) {
-    if (msg.is_image) return `<div class="image-camouflage">Image Error 0x882</div>`;
-    if (msg.is_voice) return `<div class="voice-camouflage">Audio Error</div>`;
-    if (msg.is_video) return `<div class="video-camouflage">Video Error 502</div>`;
-    const pool = camouflageData[CURRENT_USER_ID], items = (msg.sender_id === CURRENT_USER_ID) ? pool.prompts : pool.responses;
-    return escapeHTML(items[msg.id % items.length]);
+    if (msg.is_image || msg.is_video || msg.is_voice) {
+        if (currentProtocol === 'gemini') {
+            const type = (msg.is_image || msg.is_video) ? 'media' : 'audio';
+            const pyCode = [
+                "import numpy as np\ndef process_tensor(data):\n    return np.dot(data, np.random.rand(data.shape[1], 128))",
+                "import torch\nclass Net(torch.nn.Module):\n    def forward(self, x): return torch.relu(self.fc(x))",
+                "import cv2\nimg = cv2.imdecode(np.frombuffer(buffer, np.uint8), -1)\ngray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)",
+                "import pandas as pd\ndf = pd.read_parquet('data.parquet')\ncleaned = df.dropna().apply(lambda x: x * 0.95)",
+                "audio_stream = wave.open('buffer.wav', 'rb').readframes(-1)"
+            ];
+            const code = pyCode[msg.id % pyCode.length];
+            const isReady = mediaCache.has(msg.id);
+            const isSentByMe = msg.sender_id === CURRENT_USER_ID;
+            let statusText = isReady ? 'PRELOADED [ <span style="color:#34a853">READY</span> ]' : 'PRELOADING [ <span class="p-percent">0%</span> ]';
+            let barWidth = isReady ? '100%' : '0%';
+            let barColor = isReady ? '#34a853' : '#8ab4f8';
+            if (!isReady && isSentByMe) { statusText = 'UPLINK [ <span style="color:#8ab4f8">SECURED</span> ]'; barWidth = '100%'; }
+            const preloadUI = `<div class="preload-container" id="preload-${msg.id}"><div class="preload-status">${statusText}</div><div class="preload-bar-bg"><div class="preload-bar-fill" style="width: ${barWidth}; background: ${barColor};"></div></div></div>`;
+            if (!isReady && !isSentByMe) queuePreload(msg);
+            return `<div class="code-camouflage ${type}"><pre style="font-size:10px; margin:0; line-height:1.2; color:var(--theme-dim);">${code}</pre>${preloadUI}</div>`;
+        } else {
+            // ChatGPT Protocol Media Mask
+            const prose = [
+                "The scientific analysis of oceanic current patterns reveals significant variability in thermal distribution...",
+                "Recent advancements in linguistic modeling suggest that cross-cultural syntactic structures maintain...",
+                "Economic indicators for the second fiscal quarter point towards a stabilization of global supply chains...",
+                "Architectural history highlights the transition from traditional masonry to reinforced concrete frames...",
+                "Biological research on avian migration patterns has identified several key magnetic sensory receptors..."
+            ];
+            return `<div style="font-size:14px; color:var(--theme-dim); font-style:italic;">${prose[msg.id % prose.length]} <br><br> <span style="font-size:11px; opacity:0.6;">[ Attachment_Ref: ${msg.id} ]</span></div>`;
+        }
+    }
+    
+    const pool = camouflageData[currentProtocol];
+    const items = (msg.sender_id === CURRENT_USER_ID) ? pool.prompts : pool.responses;
+    return `<div style="font-size:14px; color:rgba(255,255,255,0.8);">${escapeHTML(items[msg.id % items.length])}</div>`;
+}
+
+function queuePreload(msg) {
+    if (preloadQueue.some(m => m.id === msg.id) || mediaCache.has(msg.id)) return;
+    preloadQueue.push(msg);
+    processPreloadQueue();
+}
+
+async function processPreloadQueue() {
+    if (isProcessingPreload || preloadQueue.length === 0) return;
+    isProcessingPreload = true;
+    const msg = preloadQueue.shift();
+    
+    const container = document.getElementById(`preload-${msg.id}`);
+    if (container) container.querySelector('.preload-status').textContent = 'PRELOADING [ QUEUED ]';
+    
+    await preloadMedia(msg);
+    isProcessingPreload = false;
+    processPreloadQueue();
+}
+
+async function preloadMedia(msg) {
+    let mediaContent = msg.content;
+    let sepIdx = msg.content.indexOf('||');
+    if (sepIdx !== -1) mediaContent = msg.content.substring(sepIdx + 2);
+    
+    let url = mediaContent;
+    if (mediaContent.startsWith('uploads/') || mediaContent.startsWith('premium_vault/')) {
+        const parts = mediaContent.split('/');
+        url = `view.php?dir=${encodeURIComponent(parts[0])}&file=${encodeURIComponent(parts[1] || '')}`;
+    } else if (!mediaContent.startsWith('http') && !mediaContent.startsWith('data:')) {
+        return;
+    }
+
+    try {
+        const cache = await caches.open(MEDIA_FETCH_CACHE);
+        const cachedResponse = await cache.match(url);
+        
+        const updateUI = (text, percent = 0, isReady = false, isManual = false) => {
+            const container = document.getElementById(`preload-${msg.id}`);
+            if (!container) return;
+            const statusEl = container.querySelector('.preload-status');
+            const fillEl = container.querySelector('.preload-bar-fill');
+            if (isReady) {
+                statusEl.innerHTML = 'PRELOADED [ <span style="color:#34a853">READY</span> ]';
+                fillEl.style.width = '100%';
+                fillEl.style.background = '#34a853';
+                // Trigger real layer update since we have the data now
+                const el = document.getElementById(`msg-${msg.id}`);
+                if (el) updateRealLayer(msg, el.querySelector('.real-layer'));
+            } else if (isManual) {
+                statusEl.innerHTML = 'LARGE_DATA [ <span style="color:#f4b400">MANUAL</span> ]';
+                fillEl.style.width = '100%';
+                fillEl.style.background = '#f4b400';
+            } else {
+                statusEl.textContent = `PRELOADING [ ${text} ]`;
+                fillEl.style.width = percent + '%';
+            }
+        };
+
+        if (cachedResponse) {
+            const blob = await cachedResponse.blob();
+            mediaCache.set(msg.id, { blobUrl: URL.createObjectURL(blob), originalUrl: url });
+            updateUI('', 100, true);
+            return;
+        }
+
+        // Size Guard: Check size before full download
+        const headResp = await fetch(url, { method: 'HEAD' });
+        const size = parseInt(headResp.headers.get('Content-Length') || '0');
+        if (size > 5 * 1024 * 1024) { // 5MB Limit
+            updateUI('', 0, false, true);
+            return;
+        }
+
+        // Proceed with download
+        const xhr = new XMLHttpRequest();
+        xhr.open('GET', url, true);
+        xhr.responseType = 'blob';
+        xhr.onprogress = (e) => { if (e.lengthComputable) updateUI(Math.floor((e.loaded / e.total) * 100) + '%', Math.floor((e.loaded / e.total) * 100)); };
+        xhr.onload = async () => {
+            if (xhr.status === 200) {
+                const blob = xhr.response;
+                await cache.put(url, new Response(blob));
+                mediaCache.set(msg.id, { blobUrl: URL.createObjectURL(blob), originalUrl: url });
+                updateUI('', 100, true);
+            }
+        };
+        xhr.onerror = () => updateUI('FAILED', 0);
+        xhr.send();
+    } catch (e) { debugLog("Preload Error: " + e.message); }
 }
 
 function camouflageMsg(entry) {
     if (!entry) return; clearTimeout(entry.timeoutId);
-    entry.txt.innerHTML = applyCamouflage(entry.msg); entry.txt.classList.remove('revealed');
-    delete entry.txt.dataset.revealed; if (currentRevealed === entry) currentRevealed = null;
+    entry.txt.classList.remove('revealed');
+    if (currentRevealed === entry) currentRevealed = null;
 }
 
 function handleMsgClick(msg, el) {
@@ -407,7 +807,9 @@ function handleMsgClick(msg, el) {
     if (currentRevealed && currentRevealed.txt === txt) {
         clearTimeout(currentRevealed.timeoutId);
         currentRevealed.timeoutId = setTimeout(() => camouflageMsg(currentRevealed), 10000);
-        secureFetch('api.php?action=schedule_delete', { method: 'POST', body: JSON.stringify({ msg_id: msg.id }) });
+        if (msg.receiver_id === CURRENT_USER_ID) {
+            secureFetch('api.php?action=schedule_delete', { method: 'POST', body: JSON.stringify({ msg_id: msg.id }) });
+        }
         return;
     }
     if (currentRevealed) camouflageMsg(currentRevealed);
@@ -415,44 +817,29 @@ function handleMsgClick(msg, el) {
 }
 
 async function revealMessage(msg, el, txt) {
-    if (txt.dataset.revealed) return; txt.dataset.revealed = "true";
-    let mediaContent = msg.content, caption = '', sepIdx = msg.content.indexOf('||');
-    if (sepIdx !== -1) { caption = msg.content.substring(0, sepIdx); mediaContent = msg.content.substring(sepIdx + 2); }
+    if (txt.classList.contains('revealed')) return;
     
-    // Use view.php proxy for all media files to ensure authorized access
-    let displayUrl = mediaContent;
-    if (mediaContent.startsWith('uploads/') || mediaContent.startsWith('premium_vault/')) {
-        const parts = mediaContent.split('/');
-        const dir = parts[0];
-        const fileName = parts[1] || '';
-        displayUrl = `view.php?dir=${encodeURIComponent(dir)}&file=${encodeURIComponent(fileName)}`;
-    }
-
-    let real = '';
-    const safeUrl = escapeHTML(displayUrl);
-    if (msg.is_image) real = `<img src="${safeUrl}" style="max-width:100%; border-radius:10px;">`;
-    else if (msg.is_voice) real = `<audio controls src="${safeUrl}"></audio>`;
-    else if (msg.is_video) real = `<video src="${safeUrl}" controls autoplay muted playsinline webkit-playsinline style="max-width:100%; border-radius:10px;"></video>`;
-    else if (CURRENT_USER_ID === 1) real = `<pre style="white-space:pre-wrap; font-size:11px;">#include <stdio.h>\nint main() { printf("${escapeHTML(msg.content)}"); return 0; }</pre>`;
-    else real = linkify(escapeHTML(msg.content));
-    if (caption) real += `<div style="font-size:11px;color:#aaa;margin-top:8px;text-align:center;">${escapeHTML(caption)}</div>`;
-    txt.innerHTML = real; txt.classList.add('revealed');
-    if (CURRENT_USER_ID === 1 && (msg.is_image || msg.is_voice || msg.is_video) && !mediaContent.startsWith('premium_vault/')) {
-        const btn = document.createElement('button'); btn.className = 'modern-btn btn-gradient-blue'; btn.style.marginTop = '12px'; btn.innerHTML = '<span>💎</span> Add to Premium';
-        btn.onclick = async (e) => {
-            e.stopPropagation(); btn.innerHTML = '<span>⚡</span> Adding...';
-            const r = await secureFetch('api.php?action=save_image', { method:'POST', body:JSON.stringify({ media_data:mediaContent, is_voice:msg.is_voice, is_video:msg.is_video }) });
-            if ((await r.json()).success) { btn.innerHTML = '<span>✅</span> Added'; btn.disabled = true; }
-        };
-        txt.appendChild(btn);
-    }
+    // Ensure real layer is updated before showing
+    await updateRealLayer(msg, txt.querySelector('.real-layer'));
+    
+    txt.classList.add('revealed');
+    
+    // If it's the receiver, mark as viewed
     if (msg.receiver_id === CURRENT_USER_ID) {
         secureFetch('api.php?action=mark_viewed', { method: 'POST', body: JSON.stringify({ msg_id: msg.id }) }).then(r => {
             if (r) r.json().then(d => { if (d.success && d.burn_after) { msg.burn_after = d.burn_after; startBurnUI(msg.id, d.burn_after); } });
         });
         secureFetch('api.php?action=schedule_delete', { method: 'POST', body: JSON.stringify({ msg_id: msg.id }) });
     }
-    const tid = setTimeout(() => { if (currentRevealed && currentRevealed.txt === txt) { const m = txt.querySelector('video, audio'); if (m && !m.paused && !m.ended) return; camouflageMsg(currentRevealed); } }, 10000);
+    
+    const tid = setTimeout(() => { 
+        if (currentRevealed && currentRevealed.txt === txt) { 
+            const m = txt.querySelector('video, audio'); 
+            if (m && !m.paused && !m.ended) return; 
+            camouflageMsg(currentRevealed); 
+        } 
+    }, 10000);
+    
     currentRevealed = { msg, el, txt, timeoutId: tid };
 }
 
@@ -468,6 +855,14 @@ function startBurnUI(id, burnAt) {
             clearInterval(inv); 
             const el = document.getElementById(`msg-${id}`); 
             if (el) {
+                // Purge Persistent Cache
+                const cached = mediaCache.get(id);
+                if (cached && cached.originalUrl) {
+                    caches.open(MEDIA_FETCH_CACHE).then(cache => cache.delete(cached.originalUrl));
+                    URL.revokeObjectURL(cached.blobUrl);
+                    mediaCache.delete(id);
+                }
+
                 const textEl = el.querySelector('.msg-text');
                 if (textEl) {
                     textEl.innerHTML = `<div class="skeleton-text long"></div><div class="skeleton-text medium"></div>`;
@@ -481,15 +876,17 @@ function startBurnUI(id, burnAt) {
 
 function startPolling() { 
     const poll = () => { getOtherStatus(); loadMessages(); checkTheater(); };
-    poll(); setInterval(poll, 2000); setInterval(updateMyStatus, 2000); 
+    poll(); setInterval(poll, 1000); setInterval(updateMyStatus, 2000); 
 }
 
 async function checkTheater() {
     const r = await secureFetch('api.php?action=theater_status'); if (!r) return;
     const data = await r.json();
-    if (data.partner_in_theater && !data.partner_in_call) showInAppNotification('Team activity', 'Team is in Theater, Join Now', '✦', 'theater', 'youtube.php');
+    const themeIcon = currentProtocol === 'chatgpt' ? '◎' : '✦';
+    
+    if (data.partner_in_theater && !data.partner_in_call) showInAppNotification('Team activity', 'Team is in Theater, Join Now', themeIcon, 'theater', 'youtube.php');
     else hideInAppNotification('theater');
-    if (data.partner_in_call) showInAppNotification('Active Meet', 'Team Meet Waiting, Join Now', '✦', 'call', isLocked ? null : 'call.php');
+    if (data.partner_in_call) showInAppNotification('Active Meet', 'Team Meet Waiting, Join Now', themeIcon, 'call', isLocked ? null : 'call.php');
     else hideInAppNotification('call');
 }
 
@@ -499,22 +896,27 @@ async function getOtherStatus() {
     const r = await secureFetch('api.php?action=get_other_status'); if (!r) return;
     const d = await r.json(); lastSeenTimestamp = d.last_seen;
     const isOnline = d.status === 'active' || d.status === 'typing';
-    const color = (d.status === 'typing') ? '#ffc107' : (isOnline ? '#28a745' : '#f44336');
+    const isTypingNow = d.status === 'typing';
+    
+    const color = isTypingNow ? '#ffc107' : (isOnline ? '#28a745' : '#f44336');
     document.documentElement.style.setProperty('--status-color', color);
-    currentStatusText = (d.status === 'typing') ? "Gemini is typing..." : (isOnline ? "Gemini is online" : "Gemini is offline");
+    
     if (thinkingText) {
-        if (d.status === 'typing') {
-            thinkingText.innerHTML = `Gemini is typing...<div class="typing-skeleton"><div class="line"></div><div class="line" style="width: 80%"></div></div>`;
+        if (isTypingNow) {
+            thinkingText.innerHTML = `
+                <div class="signal-noise">
+                    <span class="signal-label">[BITSTREAM_SYNC_ACTIVE]</span>
+                    <div class="signal-bar"></div><div class="signal-bar"></div><div class="signal-bar"></div>
+                    <div class="signal-bar"></div><div class="signal-bar"></div><div class="signal-bar"></div>
+                </div>`;
         } else {
-            thinkingText.textContent = currentStatusText;
+            thinkingText.textContent = isOnline ? "[NODE_ONLINE]" : "[NODE_OFFLINE]";
         }
     }
-    debugLog(`Polling: Tab=${document.hidden?'HIDDEN':'VISIBLE'} Online=${isOnline} Prev=${lastOtherOnline}`);
-    if (!isInitialLoad) {
-        if (isOnline && lastOtherOnline === false) { 
-            debugLog("ONLINE TRANSITION DETECTED"); 
-            showSystemNotification("Gemini Online", "Node is now online."); 
-        }
+    
+    if (!isInitialLoad && isOnline && lastOtherOnline === false) { 
+        const themeName = currentProtocol === 'chatgpt' ? 'ChatGPT' : 'Gemini';
+        showSystemNotification(`${themeName} Online`, "Node is now online."); 
     }
     lastOtherOnline = isOnline;
     if (panicLogo) { panicLogo.style.opacity = isOnline ? "1" : "0.5"; panicLogo.style.filter = isOnline ? "grayscale(0)" : "grayscale(1)"; }
@@ -563,7 +965,14 @@ function startSystemLogs() {
         }
     }, 2000);
 }
-function startStatusCycling() { setInterval(() => { if (thinkingText) thinkingText.textContent = (thinkingText.textContent.includes('thinking')) ? currentStatusText : "Gemini is thinking..."; }, 3000); }
+function startStatusCycling() { 
+    setInterval(() => { 
+        if (thinkingText && !thinkingText.querySelector('.signal-noise')) {
+            const themeName = currentProtocol === 'chatgpt' ? 'ChatGPT' : 'Gemini';
+            thinkingText.textContent = (thinkingText.textContent.includes('thinking')) ? (lastOtherOnline ? `[NODE_ONLINE]` : `[NODE_OFFLINE]`) : `${themeName} is thinking...`; 
+        }
+    }, 3000); 
+}
 
 async function toggleRecording() { if (isRecording) stopRecording(); else startRecording(); }
 async function startRecording() {
@@ -605,17 +1014,18 @@ function enableNotifications() {
     if (!("Notification" in window)) { alert("No support"); return; }
     const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream, isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
     if (isIOS && !isStandalone) { alert("iOS: Add to Home Screen first."); return; }
-    Notification.requestPermission().then(p => { if (p === "granted") { showSystemNotification("Gemini", "Enabled!"); updateNotificationButton(); } });
+    Notification.requestPermission().then(p => { if (p === "granted") { showSystemNotification(currentProtocol === 'chatgpt' ? 'ChatGPT' : 'Gemini', "Enabled!"); updateNotificationButton(); } });
 }
 function updateNotificationButton() {
     const btn = document.getElementById('enable-notifications');
     if (btn && Notification.permission === "granted") {
         btn.innerHTML = '<span>🔔</span> Test Notification';
         btn.onclick = () => {
-            showSystemNotification("Gemini", "Minimize app now...");
+            const themeName = currentProtocol === 'chatgpt' ? 'ChatGPT' : 'Gemini';
+            showSystemNotification(themeName, "Minimize app now...");
             if (!document.getElementById('bg-test-btn')) {
                 const bgBtn = document.createElement('button'); bgBtn.id = 'bg-test-btn'; bgBtn.className = 'nav-item'; bgBtn.innerHTML = '<span>⏳</span> Background Test';
-                bgBtn.onclick = () => { alert("Minimize NOW!"); setTimeout(() => showSystemNotification("Gemini Background", "Success!"), 7000); };
+                bgBtn.onclick = () => { alert("Minimize NOW!"); setTimeout(() => showSystemNotification(`${themeName} Background`, "Success!"), 7000); };
                 btn.parentNode.insertBefore(bgBtn, btn.nextSibling);
             }
         };
@@ -706,41 +1116,26 @@ function hideInAppNotification(type) {
 }
 
 async function showSystemNotification(title, body) {
-    debugLog(`🔔 Notification Triggered: ${title}`);
-    if (Notification.permission !== "granted") {
-        debugLog("❌ Aborted: Permission not granted.");
-        return;
-    }
+    if (Notification.permission !== "granted") return;
 
+    const isGPT = currentProtocol === 'chatgpt';
+    const themeIcon = isGPT ? '◎' : '✦';
+    
     const options = { 
         body: body, 
-        icon: 'https://www.gstatic.com/lamda/images/favicon_v1_150160c13ff2af13800c.png',
-        tag: Date.now().toString(), // Force unique alert
+        icon: `data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2280%22 fill=%22%238ab4f8%22>${themeIcon}</text></svg>`,
+        tag: 'gemini-update',
         renotify: true,
         vibrate: [200, 100, 200]
     };
 
-    // ALWAYS use Service Worker for iOS reliability
     if ('serviceWorker' in navigator) {
-        try {
-            const reg = await navigator.serviceWorker.ready;
-            if (reg) {
-                await reg.showNotification(title, options);
-                debugLog("✅ SW attempt successful.");
-                return;
-            }
-        } catch (e) {
-            debugLog(`⚠️ SW failed: ${e.message}`);
+        const reg = await navigator.serviceWorker.ready;
+        if (reg) {
+            reg.showNotification(title, options);
+            return;
         }
     }
 
-    // Fallback to Native (standard browser)
-    try {
-        const n = new Notification(title, options);
-        n.onclick = () => { window.focus(); n.close(); };
-        debugLog("✅ Native fallback successful.");
-    } catch (e) {
-        debugLog(`❌ All methods failed: ${e.message}`);
-    }
+    try { new Notification(title, options); } catch (e) { debugLog("Native notification failed"); }
 }
-

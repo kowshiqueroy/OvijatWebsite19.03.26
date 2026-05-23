@@ -198,12 +198,16 @@ switch ($action) {
         }
 
         if ($path && strpos($path, 'premium_vault/') === 0) {
-            // Deduplication safety check: only delete from disk if no other record uses this file
-            $stCheck = $pdo->prepare("SELECT COUNT(*) FROM saved_images WHERE image_data = ?");
-            $stCheck->execute([$path]);
-            if ($stCheck->fetchColumn() == 0) {
+            // Deduplication safety check: check ALL tables (saved_images and messages)
+            $stVault = $pdo->prepare("SELECT COUNT(*) FROM saved_images WHERE image_data = ?");
+            $stVault->execute([$path]);
+            
+            $stMsgs = $pdo->prepare("SELECT COUNT(*) FROM messages WHERE content = ? OR content LIKE ?");
+            $stMsgs->execute([$path, '%' . basename($path) . '%']);
+            
+            if ($stVault->fetchColumn() == 0 && $stMsgs->fetchColumn() == 0) {
                 $fullPath = __DIR__ . '/../' . $path;
-                if (file_exists($fullPath)) unlink($fullPath);
+                if (file_exists($fullPath)) @unlink($fullPath);
             }
         }
         
@@ -308,30 +312,32 @@ switch ($action) {
                 
                 $hash = md5_file($tempFinalPath);
                 
-                // Check for duplicates
-                $table = ($targetDirType === 'premium_vault') ? 'saved_images' : 'messages';
-                $col = ($targetDirType === 'premium_vault') ? 'image_data' : 'content';
-                $stmt = $pdo->prepare("SELECT $col FROM $table WHERE file_hash = ? LIMIT 1");
-                $stmt->execute([$hash]);
-                $existing = $stmt->fetchColumn();
+                // Check for duplicates globally
+                $stmtMsg = $pdo->prepare("SELECT content FROM messages WHERE file_hash = ? LIMIT 1");
+                $stmtMsg->execute([$hash]);
+                $existingMsg = $stmtMsg->fetchColumn();
+
+                $stmtVault = $pdo->prepare("SELECT image_data FROM saved_images WHERE file_hash = ? LIMIT 1");
+                $stmtVault->execute([$hash]);
+                $existingVault = $stmtVault->fetchColumn();
+
+                $existing = $existingMsg ? $existingMsg : ($existingVault ? $existingVault : null);
                 
                 if ($existing && file_exists(__DIR__ . '/../' . $existing)) {
                     $dbPath = $existing;
-                    unlink($tempFinalPath);
-                    // Clean temp chunks
-                    for ($i = 0; $i < $totalChunks; $i++) unlink($tempDir . '/chunk_' . $i);
-                    rmdir($tempDir);
+                    @unlink($tempFinalPath);
                 } else {
                     $prefix = ($targetDirType === 'premium_vault') ? 'p_file' : 'file';
                     $finalFilename = $prefix . '_' . bin2hex(random_bytes(8)) . '_' . time() . '.' . $ext;
                     $finalPath = $finalDir . $finalFilename;
                     rename($tempFinalPath, $finalPath);
-                    
-                    // Clean temp chunks
-                    for ($i = 0; $i < $totalChunks; $i++) unlink($tempDir . '/chunk_' . $i);
-                    rmdir($tempDir);
                     $dbPath = $targetDirType . '/' . $finalFilename;
                 }
+
+                // Clean temp chunks
+                $chunks = glob($tempDir . '/chunk_*');
+                foreach ($chunks as $c) @unlink($c);
+                @rmdir($tempDir);
 
                 $is_v = (in_array($ext, ['wav', 'ogg', 'mp3'])) ? 1 : 0;
                 $is_vid = (in_array($ext, ['mp4', 'webm', 'mov'])) ? 1 : 0;

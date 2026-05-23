@@ -95,29 +95,37 @@ letter-spacing: 1px;
             top: 50%;
             transform: translateY(-50%);
             width: 44px;
-            height: 80px;
-            background: rgba(234, 67, 53, 0.15);
+            height: 100px;
+            background: rgba(234, 67, 53, 0.08);
             backdrop-filter: blur(8px);
-            border: 1px solid rgba(234, 67, 53, 0.3);
+            border: 1px solid rgba(234, 67, 53, 0.2);
             color: var(--panic-red);
             display: flex;
+            flex-direction: column;
             align-items: center;
             justify-content: center;
             font-weight: 900;
             cursor: pointer;
             pointer-events: auto;
-            font-size: 10px;
+            font-size: 9px;
             writing-mode: vertical-rl;
             text-orientation: upright;
-            letter-spacing: 2px;
-            border-radius: 0 12px 12px 0;
-            transition: all 0.2s;
+            letter-spacing: 1px;
+            border-radius: 0 16px 16px 0;
+            transition: all 0.3s;
+            opacity: 0.6;
         }
+        .side-panic:hover { opacity: 1; background: rgba(234, 67, 53, 0.15); }
         .side-panic.right {
             right: 0;
-            border-radius: 12px 0 0 12px;
+            border-radius: 16px 0 0 16px;
         }
-        .side-panic:active { background: var(--panic-red); color: #fff; }
+        .side-panic.confirming { 
+            background: var(--panic-red); 
+            color: #fff; 
+            opacity: 1;
+            box-shadow: 0 0 20px rgba(234, 67, 53, 0.4);
+        }
 
         /* Lock Screen */
         .lock-screen {
@@ -225,9 +233,12 @@ letter-spacing: 1px;
         /* Media Grid Refined */
         .media-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-            gap: 12px;
-            padding: 16px;
+            grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+            gap: 8px;
+            padding: 12px;
+        }
+        @media (min-width: 600px) {
+            .media-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; padding: 16px; }
         }
         .media-item { 
             aspect-ratio: 1; 
@@ -383,8 +394,8 @@ letter-spacing: 1px;
 
     <!-- Panic Buttons - Always Present -->
     <div class="panic-overlay" id="panic-overlay">
-        <div class="side-panic left" onclick="handlePanic()">PANIC</div>
-        <div class="side-panic right" onclick="handlePanic()">PANIC</div>
+        <div class="side-panic left" onclick="handlePanicClick(this)">EXIT</div>
+        <div class="side-panic right" onclick="handlePanicClick(this)">EXIT</div>
     </div>
 
     <!-- Fake Buy Page (Landing) -->
@@ -397,9 +408,9 @@ letter-spacing: 1px;
         </header>
 
         <div class="hero" style="text-align: center; margin-bottom: 60px;">
-            <div class="hero-badge">Gemini Pro AI</div>
+            <div class="hero-badge">Gemini Advanced AI</div>
             <h1>Unlock the next generation of AI</h1>
-            <p style="color: var(--gemini-dim); max-width: 600px; margin: 0 auto;">Get priority access to our most capable models, advanced image generation, and dedicated workspace storage.</p>
+            <p style="color: var(--gemini-dim); max-width: 600px; margin: 0 auto;">Priority access to Gemini Ultra 2.0, 2M token context window, and advanced technical tools.</p>
         </div>
 
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 30px;">
@@ -418,12 +429,12 @@ letter-spacing: 1px;
                 <div style="font-size: 14px; color: var(--gemini-blue); margin-bottom: 10px; font-weight: 700;">Most Popular</div>
                 <div style="font-size: 32px; font-weight: 700;">$19.99 <span style="font-size: 16px; font-weight: 400; color: var(--gemini-dim);">/mo</span></div>
                 <ul style="list-style: none; margin-top: 20px; text-align: left; color: var(--gemini-dim); font-size: 14px;">
-                    <li style="margin-bottom: 12px; color: #fff;">✓ Gemini Ultra 1.0 access</li>
+                    <li style="margin-bottom: 12px; color: #fff;">✓ Gemini Ultra 2.0 access</li>
                     <li style="margin-bottom: 12px; color: #fff;">✓ Priority during peak times</li>
-                    <li style="margin-bottom: 12px; color: #fff;">✓ Advanced image generation</li>
-                    <li style="color: #fff;">✓ 2TB private vault storage</li>
+                    <li style="margin-bottom: 12px; color: #fff;">✓ 2M token context window</li>
+                    <li style="color: #fff;">✓ 2TB advanced workspace storage</li>
                 </ul>
-                <button class="buy-btn" onclick="startUnlock()">Upgrade to Pro</button>
+                <button class="buy-btn" onclick="startUnlock()">Upgrade to Advanced</button>
             </div>
         </div>
     </div>
@@ -455,10 +466,10 @@ letter-spacing: 1px;
     <div id="vault-ui">
         <div class="vault-header">
             <div class="vault-header-top">
-                <h1>Gemini <span>Vault</span></h1>
+                <h1>Advanced <span>Workspace</span></h1>
                 <div class="vault-header-actions">
                     <button class="cache-btn" onclick="clearVaultCache()">Clear Cache</button>
-                    <button class="hide-btn" onclick="handlePanic()">✕ Hide</button>
+                    <button class="hide-btn" onclick="handlePanic(true)">✕ Close</button>
                     <span id="media-stats">0 items</span>
                 </div>
             </div>
@@ -900,7 +911,7 @@ letter-spacing: 1px;
         function formatSavedDate(dateStr) {
             if (!dateStr) return '-';
             try {
-                // dateStr is now ISO8601 UTC (e.g., 2026-05-22T12:00:00Z)
+                // Ensure dateStr is parsed correctly
                 const d = new Date(dateStr);
                 const now = new Date();
                 
@@ -1130,7 +1141,21 @@ letter-spacing: 1px;
             } catch (e) { console.error(e); }
         }
 
-        function handlePanic() {
+        function handlePanicClick(el) {
+            if (el.classList.contains('confirming')) {
+                handlePanic(true);
+            } else {
+                el.classList.add('confirming');
+                el.textContent = "CONFIRM";
+                setTimeout(() => {
+                    el.classList.remove('confirming');
+                    el.textContent = "EXIT";
+                }, 2000);
+            }
+        }
+
+        function handlePanic(direct = false) {
+            if (!direct && isVaultActive && !confirm("Confirm Workspace Exit?")) return;
             mediaCache.clear();
             document.body.innerHTML = "";
             document.body.style.background = "#0f0f10";
