@@ -66,16 +66,6 @@ try {
             in_call INTEGER DEFAULT 0
         )");
 
-        $pdo->exec("CREATE TABLE IF NOT EXISTS sms_history (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER,
-            phone_number TEXT,
-            message TEXT,
-            status TEXT,
-            error_msg TEXT,
-            sent_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        )");
-
         $pdo->exec("CREATE TABLE IF NOT EXISTS saved_images (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER,
@@ -110,19 +100,9 @@ try {
             ('pin_1', ?), 
             ('pin_2', ?),
             ('pass_1', ?),
-            ('pass_2', ?),
-            ('sms_api_key', ?),
-            ('sms_number_1', ?),
-            ('sms_number_2', ?),
-            ('sms_enabled_2', '1'),
-            ('sms_default_msg', 'Since {time}, Gemini.sohojweb.com is waiting for your response.')
+            ('pass_2', ?)
         ");
-        $stmt->execute([
-            $pin1, $pin2, $pass1, $pass2,
-            defined('INITIAL_SMS_API_KEY') ? INITIAL_SMS_API_KEY : '',
-            defined('INITIAL_SMS_NUMBER_1') ? INITIAL_SMS_NUMBER_1 : '',
-            defined('INITIAL_SMS_NUMBER_2') ? INITIAL_SMS_NUMBER_2 : ''
-        ]);
+        $stmt->execute([$pin1, $pin2, $pass1, $pass2]);
     }
 
     // Column maintenance (for existing databases)
@@ -188,13 +168,6 @@ try {
         if ($c['name'] === 'comments_enabled') $hasCommentsEnabled = true;
     }
     if (!$hasCommentsEnabled) $pdo->exec("ALTER TABLE youtube_sync ADD COLUMN comments_enabled INTEGER DEFAULT 1");
-
-    $pdo->exec("CREATE TABLE IF NOT EXISTS video_history (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        video_id TEXT UNIQUE,
-        title TEXT,
-        watched_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )");
 
 } catch (PDOException $e) {
     error_log($e->getMessage());

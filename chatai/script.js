@@ -353,14 +353,12 @@ async function loadMessages() {
             if (!isInitialLoad && document.hidden && msg.sender_id !== CURRENT_USER_ID) showSystemNotification("New AI Nodes", "");
         } else {
             const el = document.getElementById(`msg-${msg.id}`);
-            if (el && msg.viewed_at && !el.querySelector('.viewed-badge')) {
-                const meta = el.querySelector('.msg-meta'), badge = document.createElement('div');
-                badge.className = 'viewed-badge'; badge.innerHTML = ' ⟳ ';
-                const burn = meta.querySelector('.burn-timer'); if (burn) meta.insertBefore(badge, burn); else meta.appendChild(badge);
-                if (msg.burn_after && !meta.querySelector('.burn-timer')) {
-                    const bDiv = document.createElement('div'); bDiv.className = 'burn-timer'; bDiv.id = `burn-${msg.id}`; bDiv.innerHTML = ' ⚡ <span></span>';
-                    meta.appendChild(bDiv); startBurnUI(msg.id, msg.burn_after);
-                }
+            if (el && msg.viewed_at && !el.querySelector('.fetch-pill')) {
+                const meta = el.querySelector('.msg-meta'), pill = document.createElement('div');
+                pill.className = 'fetch-pill'; pill.id = `fetch-${msg.id}`;
+                pill.innerHTML = `<div class="fetch-icon-wrapper">⭳<div class="fetch-icon-fill">⭳</div></div><span>│ FETCH [0%]</span>`;
+                meta.appendChild(pill);
+                if (msg.burn_after) startBurnUI(msg.id, msg.burn_after);
             }
         }
     });
@@ -370,9 +368,22 @@ function renderMessage(msg) {
     const div = document.createElement('div'), isSent = msg.sender_id === CURRENT_USER_ID;
     div.className = `message-row ${isSent ? 'sent' : 'received'}`; div.id = `msg-${msg.id}`;
     if (!isLocked) { div.style.cursor = 'pointer'; div.onclick = (e) => { e.stopPropagation(); handleMsgClick(msg, div); }; }
-    const meta = `<div class="msg-meta"><div class="timestamp" data-created="${msg.created_at}">${formatTimestamp(msg.created_at)}</div>${msg.viewed_at ? '<div class="viewed-badge">⟳ </div>' : ''}${msg.burn_after ? `<div class="burn-timer" id="burn-${msg.id}">⚡ <span></span></div>` : ''}</div>`;
-    div.innerHTML = isSent ? `<div class="msg-body"><div class="msg-text glass">${applyCamouflage(msg)}</div>${meta}</div><div class="avatar user">👤</div>` : `<div class="avatar ai colorful-sparkle">✦</div><div class="msg-body"><div class="msg-text glass">${applyCamouflage(msg)}</div>${meta}</div>`;
+    const meta = `<div class="msg-meta"><div class="timestamp" data-created="${msg.created_at}">${formatTimestamp(msg.created_at)}</div>${msg.viewed_at ? `<div class="fetch-pill" id="fetch-${msg.id}"><div class="fetch-icon-wrapper">⭳<div class="fetch-icon-fill">⭳</div></div><span>│ FETCH [0%]</span></div>` : ''}</div>`;
+    
+    // Skeleton placeholder
+    const skeleton = `<div class="skeleton-text long"></div><div class="skeleton-text medium"></div>`;
+    
+    div.innerHTML = isSent ? `<div class="msg-body"><div class="msg-text glass">${skeleton}</div>${meta}</div><div class="avatar user">👤</div>` : `<div class="avatar ai colorful-sparkle">✦</div><div class="msg-body"><div class="msg-text glass">${skeleton}</div>${meta}</div>`;
     messagesContainer.appendChild(div);
+
+    // Briefly show skeleton before camouflage text
+    setTimeout(() => {
+        const textEl = div.querySelector('.msg-text');
+        if (textEl && !textEl.classList.contains('revealed')) {
+            textEl.innerHTML = applyCamouflage(msg);
+        }
+    }, 800);
+
     if (msg.burn_after) startBurnUI(msg.id, msg.burn_after);
 }
 
@@ -446,10 +457,25 @@ async function revealMessage(msg, el, txt) {
 }
 
 function startBurnUI(id, burnAt) {
-    const span = document.querySelector(`#burn-${id} span`); if (!span) return;
+    const pill = document.querySelector(`#fetch-${id}`); if (!pill) return;
+    const fill = pill.querySelector('.fetch-icon-fill'), text = pill.querySelector('span'), duration = 120;
     const inv = setInterval(() => {
-        const rem = Math.max(0, burnAt - Math.floor(Date.now()/1000)); span.textContent = rem + 's';
-        if (rem <= 0) { clearInterval(inv); const el = document.getElementById(`msg-${id}`); if (el) el.remove(); }
+        const now = Math.floor(Date.now()/1000), elapsed = duration - Math.max(0, burnAt - now);
+        const percent = Math.min(100, Math.floor((elapsed / duration) * 100));
+        if (fill) fill.style.height = `${percent}%`;
+        if (text) text.textContent = `│ FETCH [${percent}%]`;
+        if (elapsed >= duration) { 
+            clearInterval(inv); 
+            const el = document.getElementById(`msg-${id}`); 
+            if (el) {
+                const textEl = el.querySelector('.msg-text');
+                if (textEl) {
+                    textEl.innerHTML = `<div class="skeleton-text long"></div><div class="skeleton-text medium"></div>`;
+                    textEl.classList.add('purge-animation');
+                }
+                setTimeout(() => el.remove(), 800);
+            } 
+        }
     }, 1000);
 }
 
@@ -476,7 +502,13 @@ async function getOtherStatus() {
     const color = (d.status === 'typing') ? '#ffc107' : (isOnline ? '#28a745' : '#f44336');
     document.documentElement.style.setProperty('--status-color', color);
     currentStatusText = (d.status === 'typing') ? "Gemini is typing..." : (isOnline ? "Gemini is online" : "Gemini is offline");
-    if (thinkingText) thinkingText.textContent = currentStatusText;
+    if (thinkingText) {
+        if (d.status === 'typing') {
+            thinkingText.innerHTML = `Gemini is typing...<div class="typing-skeleton"><div class="line"></div><div class="line" style="width: 80%"></div></div>`;
+        } else {
+            thinkingText.textContent = currentStatusText;
+        }
+    }
     debugLog(`Polling: Tab=${document.hidden?'HIDDEN':'VISIBLE'} Online=${isOnline} Prev=${lastOtherOnline}`);
     if (!isInitialLoad) {
         if (isOnline && lastOtherOnline === false) { 
