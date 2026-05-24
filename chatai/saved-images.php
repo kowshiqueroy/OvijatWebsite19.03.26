@@ -856,7 +856,16 @@ letter-spacing: 1px;
                     }
                 }
 
-                const blob = new Blob(chunks);
+                // Explicitly set type for recordings and videos
+                let mimeType = response.headers.get('content-type') || 'application/octet-stream';
+                
+                // Fallback for recorded files that might have generic types
+                if (item.image_data.includes('.webm')) mimeType = 'video/webm';
+                else if (item.image_data.includes('.mp4')) mimeType = 'video/mp4';
+                else if (item.image_data.includes('.mov')) mimeType = 'video/quicktime';
+                else if (item.is_voice == 1) mimeType = 'audio/webm';
+
+                const blob = new Blob(chunks, { type: mimeType });
                 const url = URL.createObjectURL(blob);
                 mediaCache.set(item.image_data, { url, size: blob.size });
                 await saveToCache(item.image_data, blob);
@@ -1063,7 +1072,16 @@ letter-spacing: 1px;
                     });
                 }
 
-                const blob = new Blob(chunks);
+                // Explicitly set type for recordings and videos
+                let mimeType = response.headers.get('content-type') || 'application/octet-stream';
+                
+                // Fallback for recorded files that might have generic types
+                if (item.image_data.includes('.webm')) mimeType = 'video/webm';
+                else if (item.image_data.includes('.mp4')) mimeType = 'video/mp4';
+                else if (item.image_data.includes('.mov')) mimeType = 'video/quicktime';
+                else if (item.is_voice == 1) mimeType = 'audio/webm';
+
+                const blob = new Blob(chunks, { type: mimeType });
                 const url = URL.createObjectURL(blob);
                 mediaCache.set(item.image_data, { url, size: blob.size });
                 loader.style.display = 'none';

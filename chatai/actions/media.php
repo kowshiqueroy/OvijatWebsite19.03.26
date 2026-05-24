@@ -223,12 +223,18 @@ switch ($action) {
             } else {
                 $rec_session_id = $_POST['rec_session_id'] ?? '';
                 $chunk_index = (int)($_POST['chunk_index'] ?? 0);
+                $mime_type = $_POST['mime_type'] ?? 'video/webm';
                 
+                $extension = 'webm';
+                if (strpos($mime_type, 'mp4') !== false) $extension = 'mp4';
+                else if (strpos($mime_type, 'quicktime') !== false) $extension = 'mov';
+                else if (strpos($mime_type, 'ogg') !== false) $extension = 'ogg';
+
                 if ($rec_session_id) {
                     $rec_session_id = preg_replace('/[^a-zA-Z0-9]/', '', $rec_session_id);
-                    $filename = 'recording_' . $user_id . '_' . $rec_session_id . '.webm';
+                    $filename = 'recording_' . $user_id . '_' . $rec_session_id . '.' . $extension;
                 } else {
-                    $filename = 'recording_' . $user_id . '_' . time() . '.webm';
+                    $filename = 'recording_' . $user_id . '_' . time() . '.' . $extension;
                 }
                 
                 $targetDir = __DIR__ . '/../premium_vault/';

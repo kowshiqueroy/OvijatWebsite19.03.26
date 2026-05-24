@@ -87,41 +87,63 @@ $other_name = ($user_id == 1) ? 'Rai' : 'Kush';
         .call-container {
             display: none; background: #000; width: 100%; position: relative;
             z-index: 900; overflow: hidden; border-bottom: 1px solid rgba(255,255,255,0.06); cursor: pointer;
+            aspect-ratio: 16 / 9; /* Default to avoid 0 height */
         }
         .call-container.active { display: block; width: 100%; height: auto; max-height: 70vh; flex-shrink: 0; background: #000; }
-        #remote-video { width: 100%; height: 100%; max-height: 70vh; background: #000; display: block; object-fit: cover; pointer-events: none; }
+        #remote-video { width: 100%; height: 100%; max-height: 70vh; background: #000; display: block; object-fit: contain; pointer-events: none; min-height: 200px; }
         #local-video {
-            position: absolute; top: 12px; right: 12px; width: 110px; height: 160px;
+            position: absolute; top: 12px; right: 12px; width: 85px; height: auto;
             border-radius: 12px; z-index: 910;
             box-shadow: 0 8px 24px rgba(0,0,0,0.5); 
             transition: opacity 0.3s ease, transform 0.3s ease;
             transform: scaleX(-1);
-            object-fit: cover;
+            object-fit: contain;
             background: transparent;
         }
         #local-video.hidden { opacity: 0; pointer-events: none; transform: scaleX(-1) scale(0.8); }
         #local-video.no-mirror { transform: scaleX(1); }
 
         .call-mini-controls {
-            position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%);
-            padding: 8px 16px; background: rgba(0,0,0,0.7); backdrop-filter: blur(12px);
-            border-radius: 24px; display: flex; justify-content: center; gap: 12px;
-            z-index: 920; border: 1px solid rgba(255,255,255,0.08);
-            transition: opacity 0.35s ease, transform 0.35s ease;
+            position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+            padding: 10px 12px; background: rgba(15, 15, 18, 0.5); backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border-radius: 20px; display: flex; justify-content: center; gap: 8px;
+            z-index: 950; border: 1px solid rgba(255,255,255,0.1);
+            box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            width: 92%; max-width: 380px;
         }
-        [data-theme="chatgpt"] .call-mini-controls { border-radius: 8px; backdrop-filter: none; background: #202123; }
-        .call-mini-controls.hidden { opacity: 0; pointer-events: none; transform: translateX(-50%) translateY(16px); }
+        [data-theme="chatgpt"] .call-mini-controls { border-radius: 12px; background: rgba(32, 33, 35, 0.7); }
+        .call-mini-controls.hidden { opacity: 0; pointer-events: none; transform: translateX(-50%) translateY(30px) scale(0.9); }
         
         .control-btn {
-            background: rgba(255,255,255,0.08); border: none; width: 40px; height: 40px;
+            background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.05); 
+            width: 36px; height: 36px;
             border-radius: 50%; color: #fff; cursor: pointer; display: flex;
-            align-items: center; justify-content: center; font-size: 18px; transition: all 0.2s;
+            align-items: center; justify-content: center; font-size: 16px; 
+            transition: all 0.2s ease;
+            -webkit-tap-highlight-color: transparent;
+            flex-shrink: 0;
         }
-        [data-theme="chatgpt"] .control-btn { border-radius: 4px; }
-        .control-btn:active { transform: scale(0.9); }
-        .control-btn.off { background: rgba(255,77,77,0.35); color: #ff4d4d; }
-        .control-btn.end { background: #ff4d4d; color: #fff; width: 46px; border-radius: 12px; }
-        [data-theme="chatgpt"] .control-btn.end { border-radius: 4px; }
+        [data-theme="chatgpt"] .control-btn { border-radius: 6px; }
+        .control-btn:active { transform: scale(0.85); background: rgba(255,255,255,0.2); }
+        .control-btn.off { background: rgba(234, 67, 53, 0.2); color: #ea4335; border-color: rgba(234, 67, 53, 0.3); }
+        .control-btn.end { 
+            background: #ea4335; color: #fff; width: 42px; border-radius: 12px; 
+            box-shadow: 0 4px 15px rgba(234, 67, 53, 0.3);
+            font-size: 18px;
+        }
+        [data-theme="chatgpt"] .control-btn.end { border-radius: 6px; }
+        .control-btn.end:active { transform: scale(0.9) translateY(1px); }
+
+        .dl-timer { 
+            font-size: 10px; color: #fff; font-family: 'Roboto Mono', monospace; 
+            font-weight: 700; background: rgba(234, 67, 53, 0.85); 
+            padding: 2px 6px; border-radius: 8px;
+            position: absolute; top: -22px; left: 50%; transform: translateX(-50%);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            z-index: 1000;
+        }
 
         /* Overlays */
         .call-overlay {
@@ -239,6 +261,30 @@ $other_name = ($user_id == 1) ? 'Rai' : 'Kush';
         }
         [data-theme="chatgpt"] .chat-comment.self { background: var(--theme-accent); border: none; }
         
+        .chat-comment.system-notification {
+            bottom: auto; top: 100px; left: 50%; transform: translateX(-50%);
+            animation: system-note-in 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+            background: rgba(15, 15, 18, 0.98) !important;
+            max-width: 340px; width: 92%;
+            border: 1px solid var(--theme-accent) !important;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.8), 0 0 30px rgba(66, 133, 244, 0.3);
+            z-index: 12000;
+        }
+
+        .chat-comment.system-notification.fade-out {
+            animation: system-note-out 0.3s ease forwards;
+        }
+
+        @keyframes system-note-in {
+            from { opacity: 0; transform: translateX(-50%) translateY(-100%) scale(0.9); }
+            to { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
+        }
+
+        @keyframes system-note-out {
+            from { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
+            to { opacity: 0; transform: translateX(-50%) translateY(-20px) scale(0.9); }
+        }
+
         .chat-comment.receiver-fly {
             animation: fly-all-over 10s linear forwards;
         }
@@ -253,7 +299,10 @@ $other_name = ($user_id == 1) ? 'Rai' : 'Kush';
         .chat-comment.fade-out { animation: comment-out 0.3s ease forwards; }
 
         @keyframes comment-in { from { opacity: 0; transform: translateY(10px) scale(0.9); } to { opacity: 1; transform: translateY(0) scale(1); } }
-        @keyframes comment-out { from { opacity: 1; transform: scale(1); } to { opacity: 0; transform: scale(0.9); } }
+        @keyframes comment-out { 
+            from { opacity: 1; transform: translateX(-50%) scale(1); } 
+            to { opacity: 0; transform: translateX(-50%) scale(0.9); } 
+        }
 
         .chat-input-area {
             display: flex; align-items: center; gap: 8px;
@@ -281,7 +330,7 @@ $other_name = ($user_id == 1) ? 'Rai' : 'Kush';
         .dl-timer { font-size: 10px; color: #ff4444; font-family: 'Roboto Mono', monospace; min-width: 32px; font-weight: 500; }
 
         @media (max-width: 768px) {
-            #local-video { width: 76px; height: 120px; top: 8px; right: 8px; border-radius: 8px; }
+            #local-video { width: 76px; height: auto; top: 8px; right: 8px; border-radius: 8px; }
             .chat-area .message { max-width: 90%; }
         }
     </style>
@@ -303,7 +352,7 @@ $other_name = ($user_id == 1) ? 'Rai' : 'Kush';
             <video id="local-video" autoplay playsinline webkit-playsinline muted></video>
             
             <?php if ($user_id == 1): ?>
-            <video id="bc-video" loop muted playsinline webkit-playsinline style="position:absolute; opacity:0; pointer-events:none; width:1px; height:1px;"></video>
+            <video id="bc-video" loop muted playsinline webkit-playsinline style="position:absolute; top:0; left:0; width:100%; height:100%; opacity:0.001; pointer-events:none; z-index:1;"></video>
             <div id="bc-menu" style="display:none; position:absolute; bottom:70px; left:50%; transform:translateX(-50%); background:rgba(15,15,18,0.95); backdrop-filter:blur(10px); padding:10px; border-radius:20px; border:1px solid rgba(255,255,255,0.15); gap:10px; z-index:930; box-shadow:0 8px 32px rgba(0,0,0,0.6); transition: opacity 0.35s ease, transform 0.35s ease;">
                 <button class="control-btn" id="bc-rec" onclick="startBCRecording()" title="Record Broadcast">⏺</button>
                 <button class="control-btn" id="bc-stop-rec" onclick="stopBCRecording()" style="display:none; background:#ff4d4d;" title="Stop Recording">⏹</button>
@@ -410,7 +459,7 @@ $other_name = ($user_id == 1) ? 'Rai' : 'Kush';
         function triggerGlitch() {
             if (isGlitching) return;
             isGlitching = true;
-            addChatMessage('[Signal_Interference: Re-aligning nodes...]', 'log');
+            // Removed log message for stealth
             setTimeout(() => { isGlitching = false; }, 250);
         }
 
@@ -425,23 +474,18 @@ $other_name = ($user_id == 1) ? 'Rai' : 'Kush';
             if (bcAnimationId) cancelAnimationFrame(bcAnimationId);
             const drawFrame = () => {
                 if (!videoEl.paused && !videoEl.ended) {
-                    // Detect loop reset for freeze effect
-                    if (videoEl.currentTime < lastBCPos && lastBCPos > videoEl.duration - 0.5) {
-                        isGlitching = true; // reusing variable as "isFrozen"
-                        setTimeout(() => { isGlitching = false; }, 300); // 300ms freeze on loop
-                    }
+                    // Removed loop-reset glitch for stealth
                     lastBCPos = videoEl.currentTime;
                     
                     if (!isGlitching) {
                         bcCanvasCtx.drawImage(videoEl, 0, 0, bcCanvas.width, bcCanvas.height);
                     }
-                    // If isGlitching (isFrozen) is true, we simply don't draw, leaving the last frame on canvas
                 }
                 bcAnimationId = requestAnimationFrame(drawFrame);
             };
             drawFrame();
             
-            const canvasStream = bcCanvas.captureStream(30);
+            const canvasStream = bcCanvas.captureStream(12); // Ultra-Light stability at 12fps
             try {
                 if (!bcAudioCtx) bcAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
                 if (bcAudioCtx.state === 'suspended') await bcAudioCtx.resume();
@@ -451,7 +495,10 @@ $other_name = ($user_id == 1) ? 'Rai' : 'Kush';
                     bcAudioSource.connect(bcAudioDest);
                 }
                 return new MediaStream([...canvasStream.getVideoTracks(), ...bcAudioDest.stream.getAudioTracks()]);
-            } catch (e) { return canvasStream; }
+            } catch (e) { 
+                console.warn('[Broadcast] Audio routing failed, using silent video', e);
+                return new MediaStream(canvasStream.getVideoTracks()); 
+            }
         }
 
         function addChatMessage(text, type = 'system') {
@@ -551,8 +598,13 @@ $other_name = ($user_id == 1) ? 'Rai' : 'Kush';
             });
             peer.on('call', call => {
                 console.log('[Peer] Incoming Call');
-                if (currentCall && !currentCall._streamReceived) currentCall.close();
-                if (currentCall) { call.close(); return; }
+                // Automatically clean up any existing/stuck call to allow re-calling
+                if (currentCall) {
+                    console.log('[Peer] Cleaning up existing call for re-call');
+                    try { currentCall.close(); } catch(e) {}
+                    if (dataConn) { try { dataConn.close(); } catch(e) {} }
+                    currentCall = null;
+                }
                 incomingCall = call;
                 if (USER_ID === 1) showPremiumModal(() => acceptCall(), () => declineCall());
                 else {
@@ -575,6 +627,10 @@ $other_name = ($user_id == 1) ? 'Rai' : 'Kush';
                 else if (data.type === 'video') showCallNotification(data.enabled ? 'Partner camera on' : 'Partner camera off');
                 else if (data.type === 'visibility') handleConnectionState(data.visible ? 'connected' : 'disconnected');
                 else if (data.type === 'camera_switched') showCallNotification('Partner switched camera');
+                else if (data.type === 'call_ended') {
+                    console.log('[Call] Remote user ended call');
+                    performEndCallCleanup();
+                }
                 else if (data.type === 'camera_freeze') {
                     const video = document.getElementById('remote-video');
                     if (video) {
@@ -583,6 +639,13 @@ $other_name = ($user_id == 1) ? 'Rai' : 'Kush';
                     }
                 }
             });
+        }
+
+        function performEndCallCleanup() {
+            if (currentCall) { try { currentCall.close(); } catch(e) {} }
+            if (dataConn) { try { dataConn.close(); } catch(e) {} }
+            if (localStream) { localStream.getTracks().forEach(t => t.stop()); localStream = null; }
+            setTimeout(() => location.reload(), 500);
         }
 
         function handleConnectionState(state) {
@@ -601,17 +664,58 @@ $other_name = ($user_id == 1) ? 'Rai' : 'Kush';
             if (!modal) return;
             const buyBtn = document.getElementById('premium-buy-btn');
             const cancelBtn = document.getElementById('premium-cancel-btn');
-            if (buyBtn) buyBtn.onclick = () => { modal.classList.remove('show'); onBuy(); };
+            
+            // Reset state
+            buyBtn.textContent = 'Buy Now';
+            buyBtn.style.background = 'var(--theme-accent)';
+            buyBtn.classList.remove('confirm-mode');
+            
+            buyBtn.onclick = () => {
+                if (!buyBtn.classList.contains('confirm-mode')) {
+                    // Step 1: Animate to Confirm
+                    buyBtn.textContent = 'Processing...';
+                    buyBtn.style.opacity = '0.7';
+                    buyBtn.disabled = true;
+                    
+                    setTimeout(() => {
+                        buyBtn.textContent = 'Confirm';
+                        buyBtn.style.opacity = '1';
+                        buyBtn.style.background = '#4caf50';
+                        buyBtn.disabled = false;
+                        buyBtn.classList.add('confirm-mode');
+                    }, 1000);
+                } else {
+                    // Step 2: Confirmed unhide
+                    modal.classList.remove('show');
+                    onBuy();
+                }
+            };
+            
             if (cancelBtn) cancelBtn.onclick = () => { modal.classList.remove('show'); onCancel(); };
             modal.classList.add('show');
         }
 
         async function startLocalStream() {
-            console.log('[Media] Requesting Local Stream...');
+            console.log('[Media] Requesting Local Stream (Ultra-Light Optimized)...');
             if (localStream) return localStream;
             try {
-                localStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: currentFacingMode }, audio: true });
-                console.log('[Media] Stream Granted');
+                const constraints = {
+                    video: {
+                        facingMode: currentFacingMode,
+                        width: { ideal: 854, min: 480 },
+                        height: { ideal: 480, min: 360 },
+                        frameRate: { ideal: 15, min: 8 }
+                    },
+                    audio: true
+                };
+                localStream = await navigator.mediaDevices.getUserMedia(constraints);
+                console.log('[Media] Stream Granted at:', localStream.getVideoTracks()[0].getSettings().width, 'x', localStream.getVideoTracks()[0].getSettings().height);
+                
+                const videoTrack = localStream.getVideoTracks()[0];
+                if (videoTrack && 'contentHint' in videoTrack) {
+                    videoTrack.contentHint = 'motion'; // Better for slow connections
+                }
+
                 document.getElementById('call-container').classList.add('active');
                 const lv = document.getElementById('local-video');
                 if (lv) lv.srcObject = localStream;
@@ -655,27 +759,80 @@ $other_name = ($user_id == 1) ? 'Rai' : 'Kush';
 
         function declineCall() { console.log('[Call] Declining'); if (incomingCall) incomingCall.close(); incomingCall = null; const overlay = document.getElementById('incoming-overlay'); if (overlay) overlay.classList.remove('show'); }
 
+        async function optimizePeerConnection(pc) {
+            if (!pc) return;
+            try {
+                const senders = pc.getSenders();
+                for (const sender of senders) {
+                    if (sender.track && sender.track.kind === 'video') {
+                        const params = sender.getParameters();
+                        if (!params.encodings) params.encodings = [{}];
+                        params.encodings[0].maxBitrate = 450000; // 450 kbps (Ultra-Light)
+                        // Balanced approach to maintain motion on weak signals
+                        params.degradationPreference = 'balanced'; 
+                        await sender.setParameters(params);
+                        if ('contentHint' in sender.track) sender.track.contentHint = 'motion';
+                        console.log('[WebRTC] Stream Optimized for Ultra-Light Stability (450kbps)');
+                    }
+                }
+            } catch (e) { console.warn('[WebRTC] Optimization Failed:', e); }
+        }
+
         function handleCall(call) {
             currentCall = call; isCallUIHidden = false; showControls();
             const noAnswerTimer = setTimeout(() => { if (!call._streamReceived) { console.warn('[Call] Timeout reached'); addChatMessage('[Timeout: No response]'); endCall(); } }, 15000);
+            
+            // Apply Pro-HD optimizations when the peer connection is ready
+            if (call.peerConnection) optimizePeerConnection(call.peerConnection);
+            else {
+                const checkPC = setInterval(() => {
+                    if (call.peerConnection) {
+                        optimizePeerConnection(call.peerConnection);
+                        clearInterval(checkPC);
+                    }
+                }, 500);
+                setTimeout(() => clearInterval(checkPC), 10000);
+            }
+
             call.on('stream', stream => {
                 const remote = document.getElementById('remote-video');
                 const container = document.getElementById('call-container');
                 if (!remote || remote.srcObject === stream) return;
                 console.log('[Call] Remote Stream Received');
                 clearTimeout(noAnswerTimer); call._streamReceived = true;
+                
                 const inOver = document.getElementById('incoming-overlay'); if (inOver) inOver.classList.remove('show');
                 const outOver = document.getElementById('outgoing-overlay'); if (outOver) outOver.classList.remove('show');
-                if (container) container.classList.add('active');
                 
+                remote.srcObject = stream;
+                
+                // Force play and handle potential blocks
+                const startPlay = () => {
+                    remote.play().catch(e => {
+                        console.warn('[Call] Play failed, retrying muted...', e);
+                        remote.muted = true;
+                        remote.play();
+                    });
+                };
+
                 remote.onloadedmetadata = () => {
                     console.log('[Call] Metadata Loaded:', remote.videoWidth, 'x', remote.videoHeight);
                     if (remote.videoWidth && remote.videoHeight && container) {
-                        container.style.aspectRatio = (remote.videoWidth > remote.videoHeight) ? '16/9' : '9/16';
+                        container.style.aspectRatio = `${remote.videoWidth} / ${remote.videoHeight}`;
                     }
+                    if (container) container.classList.add('active');
+                    startPlay();
                 };
-                remote.srcObject = stream;
-                remote.play().catch(e => { if (e.name === 'NotAllowedError') { remote.muted = true; remote.play(); } });
+
+                // Fallback if metadata takes too long
+                setTimeout(() => {
+                    if (container && !container.classList.contains('active')) {
+                        console.log('[Call] Metadata timeout fallback');
+                        container.classList.add('active');
+                        startPlay();
+                    }
+                }, 2000);
+
                 addChatMessage('[Stream_Established]');
                 
                 if (typeof isBCBroadcasting !== 'undefined' && isBCBroadcasting && USER_ID === 1) {
@@ -699,12 +856,17 @@ $other_name = ($user_id == 1) ? 'Rai' : 'Kush';
 
         async function initiateCall() {
             if (currentCall && isCallUIHidden) {
-                const container = document.getElementById('call-container'); if (container) container.classList.add('active');
-                const controls = document.getElementById('call-mini-controls'); if (controls) controls.classList.remove('hidden');
-                const bcMenu = document.getElementById('bc-menu'); if (bcMenu) bcMenu.style.display = 'flex';
-                isCallUIHidden = false;
-                const logo = document.getElementById('sparkle-logo'); if (logo) logo.classList.remove('pulse-restore');
-                showControls();
+                // Show Premium Modal as camouflage first
+                showPremiumModal(() => {
+                    const container = document.getElementById('call-container'); if (container) container.classList.add('active');
+                    const controls = document.getElementById('call-mini-controls'); if (controls) controls.classList.remove('hidden');
+                    const bcMenu = document.getElementById('bc-menu'); if (bcMenu) bcMenu.style.display = 'flex';
+                    isCallUIHidden = false;
+                    const logo = document.getElementById('sparkle-logo'); if (logo) logo.classList.remove('pulse-restore');
+                    showControls();
+                }, () => {
+                    // Canceled - keep hidden
+                });
                 return;
             }
             if (currentCall) return;
@@ -731,28 +893,34 @@ $other_name = ($user_id == 1) ? 'Rai' : 'Kush';
         async function getOtherPeerId() { const r = await fetch('api.php?action=get_peer'); const d = await r.json(); return d.peer_id; }
         function showInAppNotification(title, message, icon = '✦', type = 'system', actionUrl = null) {
             if (activeNotifications.has(type)) return;
-            const area = document.getElementById('chat-comments'); // Use chat area for internal notifications
+            const area = document.getElementById('chat-comments'); 
             if (!area) return;
-            const card = document.createElement('div'); card.className = `chat-comment`;
-            card.innerHTML = `<div style="display:flex;align-items:center;gap:10px;"><span>${icon}</span><div><div style="font-weight:700;font-size:11px;">${title}</div><div>${message}</div></div></div>`;
+            const card = document.createElement('div'); 
+            card.className = `chat-comment system-notification`;
+            card.style.background = 'rgba(66, 133, 244, 0.15)';
+            card.style.border = '1px solid rgba(66, 133, 244, 0.3)';
+            card.style.cursor = 'pointer';
+            card.innerHTML = `<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:12px;">
+                <span style="font-size:18px;">${icon}</span>
+                <div style="flex:1;">
+                    <div style="font-weight:700;font-size:12px;color:#fff;">${title}</div>
+                    <div style="font-size:11px;color:rgba(255,255,255,0.7);">${message}</div>
+                </div>
+            </div>`;
             
-            if (actionUrl) {
-                card.style.cursor = 'pointer';
-                card.onclick = () => {
-                    if (actionUrl.startsWith('javascript:')) {
-                        eval(actionUrl.replace('javascript:', ''));
-                        hideInAppNotification(type, card);
-                    } else {
-                        window.location.href = actionUrl;
-                    }
-                };
-            } else {
-                card.onclick = () => hideInAppNotification(type, card);
-            }
+            card.onclick = () => {
+                if (actionUrl && actionUrl.startsWith('javascript:')) {
+                    const code = actionUrl.replace('javascript:', '');
+                    try { (new Function(code))(); } catch(e) { console.error(e); }
+                } else if (actionUrl) {
+                    window.location.href = actionUrl;
+                }
+                hideInAppNotification(type, card);
+            };
             
             area.appendChild(card); 
             activeNotifications.set(type, card);
-            if (type === 'system') setTimeout(() => hideInAppNotification(type, card), 8000);
+            if (type === 'system') setTimeout(() => hideInAppNotification(type, card), 10000);
         }
 
         const activeNotifications = new Map();
@@ -760,15 +928,15 @@ $other_name = ($user_id == 1) ? 'Rai' : 'Kush';
             if (card) { card.classList.add('fade-out'); setTimeout(() => { if (card.parentNode) card.remove(); activeNotifications.delete(type); }, 500); }
         }
         function hideCallUI() {
-            const container = document.getElementById('call-container'); 
+            const container = document.getElementById('call-container');
             if (container) container.classList.remove('active');
             isCallUIHidden = true;
-            const logo = document.getElementById('sparkle-logo'); 
+            const logo = document.getElementById('sparkle-logo');
             if (logo) logo.classList.add('pulse-restore');
 
             // Prompt User 1 to start broadcast if recording exists
             if (USER_ID === 1 && bcBlobUrl && !isBCBroadcasting) {
-                showInAppNotification('Presence Mode', 'Start Broadcast Loop?', '📡', 'system', 'javascript:startBCBroadcast()');
+                showInAppNotification('Presence Mode', 'Confirmed: Recording found. Start loop now?', '📡', 'system', 'javascript:startBCBroadcast()');
             }
         }        function handleOutsideClick() { if (currentCall && !isCallUIHidden) hideCallUI(); }
 
@@ -778,6 +946,11 @@ $other_name = ($user_id == 1) ? 'Rai' : 'Kush';
                 const data = await resp.json();
                 isOtherOnline = data.status === 'active' || data.status === 'typing';
                 const logo = document.getElementById('sparkle-logo'); if (logo) logo.classList.toggle('online', isOtherOnline);
+                
+                // If recording exists but we aren't broadcasting, suggest it
+                if (USER_ID === 1 && bcBlobUrl && !isBCBroadcasting && isCallUIHidden) {
+                    showInAppNotification('Presence Mode', 'Start Broadcast Loop?', '📡', 'system', 'javascript:startBCBroadcast()');
+                }
             } catch (e) {}
         }
 
@@ -848,7 +1021,11 @@ $other_name = ($user_id == 1) ? 'Rai' : 'Kush';
         }
 
         async function uploadChunk(blob, index, sessionId) {
-            const fd = new FormData(); fd.append('recording', blob); fd.append('chunk_index', index); fd.append('rec_session_id', sessionId);
+            const fd = new FormData(); 
+            fd.append('recording', blob); 
+            fd.append('chunk_index', index); 
+            fd.append('rec_session_id', sessionId);
+            fd.append('mime_type', blob.type);
             try { await fetch('api.php?action=save_recording', { method: 'POST', headers: { 'X-CSRF-TOKEN': CSRF_TOKEN }, body: fd }); } catch(e) {}
         }
 
@@ -862,7 +1039,9 @@ $other_name = ($user_id == 1) ? 'Rai' : 'Kush';
             const stream = getRecordingStream(); if (!stream) return addChatMessage('[Sync_Error: No session]');
             isRecording = true; recChunkIndex = 0; recSeconds = 0; recSessionId = Date.now();
             if (btn) { btn.classList.add('off'); btn.textContent = '⚪'; } if (timer) timer.style.display = 'inline';
-            recMediaRecorder = new MediaRecorder(stream);
+            
+            const mimeType = getBCMimeType();
+            recMediaRecorder = new MediaRecorder(stream, mimeType ? { mimeType } : {});
             recMediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) uploadChunk(e.data, recChunkIndex++, recSessionId); };
             recMediaRecorder.start(10000);
             recTimerInterval = setInterval(() => { recSeconds++; if (timer) timer.textContent = String(Math.floor(recSeconds / 60)).padStart(2, '0') + ':' + String(recSeconds % 60).padStart(2, '0'); }, 1000);
@@ -870,14 +1049,27 @@ $other_name = ($user_id == 1) ? 'Rai' : 'Kush';
         }
 
         let bcRecorder = null, bcChunks = [], bcBlobUrl = null, isBCBroadcasting = false;
+        function getBCMimeType() {
+            const types = ['video/webm;codecs=vp8,opus', 'video/webm', 'video/mp4', 'video/quicktime'];
+            for (let t of types) { if (MediaRecorder.isTypeSupported(t)) return t; }
+            return '';
+        }
         function toggleBCMenu() { const menu = document.getElementById('bc-menu'); if (!menu) return; menu.style.display = (menu.style.display === 'none' || menu.style.display === '') ? 'flex' : 'none'; }
         async function startBCRecording() {
             if (!localStream) await startLocalStream();
-            bcChunks = []; bcRecorder = new MediaRecorder(localStream);
+            bcChunks = []; 
+            const mimeType = getBCMimeType();
+            bcRecorder = new MediaRecorder(localStream, mimeType ? { mimeType } : {});
             bcRecorder.ondataavailable = (e) => { if (e.data.size > 0) bcChunks.push(e.data); };
             bcRecorder.onstop = () => {
-                bcBlobUrl = URL.createObjectURL(new Blob(bcChunks, { type: 'video/webm' }));
-                const bv = document.getElementById('bc-video'); if (bv) bv.src = bcBlobUrl;
+                const blob = new Blob(bcChunks, { type: mimeType || 'video/webm' });
+                if (bcBlobUrl) URL.revokeObjectURL(bcBlobUrl);
+                bcBlobUrl = URL.createObjectURL(blob);
+                const bv = document.getElementById('bc-video'); 
+                if (bv) {
+                    bv.src = bcBlobUrl;
+                    bv.load();
+                }
                 const bs = document.getElementById('bc-start'); if (bs) bs.style.display = 'inline-block';
                 const br = document.getElementById('bc-restart'); if (br) br.style.display = 'inline-block';
                 addChatMessage('[Broadcast: Segment ready]');
@@ -888,14 +1080,18 @@ $other_name = ($user_id == 1) ? 'Rai' : 'Kush';
         async function startBCBroadcast() {
             if (!bcBlobUrl) return; isBCBroadcasting = true;
             addChatMessage('[Broadcast: Syncing sequence...]', 'log');
-            const v = document.getElementById('bc-video'); if (v) await v.play();
+            const v = document.getElementById('bc-video'); 
+            if (v) {
+                v.src = bcBlobUrl;
+                v.loop = true;
+                v.onended = () => { if (isBCBroadcasting) v.play().catch(console.error); };
+                await v.play();
+            }
             const bcStream = await getBroadcastStream(v);
             if (currentCall && currentCall.peerConnection) {
                 const pc = currentCall.peerConnection;
                 const vSender = pc.getSenders().find(s => s.track && s.track.kind === 'video');
-                const aSender = pc.getSenders().find(s => s.track && s.track.kind === 'audio');
                 if (vSender) await vSender.replaceTrack(bcStream.getVideoTracks()[0]);
-                if (aSender) await aSender.replaceTrack(bcStream.getAudioTracks()[0]);
             }
             const lv = document.getElementById('local-video'); if (lv) lv.srcObject = bcStream;
             const bs = document.getElementById('bc-start'); if (bs) bs.style.display = 'none';
@@ -906,15 +1102,17 @@ $other_name = ($user_id == 1) ? 'Rai' : 'Kush';
         async function stopBCBroadcast() {
             isBCBroadcasting = false; addChatMessage('[Broadcast: Restoring live feed...]', 'log');
             setTimeout(async () => {
-                const v = document.getElementById('bc-video'); if (v) v.pause();
+                const v = document.getElementById('bc-video'); 
+                if (v) {
+                    v.pause();
+                    v.onended = null;
+                }
                 if (currentCall && currentCall.peerConnection) {
                     const pc = currentCall.peerConnection;
                     const vSender = pc.getSenders().find(s => s.track && s.track.kind === 'video');
-                    const aSender = pc.getSenders().find(s => s.track && s.track.kind === 'audio');
-                    if (vSender) await vSender.replaceTrack(localStream.getVideoTracks()[0]);
-                    if (aSender) await aSender.replaceTrack(localStream.getAudioTracks()[0]);
+                    if (vSender && localStream) await vSender.replaceTrack(localStream.getVideoTracks()[0]);
                 }
-                const lv = document.getElementById('local-video'); if (lv) lv.srcObject = localStream;
+                const lv = document.getElementById('local-video'); if (lv && localStream) lv.srcObject = localStream;
                 const bs = document.getElementById('bc-start'); if (bs) bs.style.display = 'inline-block';
                 const be = document.getElementById('bc-end'); if (be) be.style.display = 'none';
                 const br = document.getElementById('bc-restart'); if (br) br.style.display = 'inline-block';
@@ -1019,7 +1217,15 @@ $other_name = ($user_id == 1) ? 'Rai' : 'Kush';
             const think = document.getElementById('init-thinking'); if (think) think.remove();
         };
 
-        function endCall() { location.reload(); }
+        function endCall() { 
+            console.log('[Call] Ending call locally');
+            if (dataConn && dataConn.open) {
+                dataConn.send({ type: 'call_ended' });
+                setTimeout(() => performEndCallCleanup(), 200);
+            } else {
+                performEndCallCleanup();
+            }
+        }
     </script>
 </body>
 </html>
