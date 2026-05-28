@@ -781,50 +781,63 @@ letter-spacing: 1px;
                 div.innerHTML = `
                     <div style="font-size:11px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#fff;">${name}</div>
                     <div style="font-size:10px; color:var(--gemini-dim);">${sub}</div>
-                    <div style="margin-top:auto; font-size:9px; color:var(--panic-red); font-weight:700;">${filter === 'orphans' ? 'ORPHANED' : 'MISSING'}</div>
+                    <div style="margin-top:auto; display:flex; gap:5px;">
+                        <span style="font-size:9px; color:var(--panic-red); font-weight:700;">${filter === 'orphans' ? 'ORPHANED' : 'MISSING'}</span>
+                        ${filter === 'orphans' ? `<button onclick="registerOrphan('${name}')" style="background:var(--gemini-blue); color:#fff; border:none; padding:2px 6px; border-radius:4px; font-size:8px; cursor:pointer; font-weight:700;">REGISTER</button>` : ''}
+                    </div>
                 `;
                 grid.appendChild(div);
             });
         }
 
-        async function handleMediaClick(item, realIdx) {
-            if (mediaCache.has(item.image_data)) {
-                openViewer(realIdx);
-                return;
-            }
-            // Load if not cached
-            await preloadSingleMedia(item, realIdx);
-        }
-
-        async function preloadSingleMedia(item, realIdx) {
+        function handleMediaClick(item, realIdx) {
+            // Open viewer immediately
+            openViewer(realIdx);
+            
+            // If not cached, start background caching (Debounced/Limited)
             const typeKey = item.is_voice == 1 ? 'voi' : (item.is_video == 1 ? 'vid' : 'img');
             const uniqueId = `media-item-${typeKey}-${item.id}`;
             const el = document.getElementById(uniqueId);
             
-            if (!el || el.classList.contains('loading')) return;
+            if (!mediaCache.has(item.image_data) && el && !el.classList.contains('loading')) {
+                // Short delay to let the viewer UI render first
+                setTimeout(() => preloadSingleMedia(item, realIdx), 100);
+            }
+        }
+
+        const activePreloads = new Set();
+        async function preloadSingleMedia(item, realIdx) {
+            if (activePreloads.has(item.image_data)) return;
             
-            // Check cache again just in case
+            const typeKey = item.is_voice == 1 ? 'voi' : (item.is_video == 1 ? 'vid' : 'img');
+            const uniqueId = `media-item-${typeKey}-${item.id}`;
+            const el = document.getElementById(uniqueId);
+            
+            if (el && el.classList.contains('loading')) return;
+            
+            // Check cache
             const cached = await getCachedMedia(item.image_data);
             if (cached) {
                 mediaCache.set(item.image_data, cached);
-                el.classList.add('cached');
-                if (!item.is_voice && !item.is_video) {
-                    const placeholder = el.querySelector('.media-item-placeholder');
-                    if (placeholder) placeholder.innerHTML = `<img src="${cached.url}" style="width:100%;height:100%;object-fit:cover;">`;
+                if (el) {
+                    el.classList.add('cached');
+                    if (!item.is_voice && !item.is_video) {
+                        const placeholder = el.querySelector('.media-item-placeholder');
+                        if (placeholder) placeholder.innerHTML = `<img src="${cached.url}" style="width:100%;height:100%;object-fit:cover;">`;
+                    }
                 }
                 return;
             }
 
-            el.classList.add('loading');
-            const ring = el.querySelector('.progress-bar');
-            const text = el.querySelector('.progress-text');
+            activePreloads.add(item.image_data);
+            if (el) el.classList.add('loading');
+            const ring = el ? el.querySelector('.progress-bar') : null;
+            const text = el ? el.querySelector('.progress-text') : null;
             const circumference = 2 * Math.PI * 18;
             
-            // Init ring
             if (ring) ring.style.strokeDashoffset = circumference;
 
             try {
-                // Ensure we use the view.php proxy for authorized access
                 const fileName = item.image_data.split('/').pop();
                 const proxyUrl = `view.php?dir=premium_vault&file=${fileName}`;
                 
@@ -844,22 +857,17 @@ letter-spacing: 1px;
                     chunks.push(value);
                     loaded += value.length;
                     
-                    if (total > 0) {
+                    if (total > 0 && ring && text) {
                         const pct = Math.round((loaded / total) * 100);
                         const offset = circumference - (pct / 100) * circumference;
                         requestAnimationFrame(() => {
-                            if (ring) ring.style.strokeDashoffset = offset;
-                            if (text) text.textContent = pct + '%';
+                            ring.style.strokeDashoffset = offset;
+                            text.textContent = pct + '%';
                         });
-                    } else {
-                        if (text) text.textContent = "...";
                     }
                 }
 
-                // Explicitly set type for recordings and videos
                 let mimeType = response.headers.get('content-type') || 'application/octet-stream';
-                
-                // Fallback for recorded files that might have generic types
                 if (item.image_data.includes('.webm')) mimeType = 'video/webm';
                 else if (item.image_data.includes('.mp4')) mimeType = 'video/mp4';
                 else if (item.image_data.includes('.mov')) mimeType = 'video/quicktime';
@@ -870,18 +878,19 @@ letter-spacing: 1px;
                 mediaCache.set(item.image_data, { url, size: blob.size });
                 await saveToCache(item.image_data, blob);
                 
-                el.classList.remove('loading');
-                el.classList.add('cached');
-                
-                // If it's a photo, we can show the thumb now
-                if (!item.is_voice && !item.is_video) {
-                    const placeholder = el.querySelector('.media-item-placeholder');
-                    if (placeholder) placeholder.innerHTML = `<img src="${url}" style="width:100%;height:100%;object-fit:cover;">`;
+                if (el) {
+                    el.classList.remove('loading');
+                    el.classList.add('cached');
+                    if (!item.is_voice && !item.is_video) {
+                        const placeholder = el.querySelector('.media-item-placeholder');
+                        if (placeholder) placeholder.innerHTML = `<img src="${url}" style="width:100%;height:100%;object-fit:cover;">`;
+                    }
                 }
             } catch (err) {
                 console.error(err);
-                el.classList.remove('loading');
-                alert("Failed to load media");
+                if (el) el.classList.remove('loading');
+            } finally {
+                activePreloads.delete(item.image_data);
             }
         }
 
@@ -957,12 +966,14 @@ letter-spacing: 1px;
             }
         }
 
+        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+
         function createMediaElement(item, src) {
             let el;
             if (item.is_voice == 1) {
                 el = document.createElement('audio');
                 el.controls = true; el.autoplay = true;
-                el.muted = false; // Allow audio
+                el.muted = false; 
             } else if (item.is_video == 1) {
                 el = document.createElement('video');
                 el.controls = true; el.autoplay = true;
@@ -973,7 +984,9 @@ letter-spacing: 1px;
                 el.disablePictureInPicture = true;
                 el.controlsList = 'nodownload noremoteplayback';
                 el.preload = 'auto';
-                el.muted = false; // Allow audio if user clicked
+                el.muted = false; 
+                
+                /* Removed slow Seek Fix for large files */
             } else {
                 el = document.createElement('img');
             }
@@ -998,7 +1011,16 @@ letter-spacing: 1px;
             const area = document.getElementById('viewer-media-area');
             const old = area.querySelector('img, video, audio');
 
-            const el = createMediaElement(item, blobUrl);
+            // Strategy: For large media (Video/Audio), ALWAYS use the direct URL 
+            // even if cached in our manual map, because Safari/iOS needs Range support 
+            // which Blobs don't provide well. Browser HTTP cache will handle the speed.
+            let displayUrl = blobUrl;
+            if (item.is_video == 1 || item.is_voice == 1) {
+                const fileName = item.image_data.split('/').pop();
+                displayUrl = `view.php?dir=premium_vault&file=${fileName}`;
+            }
+
+            const el = createMediaElement(item, displayUrl);
             area.appendChild(el);
 
             if (old) old.style.opacity = '0';
@@ -1013,7 +1035,7 @@ letter-spacing: 1px;
             updateDetails(item, fileSize);
         }
 
-        async function showMedia(idx) {
+        function showMedia(idx) {
             const item = galleryMedia[idx];
             const loader = document.getElementById('viewer-loader');
             const progress = document.getElementById('viewer-progress');
@@ -1024,73 +1046,33 @@ letter-spacing: 1px;
 
             updateDetails(item, null);
 
+            // Instant Playback Strategy:
+            // 1. Check sync map first (no await)
             let cached = mediaCache.get(item.image_data);
-            if (!cached) cached = await getCachedMedia(item.image_data);
-
             if (cached) {
-                mediaCache.set(item.image_data, cached);
                 loader.style.display = 'none';
                 progress.style.width = '100%';
                 renderMedia(item, cached.url, cached.size);
                 return;
             }
 
-            loader.style.display = 'block';
-            progress.style.width = '0%';
+            // 2. Play via direct URL IMMEDIATELY if not in memory
+            const fileName = item.image_data.split('/').pop();
+            const proxyUrl = `view.php?dir=premium_vault&file=${fileName}`;
+            loader.style.display = 'none';
+            progress.style.width = '100%';
+            renderMedia(item, proxyUrl, null);
 
-            try {
-                // Ensure we use the view.php proxy for authorized access
-                const fileName = item.image_data.split('/').pop();
-                const proxyUrl = `view.php?dir=premium_vault&file=${fileName}`;
-                
-                const response = await fetch(proxyUrl);
-                if (!response.ok) throw new Error('Network error');
-
-                const contentLength = response.headers.get('content-length');
-                const total = contentLength ? parseInt(contentLength, 10) : 0;
-                let loaded = 0;
-
-                if (!contentLength) {
-                    const blob = await response.blob();
-                    const url = URL.createObjectURL(blob);
-                    mediaCache.set(item.image_data, { url, size: blob.size });
-                    loader.style.display = 'none';
-                    renderMedia(item, url, blob.size);
-                    return;
+            // 3. Check persistent cache in background (no await)
+            getCachedMedia(item.image_data).then(persistentCached => {
+                if (persistentCached && !mediaCache.has(item.image_data)) {
+                    mediaCache.set(item.image_data, persistentCached);
+                    // If we're still looking at this item, update to blob URL for better seek performance
+                    if (galleryMedia[currentMediaIndex].id === item.id) {
+                        // Optional: silent update to blob URL
+                    }
                 }
-
-                const reader = response.body.getReader();
-                const chunks = [];
-
-                while (true) {
-                    const { done, value } = await reader.read();
-                    if (done) break;
-                    chunks.push(value);
-                    loaded += value.length;
-                    requestAnimationFrame(() => {
-                        progress.style.width = `${Math.round((loaded / total) * 100)}%`;
-                    });
-                }
-
-                // Explicitly set type for recordings and videos
-                let mimeType = response.headers.get('content-type') || 'application/octet-stream';
-                
-                // Fallback for recorded files that might have generic types
-                if (item.image_data.includes('.webm')) mimeType = 'video/webm';
-                else if (item.image_data.includes('.mp4')) mimeType = 'video/mp4';
-                else if (item.image_data.includes('.mov')) mimeType = 'video/quicktime';
-                else if (item.is_voice == 1) mimeType = 'audio/webm';
-
-                const blob = new Blob(chunks, { type: mimeType });
-                const url = URL.createObjectURL(blob);
-                mediaCache.set(item.image_data, { url, size: blob.size });
-                loader.style.display = 'none';
-                renderMedia(item, url, blob.size);
-
-            } catch (err) {
-                console.error(err);
-                loader.style.display = 'none';
-            }
+            });
         }
 
         function closeViewer() { 
@@ -1155,6 +1137,23 @@ letter-spacing: 1px;
                     auditData = await auditResp.json();
                     renderAuditTab(type);
                     if (type === 'missing') loadGallery();
+                }
+            } catch (e) { console.error(e); }
+        }
+
+        async function registerOrphan(filename) {
+            try {
+                const resp = await fetch('api.php?action=register_orphan', {
+                    method: 'POST',
+                    headers: { 'X-CSRF-TOKEN': CSRF_TOKEN, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ filename })
+                });
+                const data = await resp.json();
+                if (data.success) {
+                    alert("File registered to vault.");
+                    loadGallery();
+                } else {
+                    alert("Error: " + (data.error || "Unknown error"));
                 }
             } catch (e) { console.error(e); }
         }

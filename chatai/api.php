@@ -117,6 +117,7 @@ $actionMap = [
     'vault_audit' => 'media',
     'vault_cleanup' => 'media',
     'delete_saved_image' => 'media',
+    'register_orphan' => 'media',
     'save_recording' => 'media',
     'upload_chunk' => 'media',
     

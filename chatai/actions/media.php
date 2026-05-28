@@ -214,6 +214,30 @@ switch ($action) {
         echo json_encode(array('success' => true));
         break;
 
+    case 'register_orphan':
+        $data = json_decode(file_get_contents('php://input'), true);
+        $filename = basename($data['filename'] ?? '');
+        if (!$filename) { echo json_encode(['success' => false, 'error' => 'No file']); break; }
+        
+        $path = 'premium_vault/' . $filename;
+        $fullPath = __DIR__ . '/../' . $path;
+        if (!file_exists($fullPath)) { echo json_encode(['success' => false, 'error' => 'File not on disk']); break; }
+        
+        $ext = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
+        $is_v = (in_array($ext, ['wav', 'ogg', 'mp3', 'm4a'])) ? 1 : 0;
+        $is_vid = (in_array($ext, ['mp4', 'webm', 'mov'])) ? 1 : 0;
+        $hash = md5_file($fullPath);
+
+        // Check if already in DB for this user
+        $check = $pdo->prepare("SELECT id FROM saved_images WHERE image_data = ? AND user_id = ?");
+        $check->execute([$path, $user_id]);
+        if ($check->fetch()) { echo json_encode(['success' => true, 'msg' => 'Already registered']); break; }
+
+        $stmt = $pdo->prepare('INSERT INTO saved_images (user_id, image_data, is_voice, is_video, file_hash) VALUES (?, ?, ?, ?, ?)');
+        $stmt->execute(array($user_id, $path, $is_v, $is_vid, $hash));
+        echo json_encode(['success' => true]);
+        break;
+
     case 'save_recording':
         $error = null;
         if (isset($_FILES['recording'])) {
