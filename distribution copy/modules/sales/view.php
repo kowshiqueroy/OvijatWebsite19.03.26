@@ -25,20 +25,17 @@ $qr_url = "https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=" . url
 
 <style>
     /* Full Page A4 Design - High Density */
-    @page { size: A4; margin: 10mm 10mm 20mm 10mm; }
+    @page { size: A4; margin: 8mm; }
     body { background-color: #fff !important; color: #000 !important; font-family: 'Segoe UI', Arial, sans-serif; }
     .invoice-wrap { width: 100%; margin: 0; padding: 0; border: none !important; }
     
     .print-table { width: 100%; border-collapse: collapse; }
-    .print-table thead { 
-        display: table-header-group; 
-        counter-increment: page;
-    }
+    .print-table thead { display: table-header-group; }
 
     /* Modern 4-Column Header */
     .header-grid {
         display: grid;
-        grid-template-columns: 80px 2fr 2fr 80px;
+        grid-template-columns: 80px 2.5fr 1.5fr 80px;
         gap: 15px;
         align-items: center;
         border-bottom: 2px solid #000;
@@ -46,50 +43,46 @@ $qr_url = "https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=" . url
         margin-bottom: 10px;
     }
     .header-logo img { max-width: 80px; max-height: 80px; object-fit: contain; }
-    .header-company h2 { margin: 0; font-size: 18px; font-weight: 800; color: #000 !important; }
-    .header-company p { margin: 0; font-size: 10px; line-height: 1.3; color: #000 !important; }
-    .header-invoice { border-left: 1px solid #000; padding-left: 15px; color: #000 !important; }
-    .header-invoice h4 { margin: 0; font-size: 14px; font-weight: 800; text-transform: uppercase; color: #000 !important; }
-    .header-invoice p { margin: 0; font-size: 10px; color: #000 !important; }
-    .header-invoice .info-line { font-size: 10px; line-height: 1.4; color: #000 !important; }
+    .header-company h2 { margin: 0; font-size: 18px; font-weight: 800; }
+    .header-company p { margin: 0; font-size: 10px; line-height: 1.3; }
+    .header-invoice { border-left: 1px solid #ddd; padding-left: 15px; }
+    .header-invoice h4 { margin: 0; font-size: 14px; font-weight: 800; text-transform: uppercase; }
+    .header-invoice p { margin: 0; font-size: 10px; }
     .header-qr img { width: 70px; height: 70px; display: block; margin-left: auto; }
 
     /* Billing Line */
-    .bill-inline { font-size: 12px; border-bottom: 1px solid #000; padding-bottom: 8px; margin-bottom: 10px; color: #000 !important; }
-    .bill-inline i { margin-right: 5px; }
+    .bill-inline { font-size: 11px; border-bottom: 1px solid #eee; padding-bottom: 5px; margin-bottom: 10px; }
 
     /* Product Grid */
     .item-table { width: 100%; border-collapse: collapse; }
     .item-table th { background: #000 !important; color: #fff !important; padding: 6px 8px; font-size: 11px; text-transform: uppercase; text-align: left; border: 1px solid #000; }
-    .item-table td { padding: 5px 8px; border: 1px solid #000; font-size: 11px; vertical-align: top; color: #000 !important; }
+    .item-table td { padding: 5px 8px; border: 1px solid #ddd; font-size: 11px; vertical-align: top; }
     
-    .free-row td { color: #000 !important; font-style: italic; }
-    .free-badge { font-size: 9px; background: #eee; padding: 1px 4px; border-radius: 3px; font-weight: bold; color: #000; margin-right: 5px; border: 1px solid #000; }
+    .free-row td { color: #198754; }
+    .free-badge { font-size: 9px; background: #e9ecef; padding: 1px 4px; border-radius: 3px; font-weight: bold; color: #000; margin-right: 5px; }
 
     /* Summary & Signatures */
-    .footer-layout { display: flex; justify-content: space-between; margin-top: 15px; color: #000 !important; }
-    .words-section { width: 65%; font-size: 11px; color: #000 !important; }
+    .footer-layout { display: flex; justify-content: space-between; margin-top: 15px; }
+    .words-section { width: 65%; font-size: 11px; }
     .totals-section { width: 30%; }
     
-    .total-row { display: flex; justify-content: space-between; font-size: 12px; padding: 2px 0; color: #000 !important; }
-    .grand-total-row { border-top: 2px solid #000; font-weight: 900; font-size: 14px; margin-top: 5px; padding-top: 5px; color: #000 !important; }
+    .total-row { display: flex; justify-content: space-between; font-size: 12px; padding: 2px 0; }
+    .grand-total-row { border-top: 2px solid #000; font-weight: 900; font-size: 14px; margin-top: 5px; padding-top: 5px; }
 
     .sig-row { display: flex; justify-content: space-between; margin-top: 50px; }
-    .sig-col { width: 22%; text-align: center; border-top: 1px solid #000; font-size: 9px; padding-top: 5px; text-transform: uppercase; color: #000 !important; }
+    .sig-col { width: 22%; text-align: center; border-top: 1px solid #000; font-size: 9px; padding-top: 5px; text-transform: uppercase; }
 
     @media print {
-        * { color: #000 !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-        .text-muted, .text-success, .text-danger, .text-primary, .text-info, .text-warning { color: #000 !important; }
-        
-        body { 
+        html, body, #wrapper, #page-content-wrapper, .container-fluid, .invoice-wrap, .print-table { 
             background: #fff !important; 
             background-color: #fff !important; 
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
         }
-
         #sidebar-wrapper, .navbar, .btn, .no-print, .alert { display: none !important; }
         #page-content-wrapper { padding: 0 !important; width: 100% !important; margin: 0 !important; }
         .container-fluid { padding: 0 !important; }
-        .header-company h2 { color: #000 !important; }
+        .header-company h2 { color: #0d6efd !important; }
     }
 </style>
 
@@ -159,9 +152,6 @@ $qr_url = "https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=" . url
 <?php endif; ?>
 
 <div class="invoice-wrap">
-    <!-- Multi-page footer -->
-    <div class="page-footer"></div>
-
     <table class="print-table">
         <thead>
             <tr>
@@ -170,13 +160,7 @@ $qr_url = "https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=" . url
                     <div class="header-grid">
                         <div class="header-logo">
                             <?php if ($company['logo_url']): ?>
-                                <?php 
-                                    $logo_path = $company['logo_url'];
-                                    if (!filter_var($logo_path, FILTER_VALIDATE_URL) && strpos($logo_path, 'data:') !== 0) {
-                                        $logo_path = BASE_URL . ltrim($logo_path, '/');
-                                    }
-                                ?>
-                                <img src="<?php echo $logo_path; ?>" alt="Logo">
+                                <img src="<?php echo $company['logo_url']; ?>" alt="Logo">
                             <?php endif; ?>
                         </div>
                         <div class="header-company">
@@ -185,30 +169,31 @@ $qr_url = "https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=" . url
                             <p>Phone: <?php echo $company['phone']; ?> | Email: <?php echo $company['email']; ?></p>
                         </div>
                         <div class="header-invoice">
-                            <div class="info-line">
-                                <strong>INV NO:</strong> #<?php echo str_pad($sale['id'], 6, '0', STR_PAD_LEFT); ?> | 
-                                <strong>DATE:</strong> <?php echo date('d-m-Y', strtotime($sale['created_at'])); ?> | 
-                                <strong>STATUS:</strong> <?php echo strtoupper($sale['status']); ?>
-                            </div>
-                            <div class="info-line">
-                                <strong>DELIVERY STATUS:</strong> <?php echo strtoupper($sale['delivery_status']); ?> | 
-                                <strong>DATE:</strong> <?php echo $sale['delivery_date'] ? date('d-m-Y', strtotime($sale['delivery_date'])) : 'PENDING'; ?>
-                            </div>
-                            <div class="info-line">
-                                <strong>TRUCK:</strong> <?php echo $truck_load['truck_no'] ?? 'N/A'; ?> | 
-                                <strong>DRIVER:</strong> <?php echo $truck_load['driver_name'] ?? 'N/A'; ?>
-                            </div>
+                            <h4>Invoice</h4>
+                            <p><strong>No:</strong> #<?php echo str_pad($sale['id'], 6, '0', STR_PAD_LEFT); ?></p>
+                            <p><strong>Date:</strong> <?php echo date('d-m-Y', strtotime($sale['created_at'])); ?></p>
+                            <p><strong>Status:</strong> <?php echo strtoupper($sale['status']); ?></p>
                         </div>
                         <div class="header-qr">
                             <img src="<?php echo $qr_url; ?>" alt="Verification QR">
                         </div>
                     </div>
 
-                    <div class="bill-inline text-center fw-bold">
-                        <i class="fas fa-user"></i> <?php echo $sale['customer_name']; ?> &nbsp;&nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp;&nbsp; 
-                        <i class="fas fa-phone"></i> <?php echo $sale['customer_phone']; ?> &nbsp;&nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp;&nbsp; 
-                        <i class="fas fa-map-marker-alt"></i> <?php echo $sale['customer_address']; ?>
+                    <div class="bill-inline">
+                        <strong>BILL TO:</strong> <?php echo $sale['customer_name']; ?> | 
+                        <strong>PHONE:</strong> <?php echo $sale['customer_phone']; ?> | 
+                        <strong>ADDRESS:</strong> <?php echo $sale['customer_address']; ?>
                     </div>
+
+                    <?php if ($sale['status'] == 'Confirmed'): ?>
+                    <div class="bill-inline" style="background: #f8f9fa; border: 1px solid #ddd; padding: 2px; font-size: 9px; margin-top: -5px;">
+                        <strong>DELIVERY STATUS:</strong> <?php echo strtoupper($sale['delivery_status']); ?> | 
+                        <strong>DATE:</strong> <?php echo $sale['delivery_date'] ? date('d-m-Y', strtotime($sale['delivery_date'])) : 'PENDING'; ?>
+                        <?php if ($truck_load): ?>
+                            | <strong>TRUCK:</strong> <?php echo $truck_load['truck_no']; ?> | <strong>DRIVER:</strong> <?php echo $truck_load['driver_name']; ?>
+                        <?php endif; ?>
+                    </div>
+                    <?php endif; ?>
                 </td>
             </tr>
             <tr>
@@ -241,9 +226,8 @@ $qr_url = "https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=" . url
                         <td><?php echo $i++; ?></td>
                         <td>
                             <strong><?php echo $item['product_name']; ?></strong>
-                            <br>
-                            <?php if ($item['note']): ?><small class="text-muted"><?php echo $item['note']; ?></small> &nbsp; <?php endif; ?>
-                            <small class="text-success fw-bold">FREE ITEM</small>
+                            <?php if ($item['note']): ?><br><small class="text-muted"><?php echo $item['note']; ?></small><?php endif; ?>
+                            <br><small class="text-success fw-bold">FREE ITEM</small>
                         </td>
                         <td class="text-center"><?php echo $item['free_qty']; ?></td>
                         <td class="text-end"><?php echo number_format($item['rate'], 2); ?></td>

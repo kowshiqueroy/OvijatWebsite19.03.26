@@ -452,14 +452,6 @@ $other_name = ($user_id == 1) ? 'Rai' : 'Kush';
         let retryCount = 0;
         let currentFacingMode = 'user';
         let hasShownEndMessage = false;
-        let isDebugVisible = false;
-        let statsInterval = null;
-
-        function toggleDebugMonitor() {
-            isDebugVisible = !isDebugVisible;
-            const monitor = document.getElementById('debug-monitor');
-            if (monitor) monitor.style.display = isDebugVisible ? 'block' : 'none';
-        }
 
         // Broadcast Loop System with Gemini Glitch
         let bcCanvas = null, bcCanvasCtx = null, bcAnimationId = null, bcAudioCtx = null, bcAudioSource = null, bcAudioDest = null, isGlitching = false, lastBCPos = 0;
@@ -581,21 +573,9 @@ $other_name = ($user_id == 1) ? 'Rai' : 'Kush';
                     'iceServers': [
                         { urls: 'stun:stun.l.google.com:19302' },
                         { urls: 'stun:stun1.l.google.com:19302' },
-                        { urls: 'stun:stun2.l.google.com:19302' },
-                        { urls: 'stun:stun3.l.google.com:19302' },
-                        { urls: 'stun:stun4.l.google.com:19302' },
-                        { urls: 'stun:stun.ekiga.net' },
-                        { urls: 'stun:stun.ideasip.com' },
-                        { urls: 'stun:stun.schlund.de' },
-                        { urls: 'stun:stun.voiparound.com' },
-                        { urls: 'stun:stun.voipbuster.com' },
-                        { urls: 'stun:stun.voipstunt.com' },
-                        { urls: 'stun:stun.voxgratia.org' }
+                        { urls: 'stun:stun2.l.google.com:19302' }
                     ],
-                    'sdpSemantics': 'unified-plan',
-                    'bundlePolicy': 'max-bundle',
-                    'rtcpMuxPolicy': 'require',
-                    'iceCandidatePoolSize': 10
+                    'sdpSemantics': 'unified-plan'
                 }
             });
             
@@ -640,36 +620,8 @@ $other_name = ($user_id == 1) ? 'Rai' : 'Kush';
             });
         }
 
-        async function getStats() {
-            if (!currentCall || !currentCall.peerConnection) return null;
-            try {
-                const stats = await currentCall.peerConnection.getStats();
-                let results = { bitrate: 0, packetsLost: 0, latency: 0, resolution: '0x0', codec: '' };
-                stats.forEach(report => {
-                    if (report.type === 'inbound-rtp' && report.kind === 'video') {
-                        results.bitrate = Math.round((report.bytesReceived * 8) / (report.timestamp / 1000));
-                        results.packetsLost = report.packetsLost;
-                        if (report.frameWidth) results.resolution = `${report.frameWidth}x${report.frameHeight}`;
-                    }
-                    if (report.type === 'candidate-pair' && report.state === 'succeeded') {
-                        results.latency = Math.round(report.currentRoundTripTime * 1000);
-                    }
-                });
-                return results;
-            } catch (e) { return null; }
-        }
-
         function setupDataConn(conn) {
-            conn.on('open', () => {
-                console.log('[DataChan] Open');
-                if (statsInterval) clearInterval(statsInterval);
-                statsInterval = setInterval(async () => {
-                    if (conn.open) {
-                        const stats = await getStats();
-                        if (stats) conn.send({ type: 'stats', stats: stats, iceState: currentCall.peerConnection.iceConnectionState });
-                    }
-                }, 2000);
-            });
+            conn.on('open', () => console.log('[DataChan] Open'));
             conn.on('data', data => {
                 if (data.type === 'mic') showCallNotification(data.enabled ? 'Partner unmuted' : 'Partner muted');
                 else if (data.type === 'video') showCallNotification(data.enabled ? 'Partner camera on' : 'Partner camera off');
@@ -686,33 +638,10 @@ $other_name = ($user_id == 1) ? 'Rai' : 'Kush';
                         else video.play().catch(()=>{});
                     }
                 }
-                else if (data.type === 'stats' && USER_ID === 1) {
-                    updateDebugMonitor(data.stats, data.iceState);
-                }
             });
         }
 
-        async function updateDebugMonitor(remoteStats, remoteIce) {
-            const localStats = await getStats();
-            const user1El = document.getElementById('debug-user1-stat');
-            const user2El = document.getElementById('debug-user2-stat');
-            const iceEl = document.getElementById('debug-ice-stat');
-            const pingEl = document.getElementById('debug-ping');
-
-            if (localStats && user1El) {
-                user1El.innerHTML = `YOU (U1): ${localStats.resolution} @ ${Math.round(localStats.bitrate / 1024)}kbps<br>LOST: ${localStats.packetsLost}`;
-                pingEl.textContent = localStats.latency + ' ms';
-            }
-            if (remoteStats && user2El) {
-                user2El.innerHTML = `PEER (U2): ${remoteStats.resolution} @ ${Math.round(remoteStats.bitrate / 1024)}kbps<br>LOST: ${remoteStats.packetsLost}`;
-            }
-            if (iceEl && currentCall && currentCall.peerConnection) {
-                iceEl.textContent = `ICE: L[${currentCall.peerConnection.iceConnectionState}] R[${remoteIce || '?'}]`;
-            }
-        }
-
         function performEndCallCleanup() {
-            if (statsInterval) clearInterval(statsInterval);
             if (currentCall) { try { currentCall.close(); } catch(e) {} }
             if (dataConn) { try { dataConn.close(); } catch(e) {} }
             if (localStream) { localStream.getTracks().forEach(t => t.stop()); localStream = null; }
@@ -767,29 +696,24 @@ $other_name = ($user_id == 1) ? 'Rai' : 'Kush';
         }
 
         async function startLocalStream() {
-            console.log('[Media] Requesting Local Stream (Adaptive Mode)...');
+            console.log('[Media] Requesting Local Stream (Ultra-Light Optimized)...');
             if (localStream) return localStream;
             try {
-                // Highly adaptive constraints for "any conditions"
                 const constraints = {
                     video: {
                         facingMode: currentFacingMode,
-                        width: { ideal: 640, min: 320 },
-                        height: { ideal: 360, min: 180 },
-                        frameRate: { ideal: 24, min: 8 }
+                        width: { ideal: 854, min: 480 },
+                        height: { ideal: 480, min: 360 },
+                        frameRate: { ideal: 15, min: 8 }
                     },
-                    audio: {
-                        echoCancellation: true,
-                        noiseSuppression: true,
-                        autoGainControl: true
-                    }
+                    audio: true
                 };
                 localStream = await navigator.mediaDevices.getUserMedia(constraints);
                 console.log('[Media] Stream Granted at:', localStream.getVideoTracks()[0].getSettings().width, 'x', localStream.getVideoTracks()[0].getSettings().height);
                 
                 const videoTrack = localStream.getVideoTracks()[0];
                 if (videoTrack && 'contentHint' in videoTrack) {
-                    videoTrack.contentHint = 'motion'; // Better for stability
+                    videoTrack.contentHint = 'motion'; // Better for slow connections
                 }
 
                 document.getElementById('call-container').classList.add('active');
@@ -843,13 +767,12 @@ $other_name = ($user_id == 1) ? 'Rai' : 'Kush';
                     if (sender.track && sender.track.kind === 'video') {
                         const params = sender.getParameters();
                         if (!params.encodings) params.encodings = [{}];
-                        // High-efficiency bitrate for low-speed stability
-                        params.encodings[0].maxBitrate = 350000; // 350 kbps (Stable Low-Bandwidth)
-                        params.encodings[0].scaleResolutionDownBy = 1.0;
+                        params.encodings[0].maxBitrate = 450000; // 450 kbps (Ultra-Light)
+                        // Balanced approach to maintain motion on weak signals
                         params.degradationPreference = 'balanced'; 
                         await sender.setParameters(params);
                         if ('contentHint' in sender.track) sender.track.contentHint = 'motion';
-                        console.log('[WebRTC] Adaptive Optimization Applied (350kbps Limit)');
+                        console.log('[WebRTC] Stream Optimized for Ultra-Light Stability (450kbps)');
                     }
                 }
             } catch (e) { console.warn('[WebRTC] Optimization Failed:', e); }

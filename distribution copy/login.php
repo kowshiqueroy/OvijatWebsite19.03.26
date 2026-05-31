@@ -139,13 +139,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 <div class="login-card">
     <div class="login-header">
         <?php if ($company['logo_url']): ?>
-            <?php 
-                $logo_path = $company['logo_url'];
-                if (!filter_var($logo_path, FILTER_VALIDATE_URL) && strpos($logo_path, 'data:') !== 0) {
-                    $logo_path = BASE_URL . ltrim($logo_path, '/');
-                }
-            ?>
-            <img src="<?php echo $logo_path; ?>" alt="Logo">
+            <img src="<?php echo $company['logo_url']; ?>" alt="Logo">
         <?php else: ?>
             <div class="mb-3">
                 <i class="fas fa-truck-loading fa-3x"></i>

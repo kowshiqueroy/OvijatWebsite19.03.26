@@ -40,18 +40,6 @@ $settings = get_company_settings();
                         <div class="col-md-6 mb-3">
                             <label class="form-label">Logo URL</label>
                             <input type="text" name="logo_url" class="form-control" value="<?php echo $settings['logo_url']; ?>">
-                            <?php if ($settings['logo_url']): ?>
-                                <div class="mt-2 text-center p-2 border rounded bg-light">
-                                    <small class="text-muted d-block mb-1">Logo Preview:</small>
-                                    <?php 
-                                        $logo_path = $settings['logo_url'];
-                                        if (!filter_var($logo_path, FILTER_VALIDATE_URL) && strpos($logo_path, 'data:') !== 0) {
-                                            $logo_path = BASE_URL . ltrim($logo_path, '/');
-                                        }
-                                    ?>
-                                    <img src="<?php echo $logo_path; ?>" alt="Preview" style="max-height: 50px;">
-                                </div>
-                            <?php endif; ?>
                         </div>
                     </div>
                     <div class="row">

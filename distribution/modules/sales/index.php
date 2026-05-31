@@ -5,21 +5,75 @@ check_role([ROLE_ADMIN, ROLE_MANAGER, ROLE_ACCOUNTANT, ROLE_SR, ROLE_CUSTOMER, R
 $role = $_SESSION['role'];
 $user_id = $_SESSION['user_id'];
 
-// Filter based on role
-if ($_SESSION['role'] == ROLE_CUSTOMER) {
+// Filters
+$start_date = $_GET['start_date'] ?? date('Y-m-d');
+$end_date = $_GET['end_date'] ?? date('Y-m-d');
+$status = $_GET['status'] ?? '';
+$delivery_status = $_GET['delivery_status'] ?? '';
+$customer_id = $_GET['customer_id'] ?? '';
+
+// Build Query
+$where_clauses = ["s.isDelete = 0", "c.isDelete = 0"];
+$params = [];
+
+if ($start_date) {
+    $where_clauses[] = "DATE(s.created_at) >= ?";
+    $params[] = $start_date;
+}
+if ($end_date) {
+    $where_clauses[] = "DATE(s.created_at) <= ?";
+    $params[] = $end_date;
+}
+if ($status) {
+    $where_clauses[] = "s.status = ?";
+    $params[] = $status;
+}
+if ($delivery_status) {
+    $where_clauses[] = "s.delivery_status = ?";
+    $params[] = $delivery_status;
+}
+if ($customer_id) {
+    $where_clauses[] = "s.customer_id = ?";
+    $params[] = $customer_id;
+}
+
+// Role-based constraints
+if ($role == ROLE_CUSTOMER) {
     $cust = fetch_one("SELECT id FROM customers WHERE user_id = ? AND isDelete = 0", [$user_id]);
-    $sales = fetch_all("SELECT s.*, c.name as customer_name FROM sales_drafts s JOIN customers c ON s.customer_id = c.id WHERE s.customer_id = ? AND s.isDelete = 0 AND c.isDelete = 0 ORDER BY s.created_at DESC", [$cust['id']]);
-} elseif ($_SESSION['role'] == ROLE_SR) {
-    $sales = fetch_all("SELECT s.*, c.name as customer_name FROM sales_drafts s JOIN customers c ON s.customer_id = c.id WHERE s.created_by = ? AND s.isDelete = 0 AND c.isDelete = 0 ORDER BY s.created_at DESC", [$user_id]);
-} else {
-    $sales = fetch_all("SELECT s.*, c.name as customer_name, u.username as creator_name FROM sales_drafts s JOIN customers c ON s.customer_id = c.id JOIN users u ON s.created_by = u.id WHERE s.isDelete = 0 AND c.isDelete = 0 AND u.isDelete = 0 ORDER BY s.created_at DESC");
+    $where_clauses[] = "s.customer_id = ?";
+    $params[] = $cust['id'];
+} elseif ($role == ROLE_SR) {
+    $where_clauses[] = "s.created_by = ?";
+    $params[] = $user_id;
+}
+
+$where_sql = implode(" AND ", $where_clauses);
+$sql = "SELECT s.*, c.name as customer_name, c.phone as customer_phone, c.address as customer_address, u.username as creator_name 
+        FROM sales_drafts s 
+        JOIN customers c ON s.customer_id = c.id 
+        JOIN users u ON s.created_by = u.id 
+        WHERE $where_sql 
+        ORDER BY s.created_at DESC";
+
+$sales = fetch_all($sql, $params);
+
+// Fetch customers for filter (Admin/Manager/SR only)
+$all_customers = [];
+if (in_array($role, [ROLE_ADMIN, ROLE_MANAGER, ROLE_ACCOUNTANT, ROLE_SR, ROLE_VIEWER])) {
+    $all_customers = fetch_all("SELECT id, name FROM customers WHERE isDelete = 0 ORDER BY name ASC");
+}
+
+// For Global Copy: Fetch items for each sale in the list
+foreach ($sales as $key => $s) {
+    $sales[$key]['items'] = fetch_all("SELECT i.*, p.name as product_name FROM sales_items i JOIN products p ON i.product_id = p.id WHERE i.draft_id = ? AND i.isDelete = 0", [$s['id']]);
 }
 ?>
 
-<div class="row">
+<div class="row no-print">
     <div class="col-12 d-flex justify-content-between align-items-center mb-4">
         <h3>Sales Records</h3>
         <div class="btn-group">
+            <button type="button" class="btn btn-outline-success" onclick="copyGlobalSummary()"><i class="fab fa-whatsapp me-2"></i> Copy All for WhatsApp</button>
             <?php if ($role != ROLE_VIEWER): ?>
             <a href="pos.php" class="btn btn-primary"><i class="fas fa-plus me-2"></i> New Sale</a>
             <?php endif; ?>
@@ -27,6 +81,53 @@ if ($_SESSION['role'] == ROLE_CUSTOMER) {
             <button type="button" id="create-truck-load" class="btn btn-dark d-none"><i class="fas fa-truck me-2"></i> Create Truck Load</button>
             <?php endif; ?>
         </div>
+    </div>
+</div>
+
+<!-- Filter Section -->
+<div class="card shadow-sm mb-4 no-print">
+    <div class="card-body">
+        <form method="GET" class="row g-3">
+            <div class="col-md-2">
+                <label class="form-label small">Start Date</label>
+                <input type="date" name="start_date" class="form-control form-control-sm" value="<?php echo $start_date; ?>">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small">End Date</label>
+                <input type="date" name="end_date" class="form-control form-control-sm" value="<?php echo $end_date; ?>">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small">Invoice Status</label>
+                <select name="status" class="form-select form-select-sm">
+                    <option value="">All Status</option>
+                    <option value="Draft" <?php echo $status == 'Draft' ? 'selected' : ''; ?>>Draft</option>
+                    <option value="Confirmed" <?php echo $status == 'Confirmed' ? 'selected' : ''; ?>>Confirmed</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small">Delivery</label>
+                <select name="delivery_status" class="form-select form-select-sm">
+                    <option value="">All Delivery</option>
+                    <?php foreach (['Pending', 'Loading', 'In Transit', 'Delivered', 'Failed', 'Returned'] as $ds): ?>
+                        <option value="<?php echo $ds; ?>" <?php echo $delivery_status == $ds ? 'selected' : ''; ?>><?php echo $ds; ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <?php if ($all_customers): ?>
+            <div class="col-md-3">
+                <label class="form-label small">Customer</label>
+                <select name="customer_id" class="form-select form-select-sm select2">
+                    <option value="">All Customers</option>
+                    <?php foreach ($all_customers as $c): ?>
+                        <option value="<?php echo $c['id']; ?>" <?php echo $customer_id == $c['id'] ? 'selected' : ''; ?>><?php echo $c['name']; ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <?php endif; ?>
+            <div class="col-md-1 d-flex align-items-end">
+                <button type="submit" class="btn btn-sm btn-primary w-100">Filter</button>
+            </div>
+        </form>
     </div>
 </div>
 
@@ -85,18 +186,21 @@ if ($_SESSION['role'] == ROLE_CUSTOMER) {
                             <?php endif; ?>
                         </td>
                         <td>
-                            <a href="view.php?id=<?php echo $s['id']; ?>" class="btn btn-sm btn-outline-info"><i class="fas fa-eye"></i></a>
-                            <?php if ($s['status'] == 'Draft'): ?>
-                                <a href="edit.php?id=<?php echo $s['id']; ?>" class="btn btn-sm btn-outline-primary"><i class="fas fa-edit"></i></a>
-                            <?php endif; ?>
-                            <?php if ($s['status'] == 'Draft' && (in_array($role, [ROLE_ADMIN, ROLE_ACCOUNTANT]))): ?>
-                                <a href="confirm.php?id=<?php echo $s['id']; ?>" class="btn btn-sm btn-success" onclick="return confirm('Are you sure you want to confirm this sale? This will deduct stock and update customer balance.')">
-                                    Confirm
-                                </a>
-                            <?php endif; ?>
-                            <?php if ($_SESSION['role'] == ROLE_ADMIN): ?>
-                                <a href="../admin/delete_record.php?table=sales_drafts&id=<?php echo $s['id']; ?>" class="btn btn-sm btn-danger" title="Master Delete" onclick="return confirm('Delete this sale permanently?')"><i class="fas fa-trash"></i></a>
-                            <?php endif; ?>
+                            <div class="btn-group">
+                                <a href="view.php?id=<?php echo $s['id']; ?>" class="btn btn-sm btn-outline-info" title="View"><i class="fas fa-eye"></i></a>
+                                <button type="button" class="btn btn-sm btn-outline-success" onclick="copyInvoiceDetails(<?php echo $s['id']; ?>)" title="Copy for WhatsApp"><i class="fab fa-whatsapp"></i></button>
+                                <?php if ($s['status'] == 'Draft'): ?>
+                                    <a href="edit.php?id=<?php echo $s['id']; ?>" class="btn btn-sm btn-outline-primary" title="Edit"><i class="fas fa-edit"></i></a>
+                                <?php endif; ?>
+                                <?php if ($s['status'] == 'Draft' && (in_array($role, [ROLE_ADMIN, ROLE_ACCOUNTANT]))): ?>
+                                    <a href="confirm.php?id=<?php echo $s['id']; ?>" class="btn btn-sm btn-success" onclick="return confirm('Are you sure you want to confirm this sale? This will deduct stock and update customer balance.')">
+                                        Confirm
+                                    </a>
+                                <?php endif; ?>
+                                <?php if ($_SESSION['role'] == ROLE_ADMIN): ?>
+                                    <a href="../admin/delete_record.php?table=sales_drafts&id=<?php echo $s['id']; ?>" class="btn btn-sm btn-danger" title="Master Delete" onclick="return confirm('Delete this sale permanently?')"><i class="fas fa-trash"></i></a>
+                                <?php endif; ?>
+                            </div>
                         </td>
                     </tr>
                     <?php endforeach; ?>
@@ -108,6 +212,103 @@ if ($_SESSION['role'] == ROLE_CUSTOMER) {
 </form>
 
 <script>
+// Store sales data for JavaScript copy functions
+const salesData = <?php echo json_encode($sales); ?>;
+
+function copyInvoiceDetails(id) {
+    const sale = salesData.find(s => s.id == id);
+    if (!sale) return;
+
+    let text = `*OFFICIAL SALES INVOICE* 📄\n`;
+    text += `*Invoice #:* ${String(sale.id).padStart(6, '0')}\n`;
+    text += `*Date:* ${new Date(sale.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}\n\n`;
+
+    text += `*CUSTOMER INFORMATION*\n`;
+    text += `👤 Name: ${sale.customer_name}\n`;
+    text += `📞 Phone: ${sale.customer_phone}\n`;
+    text += `📍 Address: ${sale.customer_address}\n\n`;
+
+    const billedItems = sale.items.filter(i => parseInt(i.billed_qty) > 0);
+    const freeItems = sale.items.filter(i => parseInt(i.free_qty) > 0);
+
+    if (billedItems.length > 0) {
+        text += `*--- BILLED ITEMS ---*\n`;
+        billedItems.forEach(item => {
+            text += `• ${item.product_name}\n`;
+            if (item.note) text += `  _Note: ${item.note}_\n`;
+            text += `  Qty: ${item.billed_qty} | Rate: ${parseFloat(item.rate).toFixed(2)} | Total: ${parseFloat(item.total).toLocaleString()}\n`;
+        });
+        text += `\n`;
+    }
+
+    if (freeItems.length > 0) {
+        text += `*--- FREE ITEMS ---*\n`;
+        freeItems.forEach(item => {
+            text += `• ${item.product_name}\n`;
+            if (item.note) text += `  _Note: ${item.note}_\n`;
+            text += `  Qty: ${item.free_qty}\n`;
+        });
+        text += `\n`;
+    }
+
+    text += `*FINANCIAL SUMMARY*\n`;
+    text += `--------------------------\n`;
+    text += `Sub-Total: ${parseFloat(sale.total_amount).toLocaleString()}\n`;
+    if (parseFloat(sale.discount) > 0) text += `Discount: -${parseFloat(sale.discount).toLocaleString()}\n`;
+    text += `*GRAND TOTAL: ৳ ${parseFloat(sale.grand_total).toLocaleString()}*\n`;
+    text += `--------------------------\n`;
+    text += `*Delivery:* ${sale.delivery_status.toUpperCase()}\n`;
+    text += `\n_Thank you for your business!_`;
+
+    copyToClipboard(text);
+}
+
+function copyGlobalSummary() {
+    if (salesData.length === 0) {
+        alert("No records to copy.");
+        return;
+    }
+
+    let text = `*SALES DISTRIBUTION SUMMARY REPORT* 📊\n`;
+    text += `*Period:* ${new Date('<?php echo $start_date; ?>').toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })} to ${new Date('<?php echo $end_date; ?>').toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}\n`;
+    text += `*Total Invoices:* ${salesData.length}\n`;
+    text += `==========================\n\n`;
+
+    let totalRevenue = 0;
+    salesData.forEach(sale => {
+        text += `*INV #${String(sale.id).padStart(6, '0')} | ${sale.customer_name.toUpperCase()}*\n`;
+        text += `📞 ${sale.customer_phone} | 📍 ${sale.customer_address}\n`;
+        
+        const billed = sale.items.filter(i => parseInt(i.billed_qty) > 0).map(i => `${i.product_name} (${i.billed_qty})`).join(', ');
+        const free = sale.items.filter(i => parseInt(i.free_qty) > 0).map(i => `${i.product_name} (${i.free_qty})`).join(', ');
+
+        if (billed) text += `📦 *Billed:* ${billed}\n`;
+        if (free) text += `🎁 *Free:* ${free}\n`;
+        
+        text += `💰 *Amount:* ৳ ${parseFloat(sale.grand_total).toLocaleString()}\n`;
+        text += `🚚 *Delivery:* ${sale.delivery_status}\n`;
+        text += `--------------------------\n\n`;
+        totalRevenue += parseFloat(sale.grand_total);
+    });
+
+    text += `==========================\n`;
+    text += `*TOTAL NET REVENUE: ৳ ${totalRevenue.toLocaleString()}*\n`;
+    text += `==========================`;
+    
+    copyToClipboard(text);
+}
+
+function copyToClipboard(text) {
+    const tempInput = document.createElement("textarea");
+    tempInput.value = text;
+    document.body.appendChild(tempInput);
+    tempInput.select();
+    document.execCommand("copy");
+    document.body.removeChild(tempInput);
+    
+    alert("Copied to clipboard! You can now paste it in WhatsApp.");
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     const selectAll = document.getElementById('select-all');
     const checkboxes = document.querySelectorAll('.invoice-checkbox');
