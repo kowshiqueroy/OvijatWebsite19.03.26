@@ -323,6 +323,14 @@ $user_id = $_SESSION['user_id'] ?? 0;
 
             <!-- Main CTA -->
             <button class="action-btn btn-primary" id="btn-upload" onclick="startUpload()">Upload to Secure Vault</button>
+
+            <!-- Standalone VCall Shortcut -->
+            <div style="margin-top: 20px; text-align: center; border-top: 1px solid var(--glass-border); padding-top: 24px;">
+                <p style="font-size: 12px; color: var(--gemini-dim); margin-bottom: 12px; text-transform: uppercase; letter-spacing: 1px;">External Communication</p>
+                <a href="vcall.php" style="display: block; background: rgba(255,255,255,0.03); border: 1px solid var(--glass-border); color: #fff; padding: 16px; border-radius: 16px; text-decoration: none; font-size: 15px; font-weight: 600; transition: 0.3s;" onmouseover="this.style.borderColor='var(--gemini-blue)'" onmouseout="this.style.borderColor='var(--glass-border)'">
+                    <span style="margin-right: 8px;">🚀</span> Launch VCall Standalone
+                </a>
+            </div>
         </div>
     </div>
 

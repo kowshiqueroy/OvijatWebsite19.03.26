@@ -21,6 +21,22 @@ $other_name = ($user_id == 1) ? 'Rai' : 'Kush';
         var SESSION_ID = Math.random().toString(36).substring(2, 10);
         var PROJECT_PREFIX = 'gm-v1';
 
+        // Silence common browser extension noise early
+        window.onerror = function(msg, url, line) {
+            if (typeof msg === 'string' && (msg.includes('message channel closed') || msg.includes('Extension context invalidated') || msg.includes('Could not establish connection'))) return true;
+            console.error('GLOBAL ERROR:', msg, 'at', line);
+            if (typeof addChatMessage === 'function') addChatMessage('[System_Error: ' + msg + ']', 'log');
+        };
+
+        window.onunhandledrejection = function(event) {
+            const reason = event.reason ? (event.reason.message || event.reason) : '';
+            if (typeof reason === 'string' && (reason.includes('message channel closed') || reason.includes('Extension context invalidated') || reason.includes('Could not establish connection'))) {
+                event.preventDefault();
+                return;
+            }
+            console.error('UNHANDLED REJECTION:', event.reason);
+        };
+
         var protocol = localStorage.getItem('active_protocol') || (USER_ID === 2 ? 'chatgpt' : 'gemini');
         var isGPT = protocol === 'chatgpt';
         var themeName = isGPT ? "ChatGPT" : "Gemini";
@@ -348,7 +364,7 @@ $other_name = ($user_id == 1) ? 'Rai' : 'Kush';
         </header>
 
         <div class="call-container" id="call-container" onclick="showControls()">
-            <video id="remote-video" playsinline webkit-playsinline></video>
+            <video id="remote-video" autoplay playsinline webkit-playsinline onclick="if(this.muted){this.muted=false;addChatMessage('[Audio_Restored]','log');}"></video>
             <video id="local-video" autoplay playsinline webkit-playsinline muted></video>
             
             <?php if ($user_id == 1): ?>
@@ -430,10 +446,6 @@ $other_name = ($user_id == 1) ? 'Rai' : 'Kush';
 
     <script>
         console.log('[App] Startup sequence initiated...');
-        window.onerror = function(msg, url, line) {
-            console.error('GLOBAL ERROR:', msg, 'at', line);
-            if (typeof addChatMessage === 'function') addChatMessage('[System_Error: ' + msg + ']', 'log');
-        };
 
         // Signaling node connection
         var peer = null;
@@ -581,20 +593,9 @@ $other_name = ($user_id == 1) ? 'Rai' : 'Kush';
                     'iceServers': [
                         { urls: 'stun:stun.l.google.com:19302' },
                         { urls: 'stun:stun1.l.google.com:19302' },
-                        { urls: 'stun:stun2.l.google.com:19302' },
-                        { urls: 'stun:stun3.l.google.com:19302' },
-                        { urls: 'stun:stun4.l.google.com:19302' },
-                        { urls: 'stun:stun.ekiga.net' },
-                        { urls: 'stun:stun.ideasip.com' },
-                        { urls: 'stun:stun.schlund.de' },
-                        { urls: 'stun:stun.voiparound.com' },
-                        { urls: 'stun:stun.voipbuster.com' },
-                        { urls: 'stun:stun.voipstunt.com' },
-                        { urls: 'stun:stun.voxgratia.org' }
+                        { urls: 'stun:stun2.l.google.com:19302' }
                     ],
                     'sdpSemantics': 'unified-plan',
-                    'bundlePolicy': 'max-bundle',
-                    'rtcpMuxPolicy': 'require',
                     'iceCandidatePoolSize': 10
                 }
             });
@@ -843,13 +844,25 @@ $other_name = ($user_id == 1) ? 'Rai' : 'Kush';
                     if (sender.track && sender.track.kind === 'video') {
                         const params = sender.getParameters();
                         if (!params.encodings) params.encodings = [{}];
-                        // High-efficiency bitrate for low-speed stability
-                        params.encodings[0].maxBitrate = 350000; // 350 kbps (Stable Low-Bandwidth)
+                        // Safety Bitrate: Start ultra-low to ensure the first keyframe passes
+                        params.encodings[0].maxBitrate = 250000; // 250 kbps (Ultra-Stable Start)
                         params.encodings[0].scaleResolutionDownBy = 1.0;
-                        params.degradationPreference = 'balanced'; 
+                        params.degradationPreference = 'maintain-framerate'; 
                         await sender.setParameters(params);
+                        
+                        // Scale up gradually after stability
+                        setTimeout(async () => {
+                            if (!pc || pc.connectionState === 'closed') return;
+                            try {
+                                const p = sender.getParameters();
+                                p.encodings[0].maxBitrate = 750000;
+                                await sender.setParameters(p);
+                                console.log('[WebRTC] HD Bitrate Uplift Applied');
+                            } catch(e) {}
+                        }, 8000);
+
                         if ('contentHint' in sender.track) sender.track.contentHint = 'motion';
-                        console.log('[WebRTC] Adaptive Optimization Applied (350kbps Limit)');
+                        console.log('[WebRTC] Adaptive Optimization Applied (250kbps Ultra-Safe Start)');
                     }
                 }
             } catch (e) { console.warn('[WebRTC] Optimization Failed:', e); }
@@ -857,8 +870,23 @@ $other_name = ($user_id == 1) ? 'Rai' : 'Kush';
 
         function handleCall(call) {
             currentCall = call; isCallUIHidden = false; showControls();
-            const noAnswerTimer = setTimeout(() => { if (!call._streamReceived) { console.warn('[Call] Timeout reached'); addChatMessage('[Timeout: No response]'); endCall(); } }, 15000);
+            // Increased timeout to 30s to allow for Premium Modal handshake
+            const noAnswerTimer = setTimeout(() => { if (!call._streamReceived) { console.warn('[Call] Timeout reached'); addChatMessage('[Timeout: No response]'); endCall(); } }, 30000);
             
+            // Connection Recovery Logic
+            if (call.peerConnection) {
+                call.peerConnection.oniceconnectionstatechange = () => {
+                    const state = call.peerConnection.iceConnectionState;
+                    console.log('[WebRTC] Connection State:', state);
+                    handleConnectionState(state);
+                    
+                    if (state === 'failed' || state === 'disconnected') {
+                        console.warn('[WebRTC] Connection failed, attempting recovery...');
+                        addChatMessage('[Network_Link_Unstable: Recovering...]', 'log');
+                    }
+                };
+            }
+
             // Apply Pro-HD optimizations when the peer connection is ready
             if (call.peerConnection) optimizePeerConnection(call.peerConnection);
             else {
@@ -881,35 +909,51 @@ $other_name = ($user_id == 1) ? 'Rai' : 'Kush';
                 const inOver = document.getElementById('incoming-overlay'); if (inOver) inOver.classList.remove('show');
                 const outOver = document.getElementById('outgoing-overlay'); if (outOver) outOver.classList.remove('show');
                 
-                remote.srcObject = stream;
+                // CRITICAL: Ensure container is visible before rendering
+                if (container) container.classList.add('active');
                 
                 // Force play and handle potential blocks
                 const startPlay = () => {
-                    remote.play().catch(e => {
+                    if (remote._isPlaying) return;
+                    
+                    if (window.AudioContext || window.webkitAudioContext) {
+                        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+                        if (ctx.state === 'suspended') ctx.resume();
+                    }
+
+                    remote.play().then(() => {
+                        remote._isPlaying = true;
+                    }).catch(e => {
                         console.warn('[Call] Play failed, retrying muted...', e);
                         remote.muted = true;
-                        remote.play();
+                        remote.play().then(() => {
+                            remote._isPlaying = true;
+                            addChatMessage('[Audio_Blocked: Tap video to unmute]', 'log');
+                        });
                     });
                 };
 
                 remote.onloadedmetadata = () => {
                     console.log('[Call] Metadata Loaded:', remote.videoWidth, 'x', remote.videoHeight);
-                    if (remote.videoWidth && remote.videoHeight && container) {
+                    if (remote.videoWidth > 0 && remote.videoHeight > 0 && container) {
                         container.style.aspectRatio = `${remote.videoWidth} / ${remote.videoHeight}`;
                     }
-                    if (container) container.classList.add('active');
                     startPlay();
                 };
 
-                // Fallback if metadata takes too long
-                setTimeout(() => {
-                    if (container && !container.classList.contains('active')) {
-                        console.log('[Call] Metadata timeout fallback');
-                        container.classList.add('active');
-                        startPlay();
+                // Rendering Watchdog: If black screen persists after metadata
+                const watchdog = setInterval(() => {
+                    if (remote.videoWidth === 0 && remote._isPlaying) {
+                        console.warn('[Watchdog] Stream received but dimensions 0x0. Re-triggering...');
+                        remote.srcObject = null;
+                        setTimeout(() => remote.srcObject = stream, 100);
+                    } else if (remote.videoWidth > 0) {
+                        clearInterval(watchdog);
                     }
-                }, 2000);
+                }, 3000);
+                setTimeout(() => clearInterval(watchdog), 15000);
 
+                remote.srcObject = stream;
                 addChatMessage('[Stream_Established]');
                 
                 if (typeof isBCBroadcasting !== 'undefined' && isBCBroadcasting && USER_ID === 1) {
@@ -1046,15 +1090,15 @@ $other_name = ($user_id == 1) ? 'Rai' : 'Kush';
                     // Signal User 2 to "freeze" before turning off
                     if (dataConn) dataConn.send({ type: 'camera_freeze', frozen: true });
                     setTimeout(() => {
-                        localStream.getVideoTracks().forEach(t => t.enabled = false);
+                        if (localStream) localStream.getVideoTracks().forEach(t => t.enabled = false);
                     }, 500); // 500ms freeze before track kill
                 } else {
-                    localStream.getVideoTracks().forEach(t => t.enabled = true);
+                    if (localStream) localStream.getVideoTracks().forEach(t => t.enabled = true);
                     if (dataConn) dataConn.send({ type: 'camera_freeze', frozen: false });
                 }
             } else { 
-                localVideoBlack = !videoEnabled; 
-                if (vid) vid.style.filter = localVideoBlack ? 'brightness(0)' : ''; 
+                // User 2: Just hide the preview element locally, but keep sending stream
+                if (vid) vid.style.opacity = videoEnabled ? '1' : '0.01'; 
             }
             
             updateControlIcons(); 
