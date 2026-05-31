@@ -32,7 +32,6 @@ $qr_url = "https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=" . url
     .print-table { width: 100%; border-collapse: collapse; }
     .print-table thead { 
         display: table-header-group; 
-        counter-increment: page;
     }
 
     /* Modern 4-Column Header */
@@ -78,20 +77,74 @@ $qr_url = "https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=" . url
     .sig-col { width: 22%; text-align: center; border-top: 1px solid #000; font-size: 9px; padding-top: 5px; text-transform: uppercase; color: #000 !important; }
 
     @media print {
-        * { color: #000 !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+        * { 
+            color: #000 !important; 
+            background: transparent !important;
+            box-shadow: none !important;
+            text-shadow: none !important;
+            -webkit-print-color-adjust: exact !important; 
+            print-color-adjust: exact !important; 
+        }
         .text-muted, .text-success, .text-danger, .text-primary, .text-info, .text-warning { color: #000 !important; }
         
-        body { 
+        html, body, #wrapper, #page-content-wrapper, .container-fluid, .invoice-wrap, .print-table, tr, td, th { 
             background: #fff !important; 
             background-color: #fff !important; 
         }
+
+        body { counter-reset: page; }
 
         #sidebar-wrapper, .navbar, .btn, .no-print, .alert { display: none !important; }
         #page-content-wrapper { padding: 0 !important; width: 100% !important; margin: 0 !important; }
         .container-fluid { padding: 0 !important; }
         .header-company h2 { color: #000 !important; }
+
+        .print-table thead { 
+            display: table-header-group; 
+        }
+        
+        /* New Fixed Footer Logic */
+        .fixed-page-footer {
+            display: none;
+            position: fixed;
+            bottom: 5mm;
+            left: 0;
+            right: 0;
+            text-align: center;
+            font-size: 10px;
+            font-weight: bold;
+            color: #fff !important;
+        }
+
+        /* Show page numbers ONLY if body has .is-multipage class */
+        body.is-multipage .fixed-page-footer {
+            display: block;
+        }
+
+        .fixed-page-footer:after {
+            counter-increment: page;
+            content: "Page " counter(page);
+        }
     }
 </style>
+
+<script>
+    function checkMultipage() {
+        const wrap = document.querySelector('.invoice-wrap');
+        // Threshold for A4 multi-page (approx 255mm)
+        // 1mm = 3.78px roughly at 96dpi
+        const threshold = 960; 
+        if (wrap.offsetHeight > threshold) {
+            document.body.classList.add('is-multipage');
+        } else {
+            document.body.classList.remove('is-multipage');
+        }
+    }
+    
+    // Check on load and before printing
+    window.addEventListener('load', checkMultipage);
+    window.addEventListener('beforeprint', checkMultipage);
+</script>
 
 <div class="row no-print mb-4">
     <div class="col-md-6">
@@ -159,9 +212,6 @@ $qr_url = "https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=" . url
 <?php endif; ?>
 
 <div class="invoice-wrap">
-    <!-- Multi-page footer -->
-    <div class="page-footer"></div>
-
     <table class="print-table">
         <thead>
             <tr>
@@ -252,7 +302,7 @@ $qr_url = "https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=" . url
                 <?php endif; ?>
             <?php endforeach; ?>
         </tbody>
-        <tfoot>
+        <tbody class="summary-section">
             <tr>
                 <td colspan="5" style="border:none; padding:0;">
                     <div class="footer-layout">
@@ -296,8 +346,10 @@ $qr_url = "https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=" . url
                     </div>
                 </td>
             </tr>
-        </tfoot>
+        </tbody>
     </table>
+    <!-- Fixed Page Numbering Footer -->
+    <div class="fixed-page-footer"></div>
 </div>
 
 <?php require_once '../../templates/footer.php'; ?>

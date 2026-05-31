@@ -4,9 +4,21 @@ check_role([ROLE_ADMIN, ROLE_MANAGER, ROLE_ACCOUNTANT, ROLE_VIEWER]);
 
 $start_date = $_GET['start_date'] ?? date('Y-m-01');
 $end_date = $_GET['end_date'] ?? date('Y-m-d');
-$product_id = $_GET['product_id'] ?? '';
+$product_ids = $_GET['product_ids'] ?? [];
 
 $products = fetch_all("SELECT id, name FROM products WHERE isDelete = 0 ORDER BY name ASC");
+
+// Prepare Product Filter for SQL
+$product_filter_se = "";
+$product_filter_si = "";
+$product_filter_d = "";
+
+if (!empty($product_ids)) {
+    $ids_string = implode(',', array_map('intval', $product_ids));
+    $product_filter_se = " AND se.product_id IN ($ids_string)";
+    $product_filter_si = " AND si.product_id IN ($ids_string)";
+    $product_filter_d = " AND d.product_id IN ($ids_string)";
+}
 
 // Construct the Master Stock Movement Query
 $movements = [];
@@ -16,7 +28,7 @@ $stock_in = fetch_all("SELECT 'Stock IN' as type, se.quantity, se.created_at, p.
                        FROM stock_entries se 
                        JOIN products p ON se.product_id = p.id 
                        JOIN users u ON se.user_id = u.id
-                       WHERE se.isDelete = 0 AND DATE(se.created_at) BETWEEN ? AND ? " . ($product_id ? " AND se.product_id = $product_id" : ""), [$start_date, $end_date]);
+                       WHERE se.isDelete = 0 AND DATE(se.created_at) BETWEEN ? AND ? $product_filter_se", [$start_date, $end_date]);
 
 // 2. Stock Out (Sales)
 $stock_out = fetch_all("SELECT 'Stock OUT' as type, (si.billed_qty + si.free_qty) as quantity, s.confirmed_at as created_at, p.name as product_name, CONCAT('Invoice #', s.id) as reference, u.username as user
@@ -24,14 +36,14 @@ $stock_out = fetch_all("SELECT 'Stock OUT' as type, (si.billed_qty + si.free_qty
                         JOIN sales_drafts s ON si.draft_id = s.id 
                         JOIN products p ON si.product_id = p.id 
                         JOIN users u ON s.confirmed_by = u.id
-                        WHERE s.isDelete = 0 AND s.status = 'Confirmed' AND DATE(s.confirmed_at) BETWEEN ? AND ? " . ($product_id ? " AND si.product_id = $product_id" : ""), [$start_date, $end_date]);
+                        WHERE s.isDelete = 0 AND s.status = 'Confirmed' AND DATE(s.confirmed_at) BETWEEN ? AND ? $product_filter_si", [$start_date, $end_date]);
 
 // 3. Damages
 $damages = fetch_all("SELECT 'Damage' as type, d.quantity, d.created_at, p.name as product_name, d.reason as reference, u.username as user
                       FROM stock_damages d 
                       JOIN products p ON d.product_id = p.id 
                       JOIN users u ON d.user_id = u.id
-                      WHERE d.isDelete = 0 AND DATE(d.created_at) BETWEEN ? AND ? " . ($product_id ? " AND d.product_id = $product_id" : ""), [$start_date, $end_date]);
+                      WHERE d.isDelete = 0 AND DATE(d.created_at) BETWEEN ? AND ? $product_filter_d", [$start_date, $end_date]);
 
 // Merge and Sort
 $movements = array_merge($stock_in, $stock_out, $damages);
@@ -59,11 +71,10 @@ usort($movements, function($a, $b) {
                 <input type="date" name="end_date" class="form-control" value="<?php echo $end_date; ?>">
             </div>
             <div class="col-md-4">
-                <label class="form-label">Product (Optional)</label>
-                <select name="product_id" class="form-select select2">
-                    <option value="">-- All Products --</option>
+                <label class="form-label">Products (Optional)</label>
+                <select name="product_ids[]" class="form-select select2" multiple data-placeholder="Select Products">
                     <?php foreach ($products as $p): ?>
-                        <option value="<?php echo $p['id']; ?>" <?php echo ($product_id == $p['id']) ? 'selected' : ''; ?>><?php echo $p['name']; ?></option>
+                        <option value="<?php echo $p['id']; ?>" <?php echo (in_array($p['id'], $product_ids)) ? 'selected' : ''; ?>><?php echo $p['name']; ?></option>
                     <?php endforeach; ?>
                 </select>
             </div>
@@ -142,4 +153,4 @@ usort($movements, function($a, $b) {
     }
 </style>
 
-<?php require_once '../../templates/header.php'; ?>
+<?php require_once '../../templates/footer.php'; ?>
