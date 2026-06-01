@@ -1,4 +1,41 @@
 <?php
+$required_pin = "5877";
+
+if (!isset($_POST['pin']) || $_POST['pin'] !== $required_pin) {
+    ?>
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Setup Protection</title>
+        <style>
+            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background: #f0f2f5; }
+            .login-box { background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); width: 100%; max-width: 350px; text-align: center; }
+            h3 { color: #1c1e21; margin-bottom: 20px; }
+            input { padding: 12px; margin-bottom: 20px; width: 100%; border: 1px solid #ddd; border-radius: 6px; box-sizing: border-box; font-size: 16px; }
+            button { padding: 12px; width: 100%; cursor: pointer; background: #007bff; color: white; border: none; border-radius: 6px; font-weight: 600; font-size: 16px; transition: background 0.2s; }
+            button:hover { background: #0056b3; }
+            .error { color: #dc3545; margin-bottom: 15px; font-size: 14px; }
+        </style>
+    </head>
+    <body>
+        <div class="login-box">
+            <h3>Database Setup</h3>
+            <?php if (isset($_POST['pin'])): ?>
+                <div class="error">Invalid PIN. Please try again.</div>
+            <?php endif; ?>
+            <form method="POST">
+                <input type="password" name="pin" placeholder="Enter PIN" required autofocus>
+                <button type="submit">Unlock & Run Setup</button>
+            </form>
+        </div>
+    </body>
+    </html>
+    <?php
+    exit;
+}
+
 require_once 'config/config.php';
 
 $conn = new mysqli(DB_HOST, DB_USER, DB_PASS);
@@ -9,7 +46,7 @@ if ($conn->connect_error) {
 // Create Database
 $sql = "CREATE DATABASE IF NOT EXISTS " . DB_NAME;
 if ($conn->query($sql) === TRUE) {
-    echo "Database created successfully or already exists.<br>";
+    // Database created successfully
 } else {
     die("Error creating database: " . $conn->error);
 }
@@ -169,11 +206,12 @@ $tables = [
     )"
 ];
 
+$results = [];
 foreach ($tables as $name => $sql) {
     if ($conn->query($sql) === TRUE) {
-        echo "Table '$name' created successfully.<br>";
+        $results[] = ["name" => $name, "status" => "success", "msg" => "Table '$name' created or exists."];
     } else {
-        echo "Error creating table '$name': " . $conn->error . "<br>";
+        $results[] = ["name" => $name, "status" => "error", "msg" => "Error creating '$name': " . $conn->error];
     }
 }
 
@@ -185,15 +223,42 @@ $admin_phone = '0000000000';
 $check_admin = $conn->query("SELECT id FROM users WHERE username = '$admin_user'");
 if ($check_admin->num_rows == 0) {
     $conn->query("INSERT INTO users (username, password, phone, role) VALUES ('$admin_user', '$admin_pass', '$admin_phone', 'Admin')");
-    echo "Default Admin user created (admin / admin123).<br>";
+    $results[] = ["name" => "Admin User", "status" => "success", "msg" => "Default admin created (admin/admin123)"];
 }
 
 // Create Initial Company Settings
 $check_settings = $conn->query("SELECT id FROM company_settings LIMIT 1");
 if ($check_settings->num_rows == 0) {
     $conn->query("INSERT INTO company_settings (name) VALUES ('Food Distribution Co.')");
-    echo "Initial Company Settings created.<br>";
+    $results[] = ["name" => "Company Settings", "status" => "success", "msg" => "Initial settings created."];
 }
 
-echo "Setup Complete.";
 ?>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Setup Results</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f0f2f5; padding: 40px; }
+        .container { max-width: 800px; margin: auto; background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); }
+        h2 { color: #1c1e21; border-bottom: 2px solid #eee; padding-bottom: 10px; }
+        .result-item { padding: 10px; border-bottom: 1px solid #f0f0f0; display: flex; justify-content: space-between; }
+        .success { color: #28a745; font-weight: 600; }
+        .error { color: #dc3545; font-weight: 600; }
+        .btn { display: inline-block; margin-top: 20px; padding: 10px 20px; background: #007bff; color: white; text-decoration: none; border-radius: 6px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Setup Execution Results</h2>
+        <?php foreach ($results as $res): ?>
+            <div class="result-item">
+                <span><?php echo $res['msg']; ?></span>
+                <span class="<?php echo $res['status']; ?>"><?php echo strtoupper($res['status']); ?></span>
+            </div>
+        <?php endforeach; ?>
+        <a href="login.php" class="btn">Go to Login</a>
+    </div>
+</body>
+</html>

@@ -263,16 +263,6 @@ if (isset($_GET['error'])) {
             font-size: 0.65rem;
             letter-spacing: 1px;
         }
-        .dev-tag-offline {
-            display: inline-block;
-            margin-top: 5px;
-            background: red;
-            color: #fff;
-            padding: 5px 8px;
-            border-radius: 4px;
-            font-size: 0.8rem;
-            letter-spacing: 1px;
-        }
     </style>
 </head>
 <body>
@@ -327,21 +317,8 @@ if (isset($_GET['error'])) {
                 Designed & Developed by<br>
                 <strong><?= DEVELOPER_NAME; ?></strong>
             </div>
-            <div class="dev-tag">V <?= VERSION_NAME; ?></div><br>
-<div 
-  onClick="confirmDownload()" 
-  class="dev-tag-offline"
-  style="cursor:pointer; background:#059669; color:#fff; padding:10px; text-align:center; width:150px; border-radius:5px; margin-top: 15px;">
-  Download APP
-</div>
-
-<script>
-function confirmDownload() {
-  if (confirm('This app is for Ovijat Group employees only. Do you want to download the Sales App?')) {
-    window.location.href = 'download_app/get_app.php';
-  }
-}
-</script>        </div>
+            <div class="dev-tag">V <?= VERSION_NAME; ?></div>
+        </div>
     </div>
 
     <script>
