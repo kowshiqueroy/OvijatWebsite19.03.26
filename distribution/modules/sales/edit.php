@@ -120,8 +120,8 @@ $products = fetch_all("SELECT id, name, tp_rate, dp_rate, retail_rate, stock_qty
         <div class="col-md-7">
              <div class="card shadow-sm h-100">
                  <div class="card-body">
-                     <label class="form-label">General Note</label>
-                     <textarea name="general_note" class="form-control" rows="4"></textarea>
+                     <label class="form-label">General Note / Shipping Instructions</label>
+                     <textarea name="general_note" class="form-control" rows="4"><?php echo $draft['general_note']; ?></textarea>
                  </div>
              </div>
         </div>

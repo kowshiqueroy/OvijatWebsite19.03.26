@@ -23,6 +23,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $discount = $_POST['discount'];
     $vat = $_POST['vat_percent'];
     $grand_total = $_POST['grand_total'];
+    $general_note = $_POST['general_note'] ?? '';
 
     $product_ids = $_POST['product_id'];
     $notes = $_POST['note'];
@@ -36,8 +37,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 
     try {
         // Update sales_drafts
-        $stmt = $conn->prepare("UPDATE sales_drafts SET customer_id = ?, total_amount = ?, discount = ?, vat = ?, grand_total = ? WHERE id = ?");
-        $stmt->bind_param("iddddi", $customer_id, $total_amount, $discount, $vat, $grand_total, $draft_id);
+        $stmt = $conn->prepare("UPDATE sales_drafts SET customer_id = ?, total_amount = ?, discount = ?, vat = ?, grand_total = ?, general_note = ? WHERE id = ?");
+        $stmt->bind_param("iddddsi", $customer_id, $total_amount, $discount, $vat, $grand_total, $general_note, $draft_id);
         $stmt->execute();
 
         // Delete old items

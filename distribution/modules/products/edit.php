@@ -10,6 +10,8 @@ if (!$product) {
     redirect('modules/products/index.php', 'Product not found.', 'danger');
 }
 
+$categories = fetch_all("SELECT id, name FROM categories WHERE isDelete = 0 ORDER BY name ASC");
+
 if (isset($_POST['update_product'])) {
     if (!isset($_POST['csrf_token']) || !validate_csrf($_POST['csrf_token'])) {
         redirect('modules/products/index.php', 'CSRF Token Validation Failed.', 'danger');

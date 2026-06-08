@@ -118,6 +118,7 @@ $tables = [
         discount DECIMAL(15,2) DEFAULT 0.00,
         vat DECIMAL(15,2) DEFAULT 0.00,
         grand_total DECIMAL(15,2) DEFAULT 0.00,
+        general_note TEXT,
         status ENUM('Draft', 'Confirmed') DEFAULT 'Draft',
         delivery_status ENUM('Pending', 'Loading', 'In Transit', 'Delivered', 'Failed', 'Returned') DEFAULT 'Pending',
         delivery_date DATE NULL,

@@ -22,7 +22,11 @@ if (isset($_POST['add_product'])) {
 }
 
 $categories = fetch_all("SELECT * FROM categories WHERE isDelete = 0");
-$products = fetch_all("SELECT p.*, c.name as cat_name FROM products p JOIN categories c ON p.category_id = c.id WHERE p.isDelete = 0 AND c.isDelete = 0");
+$products = fetch_all("SELECT p.*, c.name as cat_name, 
+                      (SELECT COUNT(*) FROM sales_items si WHERE si.product_id = p.id AND si.isDelete = 0) as sale_count
+                      FROM products p 
+                      JOIN categories c ON p.category_id = c.id 
+                      WHERE p.isDelete = 0 AND c.isDelete = 0");
 ?>
 
 <div class="row">
@@ -85,6 +89,15 @@ $products = fetch_all("SELECT p.*, c.name as cat_name FROM products p JOIN categ
                                 <i class="fas fa-plus-circle me-1"></i> Stock IN
                             </button>
                             <a href="edit.php?id=<?php echo $p['id']; ?>" class="btn btn-sm btn-outline-info" title="Edit"><i class="fas fa-edit"></i></a>
+                            
+                            <?php if ($p['sale_count'] == 0): ?>
+                                <a href="delete.php?id=<?php echo $p['id']; ?>" 
+                                   class="btn btn-sm btn-outline-danger" 
+                                   title="Delete" 
+                                   onclick="return confirm('Are you sure you want to delete this unused product?');">
+                                    <i class="fas fa-trash"></i>
+                                </a>
+                            <?php endif; ?>
                         </td>
                         <?php endif; ?>
                     </tr>

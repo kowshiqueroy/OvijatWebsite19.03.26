@@ -23,6 +23,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $discount = $_POST['discount'];
     $vat = $_POST['vat_percent'];
     $grand_total = $_POST['grand_total'];
+    $general_note = $_POST['general_note'] ?? '';
 
     $product_ids = $_POST['product_id'];
     $notes = $_POST['note'];
@@ -36,8 +37,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 
     try {
         // Insert into sales_drafts
-        $stmt = $conn->prepare("INSERT INTO sales_drafts (customer_id, created_by, total_amount, discount, vat, grand_total, status) VALUES (?, ?, ?, ?, ?, ?, 'Draft')");
-        $stmt->bind_param("iiddid", $customer_id, $created_by, $total_amount, $discount, $vat, $grand_total);
+        $stmt = $conn->prepare("INSERT INTO sales_drafts (customer_id, created_by, total_amount, discount, vat, grand_total, status, general_note) VALUES (?, ?, ?, ?, ?, ?, 'Draft', ?)");
+        $stmt->bind_param("iiddids", $customer_id, $created_by, $total_amount, $discount, $vat, $grand_total, $general_note);
         $stmt->execute();
         $draft_id = $conn->insert_id;
 

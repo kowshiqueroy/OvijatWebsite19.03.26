@@ -309,6 +309,12 @@ $qr_url = "https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=" . url
                         <div class="words-section">
                             <strong>Amount in Words:</strong><br>
                             <?php echo number_to_words($sale['grand_total']); ?>
+
+                            <?php if (!empty($sale['general_note'])): ?>
+                                <div class="mt-2">
+                                    <strong>Note:</strong> <?php echo nl2br(htmlspecialchars($sale['general_note'])); ?>
+                                </div>
+                            <?php endif; ?>
                         </div>
                         <div class="totals-section">
                             <div class="total-row">
