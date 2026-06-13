@@ -85,6 +85,9 @@
         <!-- REPORTS -->
         <?php if (in_array($role, [ROLE_ADMIN, ROLE_MANAGER, ROLE_ACCOUNTANT, ROLE_VIEWER])): ?>
         <div class="p-2 text-muted small text-uppercase">Reports</div>
+        <a href="<?php echo BASE_URL; ?>modules/reports/stock_status.php" class="list-group-item list-group-item-action bg-dark text-white border-0 py-2">
+            <i class="fas fa-layer-group me-2"></i> Stock Status Report
+        </a>
         <a href="<?php echo BASE_URL; ?>modules/reports/inventory.php" class="list-group-item list-group-item-action bg-dark text-white border-0 py-2">
             <i class="fas fa-warehouse me-2"></i> Inventory Report
         </a>

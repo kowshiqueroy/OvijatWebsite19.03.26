@@ -3,284 +3,957 @@ require_once 'templates/header.php';
 check_login();
 check_role([ROLE_ADMIN, ROLE_MANAGER, ROLE_ACCOUNTANT, ROLE_VIEWER]);
 
-/**
- * MASTER INTELLIGENCE HUB - ULTIMATE OWNER EDITION
- */
 $start_date = $_GET['start_date'] ?? date('Y-m-01');
 $end_date = $_GET['end_date'] ?? date('Y-m-d');
-$monthly_target = (float)($_GET['monthly_target'] ?? 0);
 
-// Helper for short money
-if (!function_exists('fmt_money_short')) {
-    function fmt_money_short($amount) {
-        $abs = abs((float)$amount);
-        if ($abs >= 10000000) return '৳' . number_format($amount / 10000000, 2) . ' Cr';
-        if ($abs >= 100000) return '৳' . number_format($amount / 100000, 2) . ' L';
-        if ($abs >= 1000) return '৳' . number_format($amount / 1000, 1) . 'K';
-        return '৳' . number_format($amount, 0);
-    }
-}
-
-// ---------------------------------------------------------
-// DATA ENGINE
-// ---------------------------------------------------------
-
-// 1. Sales & Rep Performance
+// --- 1. Advanced Sales Analysis ---
 $sales_raw = fetch_all("
-    SELECT SKIP_ISDELETE_FILTER s.*, c.name as customer_name, c.phone as customer_phone, c.type as customer_type, u_c.username as creator_name
-    FROM sales_drafts s JOIN customers c ON s.customer_id = c.id JOIN users u_c ON s.created_by = u_c.id
+    SELECT s.*, c.name as customer_name, c.type as customer_type, u.username as creator_name
+    FROM sales_drafts s
+    JOIN customers c ON s.customer_id = c.id
+    JOIN users u ON s.created_by = u.id
     WHERE s.status = 'Confirmed' AND s.isDelete = 0 AND DATE(s.confirmed_at) BETWEEN ? AND ?
     ORDER BY s.confirmed_at DESC
 ", [$start_date, $end_date]);
 
-$total_revenue = 0; $daily_sales = []; $cust_map = []; $status_counts = [];
-$lifecycle_data = ['Pending'=>[], 'Loading'=>[], 'In Transit'=>[], 'Delivered'=>[], 'Failed'=>[], 'Returned'=>[]];
-$pending_over_48 = 0; $rep_perf = [];
+$total_revenue = 0;
+$total_discount = 0;
+$total_invoices = count($sales_raw);
+$customer_performance = [];
+$status_distribution = [];
 
-foreach ($sales_raw as $s) {
-    $rev = (float)$s['grand_total']; $total_revenue += $rev;
-    $day = date('Y-m-d', strtotime($s['confirmed_at']));
-    if($day) $daily_sales[$day] = ($daily_sales[$day] ?? 0) + $rev;
+foreach ($sales_raw as $sale) {
+    $total_revenue += $sale['grand_total'];
+    $total_discount += $sale['discount'];
     
-    $st = $s['delivery_status'] ?: 'Pending';
-    $status_counts[$st] = ($status_counts[$st] ?? 0) + 1;
-    if(isset($lifecycle_data[$st])) $lifecycle_data[$st][] = $s;
-    if($st == 'Pending' && floor((time() - strtotime($s['confirmed_at']))/3600) >= 48) $pending_over_48++;
-    
-    $rep = $s['creator_name'] ?: 'System';
-    if(!isset($rep_perf[$rep])) $rep_perf[$rep] = ['sales'=>0, 'orders'=>0, 'returns'=>0];
-    $rep_perf[$rep]['sales'] += $rev; $rep_perf[$rep]['orders']++;
-    if($st == 'Returned') $rep_perf[$rep]['returns']++;
+    $c_id = $sale['customer_id'];
+    if (!isset($customer_performance[$c_id])) {
+        $customer_performance[$c_id] = [
+            'name' => $sale['customer_name'],
+            'type' => $sale['customer_type'],
+            'revenue' => 0,
+            'count' => 0
+        ];
+    }
+    $customer_performance[$c_id]['revenue'] += $sale['grand_total'];
+    $customer_performance[$c_id]['count']++;
 
-    if(!isset($cust_map[$s['customer_id']])) $cust_map[$s['customer_id']] = ['name'=>$s['customer_name'], 'val'=>0, 'count'=>0];
-    $cust_map[$s['customer_id']]['val'] += $rev; $cust_map[$s['customer_id']]['count']++;
+    $status = $sale['delivery_status'];
+    $status_distribution[$status] = ($status_distribution[$status] ?? 0) + 1;
 }
-uasort($cust_map, fn($a,$b) => $b['val'] <=> $a['val']);
-uasort($rep_perf, fn($a,$b) => $b['sales'] <=> $a['sales']);
+uasort($customer_performance, function($a, $b) { return $b['revenue'] - $a['revenue']; });
 
-// 2. Inventory & Velocity Intelligence
-$inventory_raw = fetch_all("
-    SELECT SKIP_ISDELETE_FILTER p.*, cat.name as cat_name,
-    (SELECT SUM(si.billed_qty) FROM sales_items si JOIN sales_drafts sd ON si.draft_id = sd.id WHERE si.product_id = p.id AND sd.status = 'Confirmed' AND sd.isDelete = 0 AND si.isDelete = 0 AND DATE(sd.confirmed_at) BETWEEN ? AND ?) as period_sold_qty,
-    (SELECT SUM(si.total) FROM sales_items si JOIN sales_drafts sd ON si.draft_id = sd.id WHERE si.product_id = p.id AND sd.status = 'Confirmed' AND sd.isDelete = 0 AND si.isDelete = 0 AND DATE(sd.confirmed_at) BETWEEN ? AND ?) as period_rev
-    FROM products p JOIN categories cat ON p.category_id = cat.id WHERE p.isDelete = 0
-    ORDER BY (p.stock_qty <= 0) DESC, (p.stock_qty <= 10) DESC, p.stock_qty ASC
+// --- 2. Advanced Inventory Analysis ---
+$inventory_data = fetch_all("
+    SELECT p.*, c.name as category_name,
+    (SELECT SUM(billed_qty) FROM sales_items si JOIN sales_drafts sd ON si.draft_id = sd.id WHERE si.product_id = p.id AND sd.status = 'Confirmed' AND sd.isDelete = 0 AND DATE(sd.confirmed_at) BETWEEN ? AND ?) as period_sold,
+    (SELECT SUM(free_qty) FROM sales_items si JOIN sales_drafts sd ON si.draft_id = sd.id WHERE si.product_id = p.id AND sd.status = 'Confirmed' AND sd.isDelete = 0 AND DATE(sd.confirmed_at) BETWEEN ? AND ?) as period_free
+    FROM products p
+    JOIN categories c ON p.category_id = c.id
+    WHERE p.isDelete = 0
+    ORDER BY (p.stock_qty <= 10) DESC, p.stock_qty ASC
 ", [$start_date, $end_date, $start_date, $end_date]);
 
-$stock_val = 0; $low_stock_count = 0; $neg_stock = 0; $category_perf = [];
-$fast_moving = []; $slow_moving = []; $idle_stock = [];
-
-// Thresholds for velocity
-$all_sold_qtys = array_filter(array_column($inventory_raw, 'period_sold_qty'));
-$avg_velocity = !empty($all_sold_qtys) ? array_sum($all_sold_qtys)/count($all_sold_qtys) : 0;
-
-foreach ($inventory_raw as $p) {
-    $sq = (float)$p['stock_qty']; $tp = (float)$p['tp_rate']; $sold = (float)$p['period_sold_qty'];
-    $stock_val += (max(0, $sq) * $tp);
-    if($sq <= 10) $low_stock_count++; if($sq < 0) $neg_stock++;
-    
-    if($sold == 0) $idle_stock[] = $p;
-    elseif($sold >= $avg_velocity * 1.5) $fast_moving[] = $p;
-    elseif($sold <= $avg_velocity * 0.5) $slow_moving[] = $p;
-
-    $cat = $p['cat_name'];
-    if(!isset($category_perf[$cat])) $category_perf[$cat] = ['rev'=>0, 'val'=>0];
-    $category_perf[$cat]['rev'] += (float)$p['period_rev'];
-    $category_perf[$cat]['val'] += (max(0, $sq) * $tp);
+// --- 5. Delivery Lifecycle Lists ---
+$lifecycle_statuses = ['Pending', 'Loading', 'In Transit', 'Delivered', 'Failed', 'Returned'];
+$lifecycle_data = [];
+foreach ($lifecycle_statuses as $status) {
+    $lifecycle_data[$status] = fetch_all("
+        SELECT s.*, c.name as customer_name, c.phone as customer_phone, u.username as creator_name
+        FROM sales_drafts s
+        JOIN customers c ON s.customer_id = c.id
+        JOIN users u ON s.created_by = u.id
+        WHERE s.delivery_status = ? AND s.status = 'Confirmed' AND s.isDelete = 0 AND DATE(s.confirmed_at) BETWEEN ? AND ?
+        ORDER BY s.confirmed_at DESC
+    ", [$status, $start_date, $end_date]);
 }
-uasort($category_perf, fn($a,$b) => $b['rev'] <=> $a['rev']);
 
-// 3. Finance & Market Depth
-$collections = fetch_all("SELECT SKIP_ISDELETE_FILTER t.*, c.name FROM transactions t JOIN customers c ON t.customer_id = c.id WHERE t.type = 'Credit' AND t.isDelete = 0 AND DATE(t.created_at) BETWEEN ? AND ?", [$start_date, $end_date]);
-$total_col = array_sum(array_column($collections, 'amount'));
-$daily_col = []; foreach($collections as $c) { $d = date('Y-m-d', strtotime($c['created_at'])); $daily_col[$d] = ($daily_col[$d]??0) + (float)$c['amount']; }
+$total_stock_value = 0;
+$low_stock_count = 0;
+foreach ($inventory_data as $inv) {
+    $total_stock_value += ($inv['stock_qty'] * $inv['tp_rate']);
+    if ($inv['stock_qty'] <= 10) $low_stock_count++;
+}
 
-$market_debt = fetch_all("SELECT name, phone, type, balance FROM customers WHERE balance > 0 AND isDelete = 0 ORDER BY balance DESC");
-$total_receivable = array_sum(array_column($market_debt, 'balance'));
+// --- 3. Financial & Collection Analysis ---
+$collections = fetch_all("
+    SELECT t.*, c.name as customer_name
+    FROM transactions t
+    JOIN customers c ON t.customer_id = c.id
+    WHERE t.type = 'Credit' AND t.isDelete = 0 AND DATE(t.created_at) BETWEEN ? AND ?
+    ORDER BY t.created_at DESC
+", [$start_date, $end_date]);
 
-// 4. Logistics
-$trucks = fetch_all("SELECT SKIP_ISDELETE_FILTER tl.*, u.username FROM truck_loads tl JOIN users u ON tl.created_by = u.id WHERE tl.isDelete = 0 AND DATE(tl.created_at) BETWEEN ? AND ? ORDER BY tl.created_at DESC", [$start_date, $end_date]);
+$total_collected = array_sum(array_column($collections, 'amount'));
+
+// --- 4. Logistics & Truck Analysis ---
+$trucks = fetch_all("
+    SELECT tl.*, u.username as creator_name
+    FROM truck_loads tl
+    JOIN users u ON tl.created_by = u.id
+    WHERE tl.isDelete = 0 AND DATE(tl.created_at) BETWEEN ? AND ?
+    ORDER BY tl.created_at DESC
+", [$start_date, $end_date]);
+
 foreach ($trucks as $k => $t) {
-    $t_invs = fetch_all("SELECT SKIP_ISDELETE_FILTER s.*, c.name as cust_name FROM truck_load_items tli JOIN sales_drafts s ON tli.invoice_id = s.id JOIN customers c ON s.customer_id = c.id WHERE tli.truck_load_id = ? AND tli.isDelete = 0 AND s.isDelete = 0", [$t['id']]);
-    $consolidated = [];
-    foreach ($t_invs as $ik => $inv) {
-        $items = fetch_all("SELECT SKIP_ISDELETE_FILTER si.*, p.name FROM sales_items si JOIN products p ON si.product_id = p.id WHERE si.draft_id = ? AND si.isDelete = 0", [$inv['id']]);
-        $t_invs[$ik]['items'] = $items;
-        foreach ($items as $it) { $pid=$it['product_id']; if(!isset($consolidated[$pid])) $consolidated[$pid]=['name'=>$it['name'], 'qty'=>0]; $consolidated[$pid]['qty'] += ((int)$it['billed_qty']+(int)$it['free_qty']); }
+    // Fetch invoices in this truck
+    $invoices = fetch_all("
+        SELECT s.*, c.name as customer_name, c.phone as customer_phone, c.type as customer_type
+        FROM truck_load_items tli
+        JOIN sales_drafts s ON tli.invoice_id = s.id
+        JOIN customers c ON s.customer_id = c.id
+        WHERE tli.truck_load_id = ? AND tli.isDelete = 0
+    ", [$t['id']]);
+
+    $consolidated_items = [];
+
+    foreach ($invoices as $ik => $inv) {
+        // Fetch items for each invoice
+        $items = fetch_all("
+            SELECT si.*, p.name as product_name, p.tp_rate
+            FROM sales_items si
+            JOIN products p ON si.product_id = p.id
+            WHERE si.draft_id = ? AND si.isDelete = 0
+        ", [$inv['id']]);
+        
+        $invoices[$ik]['items'] = $items;
+
+        // Consolidate for Load Sheet
+        foreach ($items as $item) {
+            $p_id = $item['product_id'];
+            if (!isset($consolidated_items[$p_id])) {
+                $consolidated_items[$p_id] = [
+                    'name' => $item['product_name'],
+                    'billed' => 0,
+                    'free' => 0,
+                    'total_qty' => 0,
+                    'tp_rate' => $item['tp_rate']
+                ];
+            }
+            $consolidated_items[$p_id]['billed'] += $item['billed_qty'];
+            $consolidated_items[$p_id]['free'] += $item['free_qty'];
+            $consolidated_items[$p_id]['total_qty'] += ($item['billed_qty'] + $item['free_qty']);
+        }
     }
-    $trucks[$k]['invoices'] = $t_invs; $trucks[$k]['summary'] = $consolidated; $trucks[$k]['load_val'] = array_sum(array_column($t_invs, 'grand_total'));
+    $trucks[$k]['invoices'] = $invoices;
+    $trucks[$k]['consolidated'] = $consolidated_items;
+    $trucks[$k]['invoice_count'] = count($invoices);
+    $trucks[$k]['load_value'] = array_sum(array_column($invoices, 'grand_total'));
 }
 
-// ---------------------------------------------------------
-// SMART LOGIC: HEALTH & WHATSAPP
-// ---------------------------------------------------------
-$achievement_pct = ($monthly_target > 0) ? round(($total_revenue / $monthly_target) * 100, 1) : null;
-$col_ratio = ($total_revenue > 0) ? ($total_col / $total_revenue) : 1;
-$dept_health = [
-    'Sales' => ($achievement_pct !== null) ? (($achievement_pct < 50) ? 'danger' : (($achievement_pct < 80) ? 'warning' : 'success')) : ($total_revenue > 0 ? 'success' : 'warning'),
-    'Finance' => ($col_ratio < 0.4) ? 'danger' : (($col_ratio < 0.7) ? 'warning' : 'success'),
-    'Logistics' => ($pending_over_48 > 0) ? 'danger' : 'success',
-    'Stock' => ($neg_stock > 0 || $low_stock_count > 5) ? 'danger' : 'success'
-];
 
-$whatsapp_text = "*OVIJAT DMD AUDIT*: " . date('d M') . "\n" .
-    "Rev: " . fmt_money_short($total_revenue) . " (" . ($achievement_pct ? $achievement_pct."%" : "No Target") . ")\n" .
-    "Coll: " . fmt_money_short($total_col) . " (" . round($col_ratio*100,1) . "%)\n" .
-    "Receivable: " . fmt_money_short($total_receivable) . "\n" .
-    "Low Stock: " . $low_stock_count . " items\n" .
-    "Delayed Inv: " . $pending_over_48 . "\n" .
-    "Top Rep: " . (count($rep_perf) > 0 ? key($rep_perf) : "N/A");
+// --- 6. DMD Executive Control Metrics: Alert, Aging, Target, Accountability, Exception ---
+if (!function_exists('e')) {
+    function e($value) {
+        return htmlspecialchars((string)($value ?? ''), ENT_QUOTES, 'UTF-8');
+    }
+}
 
-// Chart Prep
-$chart_labels = []; $chart_sales = []; $chart_cols = [];
-$period = new DatePeriod(new DateTime($start_date), new DateInterval('P1D'), (new DateTime($end_date))->modify('+1 day'));
-foreach($period as $dt) { $d = $dt->format('Y-m-d'); $chart_labels[] = $dt->format('d M'); $chart_sales[] = (float)($daily_sales[$d]??0); $chart_cols[] = (float)($daily_col[$d]??0); }
+$monthly_target = isset($_GET['monthly_target']) ? (float)$_GET['monthly_target'] : 0;
+$achievement_percent = $monthly_target > 0 ? (($total_revenue / $monthly_target) * 100) : 0;
+$target_gap = $monthly_target > 0 ? max(0, $monthly_target - $total_revenue) : 0;
+$collection_gap = max(0, $total_revenue - $total_collected);
+$collection_ratio = $total_revenue > 0 ? (($total_collected / $total_revenue) * 100) : 0;
+
+$negative_stock_items = [];
+$low_stock_items = [];
+$total_stock_value = 0;
+$low_stock_count = 0;
+$negative_stock_count = 0;
+foreach ($inventory_data as $inv) {
+    $stock_qty = (float)($inv['stock_qty'] ?? 0);
+    $tp_rate = (float)($inv['tp_rate'] ?? 0);
+    $total_stock_value += max(0, $stock_qty) * $tp_rate;
+    if ($stock_qty < 0) {
+        $negative_stock_count++;
+        $negative_stock_items[] = $inv;
+    } elseif ($stock_qty <= 10) {
+        $low_stock_count++;
+        $low_stock_items[] = $inv;
+    }
+}
+
+$pending_count = count($lifecycle_data['Pending'] ?? []);
+$loading_count = count($lifecycle_data['Loading'] ?? []);
+$in_transit_count = count($lifecycle_data['In Transit'] ?? []);
+$delivered_count = count($lifecycle_data['Delivered'] ?? []);
+$failed_count = count($lifecycle_data['Failed'] ?? []);
+$returned_count = count($lifecycle_data['Returned'] ?? []);
+$delivery_success_rate = $total_invoices > 0 ? (($delivered_count / $total_invoices) * 100) : 0;
+
+// Approximate receivable aging using customer-wise FIFO allocation: collections up to end date are adjusted against oldest invoices first.
+$aging_invoices = fetch_all("
+    SELECT s.id, s.customer_id, c.name as customer_name, c.type as customer_type, s.grand_total, s.confirmed_at
+    FROM sales_drafts s
+    JOIN customers c ON s.customer_id = c.id
+    WHERE s.status = 'Confirmed' AND s.isDelete = 0 AND DATE(s.confirmed_at) <= ?
+    ORDER BY s.customer_id ASC, s.confirmed_at ASC
+", [$end_date]);
+
+$collections_till_end = fetch_all("
+    SELECT customer_id, SUM(amount) as collected
+    FROM transactions
+    WHERE type = 'Credit' AND isDelete = 0 AND DATE(created_at) <= ?
+    GROUP BY customer_id
+", [$end_date]);
+$collection_by_customer = [];
+foreach ($collections_till_end as $row) {
+    $collection_by_customer[$row['customer_id']] = (float)($row['collected'] ?? 0);
+}
+
+$aging_buckets = ['0-7' => 0, '8-15' => 0, '16-30' => 0, '31-60' => 0, '60+' => 0];
+$receivable_customers = [];
+$today_ts = strtotime($end_date);
+foreach ($aging_invoices as $invoice) {
+    $cid = $invoice['customer_id'];
+    $invoice_amount = (float)($invoice['grand_total'] ?? 0);
+    $available_collection = $collection_by_customer[$cid] ?? 0;
+    $remaining = $invoice_amount;
+    if ($available_collection > 0) {
+        $adjusted = min($available_collection, $remaining);
+        $remaining -= $adjusted;
+        $collection_by_customer[$cid] -= $adjusted;
+    }
+    if ($remaining <= 0) continue;
+
+    $invoice_ts = strtotime($invoice['confirmed_at']);
+    $age_days = max(0, floor(($today_ts - $invoice_ts) / 86400));
+    if ($age_days <= 7) $bucket = '0-7';
+    elseif ($age_days <= 15) $bucket = '8-15';
+    elseif ($age_days <= 30) $bucket = '16-30';
+    elseif ($age_days <= 60) $bucket = '31-60';
+    else $bucket = '60+';
+    $aging_buckets[$bucket] += $remaining;
+
+    if (!isset($receivable_customers[$cid])) {
+        $receivable_customers[$cid] = [
+            'name' => $invoice['customer_name'],
+            'type' => $invoice['customer_type'],
+            'total_due' => 0,
+            'oldest_days' => 0,
+            'buckets' => ['0-7' => 0, '8-15' => 0, '16-30' => 0, '31-60' => 0, '60+' => 0]
+        ];
+    }
+    $receivable_customers[$cid]['total_due'] += $remaining;
+    $receivable_customers[$cid]['oldest_days'] = max($receivable_customers[$cid]['oldest_days'], $age_days);
+    $receivable_customers[$cid]['buckets'][$bucket] += $remaining;
+}
+$total_receivable = array_sum($aging_buckets);
+uasort($receivable_customers, function($a, $b) { return $b['total_due'] <=> $a['total_due']; });
+$top_receivable_customers = array_slice($receivable_customers, 0, 20, true);
+
+// Accountability by creator / responsible user.
+$accountability = [];
+foreach ($sales_raw as $sale) {
+    $creator = $sale['creator_name'] ?: 'Unknown';
+    if (!isset($accountability[$creator])) {
+        $accountability[$creator] = [
+            'sales' => 0, 'invoices' => 0, 'delivered' => 0, 'pending' => 0, 'failed' => 0, 'returned' => 0, 'discount' => 0
+        ];
+    }
+    $accountability[$creator]['sales'] += (float)$sale['grand_total'];
+    $accountability[$creator]['discount'] += (float)$sale['discount'];
+    $accountability[$creator]['invoices']++;
+    $st = $sale['delivery_status'];
+    if (isset($accountability[$creator][strtolower(str_replace(' ', '_', $st))])) {
+        $accountability[$creator][strtolower(str_replace(' ', '_', $st))]++;
+    }
+}
+uasort($accountability, function($a, $b) { return $b['sales'] <=> $a['sales']; });
+
+// Exception board for DMD-level action.
+$exception_board = [];
+$add_exception = function($priority, $type, $message, $responsible, $amount = null, $action = 'Review') use (&$exception_board) {
+    $exception_board[] = [
+        'priority' => $priority,
+        'type' => $type,
+        'message' => $message,
+        'responsible' => $responsible,
+        'amount' => $amount,
+        'action' => $action
+    ];
+};
+
+if ($negative_stock_count > 0) {
+    $add_exception('High', 'Inventory', $negative_stock_count . ' negative stock item(s) found', 'Store / Accounts / ERP Admin', null, 'Immediate stock reconciliation');
+}
+if ($low_stock_count > 0) {
+    $add_exception('Medium', 'Inventory', $low_stock_count . ' low stock item(s) at or below reorder level', 'Store / Purchase / Production', null, 'Reorder / production planning');
+}
+foreach (($lifecycle_data['Pending'] ?? []) as $p) {
+    $age_hours = floor((time() - strtotime($p['confirmed_at'])) / 3600);
+    if ($age_hours >= 48) {
+        $add_exception('High', 'Distribution', 'Invoice #' . $p['id'] . ' pending for ' . $age_hours . ' hours', 'Distribution / Sales Admin', (float)$p['grand_total'], 'Assign vehicle / explain delay');
+    }
+}
+if ($pending_count > 0 && count($trucks) == 0) {
+    $add_exception('High', 'Logistics', 'Pending invoices exist but no truck load found in selected period', 'Distribution In-charge', null, 'Vehicle allocation required');
+}
+if ($total_revenue > 0 && $total_collected <= 0) {
+    $add_exception('High', 'Collection', 'Sales posted but no collection found in selected period', 'Accounts / Sales Admin', $total_revenue, 'Verify collection posting');
+} elseif ($total_revenue > 0 && $collection_ratio < 30) {
+    $add_exception('Medium', 'Collection', 'Collection ratio is below 30% against sales', 'Accounts / Sales GM', $collection_gap, 'Recovery follow-up');
+}
+if ($failed_count > 0 || $returned_count > 0) {
+    $add_exception('Medium', 'Delivery', ($failed_count + $returned_count) . ' failed/returned delivery invoice(s)', 'Sales / Distribution / QC', null, 'Root cause analysis');
+}
+foreach ($sales_raw as $sale) {
+    $base_amount = (float)($sale['total_amount'] ?? 0);
+    $discount = (float)($sale['discount'] ?? 0);
+    if ($base_amount > 0 && (($discount / $base_amount) * 100) > 5) {
+        $add_exception('Medium', 'Discount', 'Invoice #' . $sale['id'] . ' has discount above 5%', 'Sales Admin / Accounts', $discount, 'Approval check');
+    }
+}
+$priority_order = ['High' => 1, 'Medium' => 2, 'Low' => 3];
+usort($exception_board, function($a, $b) use ($priority_order) {
+    return ($priority_order[$a['priority']] ?? 9) <=> ($priority_order[$b['priority']] ?? 9);
+});
+$critical_alerts = count(array_filter($exception_board, function($x) { return $x['priority'] === 'High'; }));
+
 ?>
 
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <style>
-    :root { --accent: #2563eb; --surface: #ffffff; --bg: #f8fafc; --danger: #ef4444; --warning: #f59e0b; --success: #22c55e; }
-    body { background-color: var(--bg); font-family: 'Inter', sans-serif; color: #1e293b; }
-    .executive-card { border-radius: 16px; border: none; box-shadow: 0 4px 12px rgba(0,0,0,0.05); background: white; }
-    .hero-panel { background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); color: white; border-radius: 20px; padding: 25px; box-shadow: 0 10px 25px rgba(15,23,42,0.15); }
-    .kpi-tile { background: white; border-radius: 16px; padding: 20px; border-left: 5px solid var(--accent); height: 100%; box-shadow: 0 2px 4px rgba(0,0,0,0.02); }
-    .health-dot { width: 14px; height: 14px; border-radius: 50%; display: inline-block; position: relative; }
-    .dot-danger { background-color: var(--danger); box-shadow: 0 0 10px var(--danger); }
-    .dot-warning { background-color: var(--warning); box-shadow: 0 0 10px var(--warning); }
-    .dot-success { background-color: var(--success); box-shadow: 0 0 10px var(--success); }
-    .nav-tabs-custom { background: white; padding: 6px; border-radius: 12px; display: inline-flex; gap: 4px; flex-wrap: wrap; border: 1px solid #e2e8f0; }
-    .nav-tabs-custom .nav-link { border: none; border-radius: 8px; padding: 8px 16px; font-weight: 700; color: #64748b; font-size: 13px; }
-    .nav-tabs-custom .nav-link.active { background: var(--accent); color: white; box-shadow: 0 4px 10px rgba(37,99,235,0.2); }
-    .truck-header { background: #1e293b; color: white; padding: 15px 25px; border-radius: 16px 16px 0 0; }
-    .table-danger-soft { background-color: #fef2f2 !important; }
-    .chart-container-h { height: 320px; position: relative; }
-    @media print { .no-print { display: none !important; } .tab-pane { display: block !important; opacity: 1 !important; position: static !important; } }
+    :root { --primary-soft: #e7f1ff; --success-soft: #e6fcf5; --warning-soft: #fff9db; --danger-soft: #fff5f5; }
+    .report-card { border-radius: 15px; border: none; transition: all 0.3s ease; }
+    .report-card:hover { transform: translateY(-5px); box-shadow: 0 10px 20px rgba(0,0,0,0.05) !important; }
+    .stat-icon { width: 48px; height: 48px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 20px; }
+    .nav-pills .nav-link { border-radius: 10px; padding: 12px 20px; font-weight: 600; color: #6c757d; margin-right: 10px; border: 1px solid transparent; }
+    .nav-pills .nav-link.active { background-color: #0d6efd; color: white; }
+    .nav-pills .nav-link:not(.active):hover { background-color: var(--primary-soft); color: #0d6efd; }
+    .table thead th { background-color: #f8f9fa; text-transform: uppercase; font-size: 11px; letter-spacing: 0.5px; border-bottom: 2px solid #dee2e6; }
+    .badge-soft-primary { background: var(--primary-soft); color: #0d6efd; }
+    .badge-soft-success { background: var(--success-soft); color: #0ca678; }
+    .badge-soft-warning { background: var(--warning-soft); color: #f08c00; }
+    .badge-soft-danger { background: var(--danger-soft); color: #f03e3e; }
+    .badge-soft-info { background: #e7f5ff; color: #1c7ed6; }
+    .badge-soft-dark { background: #f1f3f5; color: #343a40; }
+    .executive-panel { border-radius: 18px; border: 0; box-shadow: 0 10px 28px rgba(15, 23, 42, 0.06); }
+    .kpi-mini { border-radius: 14px; background: #fff; border: 1px solid #eef2f7; padding: 14px 16px; height: 100%; }
+    .priority-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; margin-right: 7px; }
+    .priority-high { background: #fa5252; }
+    .priority-medium { background: #fd7e14; }
+    .priority-low { background: #40c057; }
+    .table-danger-soft { background-color: #fff5f5 !important; }
+    
+    @media print {
+        .no-print, .nav-pills, .filter-section { display: none !important; }
+        .tab-pane { display: block !important; opacity: 1 !important; visibility: visible !important; position: static !important; }
+        .card { border: 1px solid #eee !important; box-shadow: none !important; page-break-inside: avoid; }
+    }
 </style>
 
-<div class="container-fluid py-3">
-    <!-- MASTER HEADER -->
-    <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 no-print gap-3">
-        <div><h3 class="fw-bold text-dark mb-0">DMD Intelligence Console</h3><p class="text-muted small mb-0">Unified Strategic & Operational Data Hub</p></div>
-        <form method="GET" class="d-flex gap-2 bg-white p-2 rounded-3 shadow-sm border">
-            <input type="date" name="start_date" class="form-control form-control-sm" value="<?php echo $start_date; ?>">
-            <input type="date" name="end_date" class="form-control form-control-sm" value="<?php echo $end_date; ?>">
-            <input type="number" name="monthly_target" class="form-control form-control-sm" style="width:110px" value="<?php echo $monthly_target; ?>" placeholder="Target">
-            <button type="submit" class="btn btn-primary btn-sm px-3">Sync Insights</button>
-            <button type="button" onclick="window.print()" class="btn btn-dark btn-sm"><i class="fas fa-print"></i></button>
-        </form>
+<div class="container-fluid py-4">
+    <!-- Header & Filter -->
+    <div class="row align-items-center mb-4 no-print">
+        <div class="col-lg-6">
+            <h2 class="fw-bold text-dark mb-1">Advanced Business Intelligence</h2>
+            <p class="text-muted mb-0">Period: <span class="fw-bold text-primary"><?php echo date('M d, Y', strtotime($start_date)); ?></span> to <span class="fw-bold text-primary"><?php echo date('M d, Y', strtotime($end_date)); ?></span></p>
+        </div>
+        <div class="col-lg-6">
+            <form method="GET" class="row g-2 justify-content-lg-end align-items-end filter-section">
+                <div class="col-auto">
+                    <label class="form-label small fw-bold">From</label>
+                    <input type="date" name="start_date" class="form-control form-control-sm border-0 shadow-sm" value="<?php echo $start_date; ?>">
+                </div>
+                <div class="col-auto">
+                    <label class="form-label small fw-bold">To</label>
+                    <input type="date" name="end_date" class="form-control form-control-sm border-0 shadow-sm" value="<?php echo $end_date; ?>">
+                </div>
+                <div class="col-auto">
+                    <label class="form-label small fw-bold">Target</label>
+                    <input type="number" step="0.01" name="monthly_target" class="form-control form-control-sm border-0 shadow-sm" value="<?php echo e($monthly_target); ?>" placeholder="Monthly target">
+                </div>
+                <div class="col-auto">
+                    <button type="submit" class="btn btn-primary btn-sm px-3 shadow-sm"><i class="fas fa-sync-alt me-1"></i> Update</button>
+                    <button type="button" onclick="window.print()" class="btn btn-dark btn-sm px-3 shadow-sm"><i class="fas fa-print me-1"></i> Export PDF</button>
+                </div>
+            </form>
+        </div>
     </div>
 
-    <!-- COMMAND TOWER ROW -->
+    <!-- Summary KPI Cards -->
     <div class="row g-3 mb-4">
-        <div class="col-lg-4">
-            <div class="card hero-panel h-100">
-                <div class="d-flex justify-content-between mb-3">
-                    <div><h5 class="fw-bold mb-0 text-uppercase small opacity-75">Achievement</h5><div class="h2 fw-bold mb-0 mt-1"><?php echo $achievement_pct !== null ? $achievement_pct.'%' : 'NO TARGET'; ?></div></div>
-                    <i class="fas fa-rocket fa-2x opacity-25"></i>
+        <div class="col-md-3">
+            <div class="card report-card shadow-sm h-100">
+                <div class="card-body">
+                    <div class="d-flex align-items-center mb-3">
+                        <div class="stat-icon bg-soft-primary text-primary"><i class="fas fa-shopping-cart"></i></div>
+                        <div class="ms-3">
+                            <h6 class="text-muted mb-0 small uppercase">Total Sales</h6>
+                            <h4 class="fw-bold mb-0"><?php echo format_currency($total_revenue); ?></h4>
+                        </div>
+                    </div>
+                    <div class="small"><span class="text-success fw-bold"><?php echo $total_invoices; ?></span> Invoices Issued</div>
                 </div>
-                <div class="h3 fw-bold mb-1"><?php echo fmt_money_short($total_revenue); ?></div>
-                <div class="progress mb-4" style="height: 10px; background: rgba(255,255,255,0.1)"><div class="progress-bar bg-primary shadow-sm" style="width:<?php echo $achievement_pct !== null ? min(100,(float)$achievement_pct) : '0'; ?>%"></div></div>
-                
-                <h6 class="fw-bold small mb-3 text-uppercase opacity-75 border-bottom border-secondary pb-2">Department Health Matrix</h6>
-                <div class="row g-2 mb-4">
-                    <?php foreach($dept_health as $name => $status): ?>
-                        <div class="col-6"><div class="p-2 border border-secondary rounded d-flex align-items-center justify-content-between bg-dark bg-opacity-25 shadow-sm"><span class="small fw-bold"><?php echo $name; ?></span><span class="health-dot dot-<?php echo $status; ?>"></span></div></div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card report-card shadow-sm h-100">
+                <div class="card-body">
+                    <div class="d-flex align-items-center mb-3">
+                        <div class="stat-icon bg-soft-success text-success"><i class="fas fa-money-bill-wave"></i></div>
+                        <div class="ms-3">
+                            <h6 class="text-muted mb-0 small uppercase">Collections</h6>
+                            <h4 class="fw-bold mb-0"><?php echo format_currency($total_collected); ?></h4>
+                        </div>
+                    </div>
+                    <div class="small"><span class="text-primary fw-bold"><?php echo count($collections); ?></span> Payments Received</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card report-card shadow-sm h-100">
+                <div class="card-body">
+                    <div class="d-flex align-items-center mb-3">
+                        <div class="stat-icon bg-soft-warning text-warning"><i class="fas fa-boxes"></i></div>
+                        <div class="ms-3">
+                            <h6 class="text-muted mb-0 small uppercase">Inventory Value</h6>
+                            <h4 class="fw-bold mb-0"><?php echo format_currency($total_stock_value); ?></h4>
+                        </div>
+                    </div>
+                    <div class="small"><span class="text-danger fw-bold"><?php echo $low_stock_count; ?></span> Items Low Stock</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card report-card shadow-sm h-100">
+                <div class="card-body">
+                    <div class="d-flex align-items-center mb-3">
+                        <div class="stat-icon bg-soft-danger text-danger"><i class="fas fa-percentage"></i></div>
+                        <div class="ms-3">
+                            <h6 class="text-muted mb-0 small uppercase">Avg Discount</h6>
+                            <h4 class="fw-bold mb-0"><?php echo format_currency($total_invoices ? $total_discount / $total_invoices : 0); ?></h4>
+                        </div>
+                    </div>
+                    <div class="small">Total Discount: <?php echo format_currency($total_discount); ?></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- DMD Executive Control Tower -->
+    <div class="row g-3 mb-4">
+        <div class="col-12">
+            <div class="card executive-panel">
+                <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+                    <div>
+                        <h5 class="mb-0 fw-bold"><i class="fas fa-shield-alt me-2 text-primary"></i>DMD Executive Control Tower</h5>
+                        <div class="small text-muted">Alert, aging, target, accountability and exception management at one glance.</div>
+                    </div>
+                    <span class="badge <?php echo $critical_alerts > 0 ? 'bg-danger' : 'bg-success'; ?> p-2"><?php echo $critical_alerts; ?> Critical Alert(s)</span>
+                </div>
+                <div class="card-body">
+                    <div class="row g-3 mb-4">
+                        <div class="col-md-3"><div class="kpi-mini"><div class="small text-muted fw-bold text-uppercase">Monthly Target</div><div class="h4 fw-bold mb-1"><?php echo format_currency($monthly_target); ?></div><div class="small text-muted">Set from filter box</div></div></div>
+                        <div class="col-md-3"><div class="kpi-mini"><div class="small text-muted fw-bold text-uppercase">Achievement</div><div class="h4 fw-bold mb-1 <?php echo $achievement_percent >= 100 ? 'text-success' : 'text-warning'; ?>"><?php echo number_format($achievement_percent, 2); ?>%</div><div class="small text-muted">Gap: <?php echo format_currency($target_gap); ?></div></div></div>
+                        <div class="col-md-3"><div class="kpi-mini"><div class="small text-muted fw-bold text-uppercase">Total Receivable</div><div class="h4 fw-bold mb-1 text-danger"><?php echo format_currency($total_receivable); ?></div><div class="small text-muted">FIFO aging estimate</div></div></div>
+                        <div class="col-md-3"><div class="kpi-mini"><div class="small text-muted fw-bold text-uppercase">Delivery Success</div><div class="h4 fw-bold mb-1 text-success"><?php echo number_format($delivery_success_rate, 2); ?>%</div><div class="small text-muted">Delivered <?php echo $delivered_count; ?> of <?php echo $total_invoices; ?></div></div></div>
+                    </div>
+
+                    <div class="row g-4">
+                        <div class="col-lg-7">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <h6 class="fw-bold mb-0">Management Exception Board</h6>
+                                <span class="small text-muted">Auto-prioritized</span>
+                            </div>
+                            <div class="table-responsive">
+                                <table class="table table-hover align-middle mb-0">
+                                    <thead><tr><th>Priority</th><th>Type</th><th>Issue</th><th>Responsible</th><th class="text-end">Value</th><th>Required Action</th></tr></thead>
+                                    <tbody>
+                                    <?php if(empty($exception_board)): ?>
+                                        <tr><td colspan="6" class="text-center py-4 text-muted">No critical exception found for this period.</td></tr>
+                                    <?php endif; ?>
+                                    <?php foreach (array_slice($exception_board, 0, 12) as $ex): ?>
+                                        <tr>
+                                            <td><span class="priority-dot priority-<?php echo strtolower($ex['priority']); ?>"></span><span class="fw-bold"><?php echo e($ex['priority']); ?></span></td>
+                                            <td><span class="badge bg-light text-dark"><?php echo e($ex['type']); ?></span></td>
+                                            <td><?php echo e($ex['message']); ?></td>
+                                            <td class="fw-bold"><?php echo e($ex['responsible']); ?></td>
+                                            <td class="text-end"><?php echo $ex['amount'] !== null ? format_currency($ex['amount']) : '-'; ?></td>
+                                            <td><?php echo e($ex['action']); ?></td>
+                                        </tr>
+                                    <?php endforeach; ?>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <div class="col-lg-5">
+                            <h6 class="fw-bold mb-2">Receivable Aging</h6>
+                            <div class="table-responsive mb-4">
+                                <table class="table table-sm align-middle mb-0">
+                                    <thead><tr><th>Age</th><th class="text-end">Amount</th><th class="text-end">Share</th></tr></thead>
+                                    <tbody>
+                                    <?php foreach ($aging_buckets as $age => $amount): ?>
+                                        <tr>
+                                            <td class="fw-bold"><?php echo e($age); ?> Days</td>
+                                            <td class="text-end fw-bold"><?php echo format_currency($amount); ?></td>
+                                            <td class="text-end"><?php echo $total_receivable > 0 ? number_format(($amount / $total_receivable) * 100, 1) : '0.0'; ?>%</td>
+                                        </tr>
+                                    <?php endforeach; ?>
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            <h6 class="fw-bold mb-2">Top Due Customers</h6>
+                            <div class="table-responsive">
+                                <table class="table table-sm table-hover align-middle mb-0">
+                                    <thead><tr><th>Customer</th><th class="text-center">Oldest</th><th class="text-end">Due</th></tr></thead>
+                                    <tbody>
+                                    <?php if(empty($top_receivable_customers)): ?>
+                                        <tr><td colspan="3" class="text-center py-3 text-muted">No due found.</td></tr>
+                                    <?php endif; ?>
+                                    <?php foreach (array_slice($top_receivable_customers, 0, 8) as $rc): ?>
+                                        <tr>
+                                            <td><div class="fw-bold"><?php echo e($rc['name']); ?></div><div class="small text-muted"><?php echo e($rc['type']); ?></div></td>
+                                            <td class="text-center"><?php echo (int)$rc['oldest_days']; ?>d</td>
+                                            <td class="text-end fw-bold text-danger"><?php echo format_currency($rc['total_due']); ?></td>
+                                        </tr>
+                                    <?php endforeach; ?>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <hr class="my-4">
+                    <div class="row g-4">
+                        <div class="col-lg-6">
+                            <h6 class="fw-bold mb-2">Accountability Matrix</h6>
+                            <div class="table-responsive">
+                                <table class="table table-sm table-hover align-middle mb-0">
+                                    <thead><tr><th>User</th><th class="text-end">Sales</th><th class="text-center">Inv</th><th class="text-center">Pending</th><th class="text-center">Failed/Returned</th><th class="text-end">Discount</th></tr></thead>
+                                    <tbody>
+                                    <?php if(empty($accountability)): ?>
+                                        <tr><td colspan="6" class="text-center py-3 text-muted">No accountability data found.</td></tr>
+                                    <?php endif; ?>
+                                    <?php foreach (array_slice($accountability, 0, 10) as $user => $ac): ?>
+                                        <tr>
+                                            <td class="fw-bold"><?php echo e($user); ?></td>
+                                            <td class="text-end fw-bold"><?php echo format_currency($ac['sales']); ?></td>
+                                            <td class="text-center"><?php echo (int)$ac['invoices']; ?></td>
+                                            <td class="text-center <?php echo $ac['pending'] > 0 ? 'text-warning fw-bold' : ''; ?>"><?php echo (int)$ac['pending']; ?></td>
+                                            <td class="text-center <?php echo ($ac['failed'] + $ac['returned']) > 0 ? 'text-danger fw-bold' : ''; ?>"><?php echo (int)($ac['failed'] + $ac['returned']); ?></td>
+                                            <td class="text-end"><?php echo format_currency($ac['discount']); ?></td>
+                                        </tr>
+                                    <?php endforeach; ?>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        <div class="col-lg-6">
+                            <h6 class="fw-bold mb-2">Inventory Exception</h6>
+                            <div class="row g-2 mb-2">
+                                <div class="col-6"><div class="kpi-mini"><div class="small text-muted fw-bold">Negative Stock</div><div class="h4 text-danger fw-bold mb-0"><?php echo $negative_stock_count; ?></div></div></div>
+                                <div class="col-6"><div class="kpi-mini"><div class="small text-muted fw-bold">Low Stock</div><div class="h4 text-warning fw-bold mb-0"><?php echo $low_stock_count; ?></div></div></div>
+                            </div>
+                            <div class="table-responsive">
+                                <table class="table table-sm table-hover align-middle mb-0">
+                                    <thead><tr><th>Product</th><th>Category</th><th class="text-end">Stock</th><th class="text-end">TP</th></tr></thead>
+                                    <tbody>
+                                    <?php $inventory_exceptions = array_merge(array_slice($negative_stock_items, 0, 5), array_slice($low_stock_items, 0, 5)); ?>
+                                    <?php if(empty($inventory_exceptions)): ?>
+                                        <tr><td colspan="4" class="text-center py-3 text-muted">No inventory exception found.</td></tr>
+                                    <?php endif; ?>
+                                    <?php foreach ($inventory_exceptions as $ie): ?>
+                                        <tr>
+                                            <td class="fw-bold"><?php echo e($ie['name']); ?></td>
+                                            <td><span class="badge bg-light text-dark"><?php echo e($ie['category_name']); ?></span></td>
+                                            <td class="text-end fw-bold <?php echo $ie['stock_qty'] < 0 ? 'text-danger' : 'text-warning'; ?>"><?php echo e($ie['stock_qty']); ?></td>
+                                            <td class="text-end"><?php echo number_format((float)$ie['tp_rate'], 2); ?></td>
+                                        </tr>
+                                    <?php endforeach; ?>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- Main Reporting Tabs -->
+    <div class="row">
+        <div class="col-12">
+            <ul class="nav nav-pills mb-4 no-print" id="pills-tab" role="tablist">
+                <li class="nav-item">
+                    <button class="nav-link active" id="pills-sales-tab" data-bs-toggle="pill" data-bs-target="#pills-sales"><i class="fas fa-file-invoice me-2"></i>Sales</button>
+                </li>
+                <li class="nav-item">
+                    <button class="nav-link" id="pills-inventory-tab" data-bs-toggle="pill" data-bs-target="#pills-inventory"><i class="fas fa-warehouse me-2"></i>Inventory</button>
+                </li>
+                <li class="nav-item">
+                    <button class="nav-link" id="pills-logistics-tab" data-bs-toggle="pill" data-bs-target="#pills-logistics"><i class="fas fa-truck me-2"></i>Logistics</button>
+                </li>
+                <?php foreach ($lifecycle_statuses as $status): ?>
+                <li class="nav-item">
+                    <button class="nav-link" id="pills-<?php echo strtolower(str_replace(' ', '', $status)); ?>-tab" data-bs-toggle="pill" data-bs-target="#pills-<?php echo strtolower(str_replace(' ', '', $status)); ?>">
+                        <span class="badge bg-light text-dark me-1"><?php echo count($lifecycle_data[$status]); ?></span> <?php echo $status; ?>
+                    </button>
+                </li>
+                <?php endforeach; ?>
+                <li class="nav-item">
+                    <button class="nav-link" id="pills-customers-tab" data-bs-toggle="pill" data-bs-target="#pills-customers"><i class="fas fa-user-tie me-2"></i>Customers</button>
+                </li>
+                <li class="nav-item">
+                    <button class="nav-link" id="pills-finance-tab" data-bs-toggle="pill" data-bs-target="#pills-finance"><i class="fas fa-coins me-2"></i>Finance</button>
+                </li>
+            </ul>
+
+            <div class="tab-content" id="pills-tabContent">
+                <?php foreach ($lifecycle_statuses as $status): 
+                    $slug = strtolower(str_replace(' ', '', $status));
+                    $data = $lifecycle_data[$status];
+                ?>
+                <div class="tab-pane fade" id="pills-<?php echo $slug; ?>">
+                    <div class="card shadow-sm border-0">
+                        <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+                            <h5 class="mb-0 fw-bold"><?php echo $status; ?> Deliveries</h5>
+                            <span class="badge bg-primary"><?php echo count($data); ?> Invoices</span>
+                        </div>
+                        <div class="card-body p-0">
+                            <div class="table-responsive">
+                                <table class="table table-hover align-middle mb-0">
+                                    <thead>
+                                        <tr>
+                                            <th>Inv #</th>
+                                            <th>Customer</th>
+                                            <th>Date</th>
+                                            <th>Creator</th>
+                                            <th class="text-end">Amount</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <?php if(empty($data)): ?>
+                                            <tr><td colspan="5" class="text-center py-5 text-muted">No <?php echo strtolower($status); ?> invoices in this period.</td></tr>
+                                        <?php endif; ?>
+                                        <?php foreach ($data as $row): ?>
+                                        <tr>
+                                            <td><div class="fw-bold">#<?php echo $row['id']; ?></div></td>
+                                            <td>
+                                                <div class="fw-bold"><?php echo $row['customer_name']; ?></div>
+                                                <div class="small text-muted"><?php echo $row['customer_phone']; ?></div>
+                                            </td>
+                                            <td><?php echo date('d M Y', strtotime($row['confirmed_at'])); ?></td>
+                                            <td><?php echo $row['creator_name']; ?></td>
+                                            <td class="text-end fw-bold"><?php echo format_currency($row['grand_total']); ?></td>
+                                        </tr>
+                                        <?php endforeach; ?>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <?php endforeach; ?>
+                <!-- SALES DETAILS TAB -->
+                <div class="tab-pane fade show active" id="pills-sales">
+                    <div class="card shadow-sm border-0">
+                        <div class="card-header bg-white py-3">
+                            <h5 class="mb-0 fw-bold">Full Sales Register</h5>
+                        </div>
+                        <div class="card-body p-0">
+                            <div class="table-responsive">
+                                <table class="table table-hover align-middle mb-0">
+                                    <thead>
+                                        <tr>
+                                            <th>Date / Inv #</th>
+                                            <th>Customer</th>
+                                            <th>Issued By</th>
+                                            <th class="text-center">Delivery Status</th>
+                                            <th class="text-end">Base Amount</th>
+                                            <th class="text-end">Discount</th>
+                                            <th class="text-end">Grand Total</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <?php foreach ($sales_raw as $s): ?>
+                                        <tr>
+                                            <td>
+                                                <div class="fw-bold">#<?php echo $s['id']; ?></div>
+                                                <div class="small text-muted"><?php echo date('d M Y', strtotime($s['confirmed_at'])); ?></div>
+                                            </td>
+                                            <td>
+                                                <div class="fw-bold"><?php echo $s['customer_name']; ?></div>
+                                                <div class="badge-soft-primary badge"><?php echo $s['customer_type']; ?></div>
+                                            </td>
+                                            <td><?php echo $s['creator_name']; ?></td>
+                                            <td class="text-center">
+                                                <?php 
+                                                $status_class = [
+                                                    'Pending' => 'warning', 'Loading' => 'info', 'In Transit' => 'primary', 
+                                                    'Delivered' => 'success', 'Failed' => 'danger', 'Returned' => 'dark'
+                                                ];
+                                                $sc = $status_class[$s['delivery_status']] ?? 'secondary';
+                                                ?>
+                                                <span class="badge badge-soft-<?php echo $sc; ?> p-2 px-3"><?php echo $s['delivery_status']; ?></span>
+                                            </td>
+                                            <td class="text-end"><?php echo number_format($s['total_amount'], 2); ?></td>
+                                            <td class="text-end text-danger">-<?php echo number_format($s['discount'], 2); ?></td>
+                                            <td class="text-end fw-bold text-primary"><?php echo number_format($s['grand_total'], 2); ?></td>
+                                        </tr>
+                                        <?php endforeach; ?>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- CUSTOMER PERFORMANCE TAB -->
+                <div class="tab-pane fade" id="pills-customers">
+                    <div class="card shadow-sm border-0">
+                        <div class="card-header bg-white py-3">
+                            <h5 class="mb-0 fw-bold">Customer Revenue Rankings</h5>
+                        </div>
+                        <div class="card-body p-0">
+                            <div class="table-responsive">
+                                <table class="table table-hover align-middle mb-0">
+                                    <thead>
+                                        <tr>
+                                            <th style="width: 10%;">Rank</th>
+                                            <th style="width: 30%;">Customer Name</th>
+                                            <th style="width: 20%;">Client Type</th>
+                                            <th style="width: 20%; text-align: center;">Invoices Count</th>
+                                            <th style="width: 20%; text-align: right;">Total Contribution</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <?php $rank = 1; foreach ($customer_performance as $cp): ?>
+                                        <tr>
+                                            <td class="text-center"><span class="badge bg-light text-dark rounded-circle p-2" style="width: 30px;"><?php echo $rank++; ?></span></td>
+                                            <td><div class="fw-bold"><?php echo $cp['name']; ?></div></td>
+                                            <td><span class="badge badge-soft-primary"><?php echo $cp['type']; ?></span></td>
+                                            <td class="text-center fw-bold"><?php echo $cp['count']; ?></td>
+                                            <td class="text-end fw-bold text-success"><?php echo format_currency($cp['revenue']); ?></td>
+                                        </tr>
+                                        <?php endforeach; ?>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- INVENTORY HEALTH TAB -->
+                <div class="tab-pane fade" id="pills-inventory">
+                    <div class="card shadow-sm border-0">
+                        <div class="card-header bg-white py-3">
+                            <h5 class="mb-0 fw-bold">Comprehensive Product Audit</h5>
+                        </div>
+                        <div class="card-body p-0">
+                            <div class="table-responsive">
+                                <table class="table table-hover align-middle mb-0">
+                                    <thead>
+                                        <tr>
+                                            <th>Product Info</th>
+                                            <th>Category</th>
+                                            <th class="text-center">Available Stock</th>
+                                            <th class="text-center text-primary">Sold (Billed)</th>
+                                            <th class="text-center text-success">Promotional (Free)</th>
+                                            <th class="text-end">Trade Value</th>
+                                            <th class="text-end">Total Valuation</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <?php foreach ($inventory_data as $i): ?>
+                                        <tr class="<?php echo $i['stock_qty'] <= 10 ? 'table-danger-soft' : ''; ?>">
+                                            <td>
+                                                <div class="fw-bold"><?php echo $i['name']; ?></div>
+                                                <?php if($i['stock_qty'] <= 10): ?>
+                                                    <span class="text-danger small fw-bold"><i class="fas fa-exclamation-triangle"></i> CRITICAL STOCK</span>
+                                                <?php endif; ?>
+                                            </td>
+                                            <td><span class="badge bg-light text-dark"><?php echo $i['category_name']; ?></span></td>
+                                            <td class="text-center fw-bold <?php echo $i['stock_qty'] <= 10 ? 'text-danger' : ''; ?>">
+                                                <?php echo $i['stock_qty']; ?>
+                                            </td>
+                                            <td class="text-center text-primary fw-bold"><?php echo (int)$i['period_sold']; ?></td>
+                                            <td class="text-center text-success fw-bold"><?php echo (int)$i['period_free']; ?></td>
+                                            <td class="text-end"><?php echo number_format($i['tp_rate'], 2); ?></td>
+                                            <td class="text-end fw-bold"><?php echo number_format($i['stock_qty'] * $i['tp_rate'], 2); ?></td>
+                                        </tr>
+                                        <?php endforeach; ?>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- LOGISTICS HUB TAB -->
+                <div class="tab-pane fade" id="pills-logistics">
+                    <?php if(empty($trucks)): ?>
+                        <div class="card border-0 shadow-sm py-5 text-center text-muted">No truck loads found for this period.</div>
+                    <?php endif; ?>
+
+                    <?php foreach ($trucks as $t): ?>
+                    <div class="card shadow-sm border-0 mb-5 overflow-hidden report-card">
+                        <div class="card-header bg-dark text-white py-3">
+                            <div class="row align-items-center">
+                                <div class="col-md-6">
+                                    <h4 class="mb-0 fw-bold"><i class="fas fa-shipping-fast me-2 text-warning"></i> MANIFEST: <?php echo $t['truck_no']; ?></h4>
+                                    <div class="small opacity-75">Driver: <strong><?php echo $t['driver_name']; ?></strong> | Dispatch: <?php echo date('d M Y, H:i', strtotime($t['created_at'])); ?></div>
+                                </div>
+                                <div class="col-md-6 text-end">
+                                    <div class="h3 mb-0 fw-bold text-warning"><?php echo format_currency($t['load_value']); ?></div>
+                                    <div class="small opacity-75">Load Manifest Value (Trade Price Basis)</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="card-body p-4">
+                            <!-- Section 1: Consolidated Load Sheet (Warehouse Pick List) -->
+                            <div class="mb-4">
+                                <h6 class="text-uppercase fw-bold text-muted mb-3"><i class="fas fa-list-check me-2"></i> 1. Consolidated Load Sheet (Pick List)</h6>
+                                <div class="table-responsive">
+                                    <table class="table table-bordered table-sm align-middle">
+                                        <thead class="table-light">
+                                            <tr>
+                                                <th>Product Name</th>
+                                                <th class="text-center" style="width: 100px;">Billed</th>
+                                                <th class="text-center" style="width: 100px;">Free</th>
+                                                <th class="text-center bg-soft-primary" style="width: 120px;">Total Qty</th>
+                                                <th class="text-end" style="width: 150px;">Unit TP</th>
+                                                <th class="text-end" style="width: 150px;">Sub-Value</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <?php foreach ($t['consolidated'] as $p_item): ?>
+                                            <tr>
+                                                <td class="fw-bold"><?php echo $p_item['name']; ?></td>
+                                                <td class="text-center"><?php echo $p_item['billed']; ?></td>
+                                                <td class="text-center text-success"><?php echo $p_item['free']; ?></td>
+                                                <td class="text-center fw-bold bg-soft-primary"><?php echo $p_item['total_qty']; ?></td>
+                                                <td class="text-end"><?php echo number_format($p_item['tp_rate'], 2); ?></td>
+                                                <td class="text-end fw-bold"><?php echo number_format($p_item['total_qty'] * $p_item['tp_rate'], 2); ?></td>
+                                            </tr>
+                                            <?php endforeach; ?>
+                                        </tbody>
+                                        <tfoot class="table-light">
+                                            <tr>
+                                                <td colspan="5" class="text-end fw-bold">Calculated Total Valuation:</td>
+                                                <td class="text-end fw-bold text-primary"><?php echo format_currency($t['load_value']); ?></td>
+                                            </tr>
+                                        </tfoot>
+                                    </table>
+                                </div>
+                            </div>
+
+                            <!-- Section 2: Detailed Invoice Breakdown -->
+                            <h6 class="text-uppercase fw-bold text-muted mb-3"><i class="fas fa-file-invoice me-2"></i> 2. Detailed Invoice Manifest</h6>
+                            <?php foreach ($t['invoices'] as $inv): ?>
+                            <div class="invoice-entry border rounded-3 p-3 mb-3 shadow-sm bg-white">
+                                <div class="row g-3">
+                                    <div class="col-md-3">
+                                        <div class="small text-muted text-uppercase fw-bold">Invoice Info</div>
+                                        <div class="h5 mb-0 text-primary fw-bold">#<?php echo $inv['id']; ?></div>
+                                        <div class="badge badge-soft-primary mt-1"><?php echo $inv['delivery_status']; ?></div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="small text-muted text-uppercase fw-bold">Customer</div>
+                                        <div class="fw-bold h6 mb-0"><?php echo $inv['customer_name']; ?></div>
+                                        <div class="small text-muted"><i class="fas fa-user-tag me-1"></i> <?php echo $inv['customer_type']; ?> | <i class="fas fa-phone-alt me-1"></i> <?php echo $inv['customer_phone']; ?></div>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <div class="small text-muted text-uppercase fw-bold">Notes / Instructions</div>
+                                        <div class="small fw-bold text-dark italic"><?php echo $inv['general_note'] ?: '<span class="text-muted opacity-50">No notes</span>'; ?></div>
+                                    </div>
+                                    <div class="col-md-2 text-end">
+                                        <div class="small text-muted text-uppercase fw-bold">Amount</div>
+                                        <div class="h5 mb-0 fw-bold"><?php echo format_currency($inv['grand_total']); ?></div>
+                                    </div>
+                                </div>
+
+                                <div class="mt-3 table-responsive">
+                                    <table class="table table-sm table-borderless bg-light rounded px-2" style="font-size: 11px;">
+                                        <thead>
+                                            <tr class="text-muted border-bottom">
+                                                <th style="width: 40%;">Item</th>
+                                                <th class="text-center" style="width: 15%;">Rate</th>
+                                                <th class="text-center" style="width: 10%;">Billed</th>
+                                                <th class="text-center" style="width: 10%;">Free</th>
+                                                <th class="text-end" style="width: 15%;">Total</th>
+                                                <th style="width: 10%;">Item Note</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <?php foreach ($inv['items'] as $item): ?>
+                                            <tr>
+                                                <td><i class="fas fa-caret-right me-1 text-primary"></i> <?php echo $item['product_name']; ?></td>
+                                                <td class="text-center"><?php echo number_format($item['rate'], 2); ?></td>
+                                                <td class="text-center fw-bold"><?php echo $item['billed_qty']; ?></td>
+                                                <td class="text-center text-success fw-bold"><?php echo $item['free_qty']; ?></td>
+                                                <td class="text-end fw-bold"><?php echo number_format($item['total'], 2); ?></td>
+                                                <td><em class="text-muted"><?php echo $item['note']; ?></em></td>
+                                            </tr>
+                                            <?php endforeach; ?>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                            <?php endforeach; ?>
+                        </div>
+                        <div class="card-footer bg-light py-3 small border-0">
+                            <div class="row align-items-center">
+                                <div class="col-md-6">
+                                    <i class="fas fa-user-edit me-2"></i> Prepared By: <strong><?php echo $t['creator_name']; ?></strong>
+                                </div>
+                                <div class="col-md-6 text-end">
+                                    <i class="fas fa-comment-alt me-2"></i> Remarks: <strong><?php echo $t['remarks'] ?: 'N/A'; ?></strong>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                     <?php endforeach; ?>
                 </div>
-                <button class="btn btn-success btn-sm w-100 fw-bold shadow-sm py-2" onclick="copyWA()"><i class="fab fa-whatsapp me-2"></i>COPY AUDIT REPORT</button>
-                <textarea id="waSnap" class="visually-hidden"><?php echo $whatsapp_text; ?></textarea>
-            </div>
-        </div>
-        <div class="col-lg-8">
-            <div class="row g-3">
-                <div class="col-md-4"><div class="kpi-tile"><h6>Liquidity (Cash)</h6><h3 class="fw-bold mb-0 text-success"><?php echo format_currency($total_col); ?></h3><span class="small text-muted fw-bold"><?php echo round($col_ratio*100,1); ?>% Efficiency</span></div></div>
-                <div class="col-md-4"><div class="kpi-tile" style="border-color:#f59e0b"><h6>Stock Asset</h6><h3 class="fw-bold mb-0"><?php echo format_currency($stock_val); ?></h3><span class="small text-muted fw-bold"><?php echo $low_stock_count; ?> Products Low</span></div></div>
-                <div class="col-md-4"><div class="kpi-tile" style="border-color:#dc2626"><h6>Outstanding</h6><h3 class="fw-bold mb-0 text-danger"><?php echo fmt_money_short($total_receivable); ?></h3><span class="small text-muted fw-bold">Market Debt (Total)</span></div></div>
-                <div class="col-12"><div class="card shadow-sm border-0"><div class="card-header bg-white py-3 fw-bold border-0 d-flex justify-content-between align-items-center"><span><i class="fas fa-bolt text-warning me-2"></i>Action Board</span><span class="badge bg-danger rounded-pill px-3"><?php echo count($lifecycle_data['Pending']); ?> PENDING DISPATCH</span></div><div class="card-body p-0"><div class="table-responsive"><table class="table table-sm mb-0"><thead><tr class="table-light"><th>Dept</th><th>Issue</th><th>Responsible</th><th>Action</th></tr></thead><tbody><?php if($pending_over_48 > 0) echo '<tr><td><span class="badge bg-danger">Logistics</span></td><td class="fw-bold">'.$pending_over_48.' Invoices delayed > 48h</td><td>Dispatch</td><td><span class="badge bg-primary">Assign Truck</span></td></tr>'; ?> <?php if($neg_stock > 0) echo '<tr><td><span class="badge bg-danger">Warehouse</span></td><td class="fw-bold">'.$neg_stock.' Items Negative Stock</td><td>Store</td><td><span class="badge bg-primary">Audit</span></td></tr>'; ?></tbody></table></div></div></div></div>
-            </div>
-        </div>
-    </div>
 
-    <!-- MAIN HUB TABS -->
-    <div class="d-flex justify-content-between align-items-center mb-4 no-print flex-wrap gap-3">
-        <ul class="nav nav-pills nav-tabs-custom shadow-sm" id="hubTabs">
-            <li class="nav-item"><button class="nav-link active" data-bs-toggle="pill" data-bs-target="#tab-velocity"><i class="fas fa-tachometer-alt me-1"></i>Velocity Hub</button></li>
-            <li class="nav-item"><button class="nav-link" data-bs-toggle="pill" data-bs-target="#tab-inv"><i class="fas fa-boxes me-1"></i>Inventory Audit</button></li>
-            <li class="nav-item"><button class="nav-link" data-bs-toggle="pill" data-bs-target="#tab-debt"><i class="fas fa-hand-holding-usd me-1"></i>Market Debt</button></li>
-            <li class="nav-item"><button class="nav-link" data-bs-toggle="pill" data-bs-target="#tab-log"><i class="fas fa-truck-moving me-1"></i>Logistics detail</button></li>
-            <li class="nav-item"><button class="nav-link" data-bs-toggle="pill" data-bs-target="#tab-rep"><i class="fas fa-user-tie me-1"></i>Rep Perf.</button></li>
-            <li class="nav-item"><button class="nav-link" data-bs-toggle="pill" data-bs-target="#tab-sales"><i class="fas fa-list me-1"></i>Full Register</button></li>
-        </ul>
-        <input type="text" id="megaSearch" class="form-control search-ctrl shadow-sm border-0" placeholder="Instant Search Any Data Row...">
-    </div>
-
-    <div class="tab-content">
-        <!-- VELOCITY HUB -->
-        <div class="tab-pane fade show active" id="tab-velocity">
-            <div class="row g-4">
-                <div class="col-md-4"><div class="card h-100 shadow-sm border-0 border-top border-success border-4"><div class="card-header bg-white py-3 fw-bold">FAST MOVING (HOT ITEMS)</div><div class="card-body p-0"><table class="table table-sm table-hover mb-0"><thead><tr><th>Product</th><th class="text-end">Sold Val</th></tr></thead><tbody><?php foreach(array_slice($fast_moving,0,12) as $f): ?><tr><td class="ps-3 fw-bold"><?php echo $f['name']; ?></td><td class="text-end pe-3 fw-bold text-success"><?php echo fmt_money_short($f['period_rev']); ?></td></tr><?php endforeach; ?></tbody></table></div></div></div>
-                <div class="col-md-4"><div class="card h-100 shadow-sm border-0 border-top border-warning border-4"><div class="card-header bg-white py-3 fw-bold">SLOW MOVING (LOW VOLUME)</div><div class="card-body p-0"><table class="table table-sm table-hover mb-0"><thead><tr><th>Product</th><th class="text-end">Sold Val</th></tr></thead><tbody><?php foreach(array_slice($slow_moving,0,12) as $s): ?><tr><td class="ps-3"><?php echo $s['name']; ?></td><td class="text-end pe-3 fw-bold text-warning"><?php echo fmt_money_short($s['period_rev']); ?></td></tr><?php endforeach; ?></tbody></table></div></div></div>
-                <div class="col-md-4"><div class="card h-100 shadow-sm border-0 border-top border-danger border-4"><div class="card-header bg-white py-3 fw-bold">IDLE STOCK (DEAD CAPITAL)</div><div class="card-body p-0"><table class="table table-sm table-hover mb-0"><thead><tr><th>Product</th><th class="text-end">Asset Val</th></tr></thead><tbody><?php foreach(array_slice($idle_stock,0,12) as $i): ?><tr><td class="ps-3"><?php echo $i['name']; ?></td><td class="text-end pe-3 fw-bold text-danger"><?php echo fmt_money_short($i['stock_qty']*$i['tp_rate']); ?></td></tr><?php endforeach; ?></tbody></table></div></div></div>
-            </div>
-        </div>
-
-        <!-- INVENTORY AUDIT (LOW STOCK FIRST) -->
-        <div class="tab-pane fade" id="tab-inv">
-            <div class="card shadow-sm border-0"><div class="card-body p-0"><div class="table-responsive"><table class="table table-hover align-middle mb-0"><thead class="table-dark"><tr><th>Product Name</th><th>Category</th><th class="text-center">Stock</th><th class="text-end">Asset Value</th></tr></thead><tbody>
-                <?php foreach($inventory_raw as $i): ?><tr class="report-row <?php echo ($i['stock_qty']<=10)?'table-danger-soft':''; ?>"><td><strong class="<?php echo ($i['stock_qty']<=10)?'text-danger':''; ?>"><?php echo $i['name']; ?></strong><?php if($i['stock_qty']<=0) echo ' <span class="badge bg-danger">OUT</span>'; elseif($i['stock_qty']<=10) echo ' <span class="badge bg-warning text-dark">LOW</span>'; ?></td><td><?php echo $i['cat_name']; ?></td><td class="text-center fw-bold h5 mb-0"><?php echo (int)$i['stock_qty']; ?></td><td class="text-end fw-bold text-primary"><?php echo format_currency($i['stock_qty']*$i['tp_rate']); ?></td></tr><?php endforeach; ?>
-            </tbody></table></div></div></div>
-        </div>
-
-        <!-- MARKET DEBT (OUTSTANDING) -->
-        <div class="tab-pane fade" id="tab-debt">
-            <div class="card shadow-sm border-0"><div class="card-body p-0"><div class="table-responsive"><table class="table table-hover align-middle mb-0"><thead class="table-dark"><tr><th>Customer Name</th><th>Contact</th><th>Type</th><th class="text-end">Total Due</th></tr></thead><tbody>
-                <?php foreach($market_debt as $d): ?><tr class="report-row"><td><strong><?php echo $d['name']; ?></strong></td><td><?php echo $d['phone']; ?></td><td><span class="badge bg-light text-dark"><?php echo $d['type']; ?></span></td><td class="text-end fw-bold text-danger h5 mb-0"><?php echo format_currency($d['balance']); ?></td></tr><?php endforeach; ?>
-            </tbody></table></div></div></div>
-        </div>
-
-        <!-- LOGISTICS DETAIL -->
-        <div class="tab-pane fade" id="tab-log">
-            <?php foreach($trucks as $t): ?>
-            <div class="truck-card report-row shadow-sm border-0 mb-4 overflow-hidden">
-                <div class="truck-header d-flex justify-content-between align-items-center">
-                    <div><h5 class="mb-0 fw-bold text-uppercase"><i class="fas fa-shipping-fast text-warning me-2"></i><?php echo $t['truck_no']; ?></h5><span class="small opacity-75"><?php echo $t['driver_name']; ?> | <?php echo date('d M, H:i', strtotime($t['created_at'])); ?></span></div>
-                    <div class="text-end text-warning fw-bold h4 mb-0"><?php echo format_currency($t['load_val']); ?></div>
+                <!-- FINANCIAL AUDIT TAB -->
+                <div class="tab-pane fade" id="pills-finance">
+                    <div class="card shadow-sm border-0">
+                        <div class="card-header bg-white py-3">
+                            <h5 class="mb-0 fw-bold">Collection & Payment Ledger</h5>
+                        </div>
+                        <div class="card-body p-0">
+                            <div class="table-responsive">
+                                <table class="table table-hover align-middle mb-0">
+                                    <thead>
+                                        <tr>
+                                            <th>Date / Time</th>
+                                            <th>Customer Name</th>
+                                            <th>Description</th>
+                                            <th class="text-end">Amount Collected</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <?php if(empty($collections)): ?>
+                                            <tr><td colspan="4" class="text-center py-5 text-muted">No collections recorded for this period.</td></tr>
+                                        <?php endif; ?>
+                                        <?php foreach ($collections as $c): ?>
+                                        <tr>
+                                            <td><?php echo date('d M Y, H:i', strtotime($c['created_at'])); ?></td>
+                                            <td class="fw-bold"><?php echo $c['customer_name']; ?></td>
+                                            <td class="text-muted italic"><?php echo $c['description']; ?></td>
+                                            <td class="text-end fw-bold text-success" style="font-size: 16px;">+ <?php echo format_currency($c['amount']); ?></td>
+                                        </tr>
+                                        <?php endforeach; ?>
+                                    </tbody>
+                                    <tfoot class="table-light">
+                                        <tr>
+                                            <td colspan="3" class="text-end fw-bold py-3">GRAND TOTAL COLLECTION:</td>
+                                            <td class="text-end fw-bold text-dark py-3" style="font-size: 18px;"><?php echo format_currency($total_collected); ?></td>
+                                        </tr>
+                                    </tfoot>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
                 </div>
-                <div class="card-body p-4"><div class="row g-4"><div class="col-lg-4 border-end">
-                    <h6 class="small fw-bold text-muted text-uppercase mb-3">Warehouse Loading List</h6>
-                    <table class="table table-sm table-bordered table-hover" style="font-size:12px;"><tbody><?php foreach($t['summary'] as $p): ?><tr><td><?php echo $p['name']; ?></td><td class="text-center fw-bold bg-light"><?php echo $p['qty']; ?></td></tr><?php endforeach; ?></tbody></table>
-                </div><div class="col-lg-8">
-                    <?php foreach($t['invoices'] as $inv): ?><div class="invoice-card border shadow-sm">
-                        <div class="d-flex justify-content-between fw-bold mb-2"><span>#<?php echo $inv['id']; ?> - <?php echo $inv['cust_name']; ?></span><span class="badge bg-white text-primary border px-3"><?php echo format_currency($inv['grand_total']); ?></span></div>
-                        <div class="ps-3 border-start" style="font-size:11px;"><?php foreach($inv['items'] as $it): ?><div class="d-flex justify-content-between text-muted border-bottom py-1"><span><?php echo $it['name']; ?> x <?php echo (int)$it['billed_qty']+(int)$it['free_qty']; ?></span><span class="fw-bold">৳<?php echo number_format($it['total'],2); ?></span></div><?php endforeach; ?></div>
-                    </div><?php endforeach; ?>
-                </div></div></div>
             </div>
-            <?php endforeach; ?>
-        </div>
-
-        <!-- REP PERFORMANCE -->
-        <div class="tab-pane fade" id="tab-rep">
-            <div class="card shadow-sm border-0"><div class="card-body p-0"><div class="table-responsive"><table class="table table-hover align-middle mb-0"><thead class="table-dark"><tr><th>Executive / Rep Name</th><th class="text-center">Total Orders</th><th class="text-center">Returns</th><th class="text-end">Confirmed Sales</th></tr></thead><tbody>
-                <?php foreach($rep_perf as $name => $data): ?><tr class="report-row"><td><strong><?php echo $name; ?></strong></td><td class="text-center fw-bold"><?php echo $data['orders']; ?></td><td class="text-center fw-bold text-danger"><?php echo $data['returns']; ?></td><td class="text-end fw-bold text-success h5 mb-0"><?php echo format_currency($data['sales']); ?></td></tr><?php endforeach; ?>
-            </tbody></table></div></div></div>
-        </div>
-
-        <!-- FULL REGISTER -->
-        <div class="tab-pane fade" id="tab-sales">
-            <div class="card shadow-sm border-0"><div class="card-body p-0"><div class="table-responsive"><table class="table table-hover align-middle mb-0"><thead class="table-dark"><tr><th>Inv #</th><th>Date</th><th>Customer</th><th>Issuer</th><th class="text-end">Amount</th></tr></thead><tbody>
-                <?php foreach($sales_raw as $s): ?><tr class="report-row"><td>#<?php echo $s['id']; ?></td><td><?php echo date('d M', strtotime($s['confirmed_at'])); ?></td><td><strong><?php echo $s['customer_name']; ?></strong></td><td><?php echo $s['creator_name']; ?></td><td class="text-end fw-bold"><?php echo format_currency($s['grand_total']); ?></td></tr><?php endforeach; ?>
-            </tbody></table></div></div></div>
         </div>
     </div>
 </div>
 
-<script>
-document.addEventListener("DOMContentLoaded", function() {
-    new Chart(document.getElementById('trendChart'), { type: 'line', data: { labels: <?php echo json_encode($chart_labels); ?>, datasets: [ { label: 'Revenue', data: <?php echo json_encode($chart_sales); ?>, borderColor: '#2563eb', backgroundColor: 'rgba(37,99,235,0.1)', fill: true, tension: 0.4 }, { label: 'Collections', data: <?php echo json_encode($chart_cols); ?>, borderColor: '#16a34a', tension: 0.4 } ] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } } });
-    new Chart(document.getElementById('statusChart'), { type: 'doughnut', data: { labels: <?php echo json_encode(array_keys($status_counts)); ?>, datasets: [{ data: <?php echo json_encode(array_values($status_counts)); ?>, backgroundColor: ['#eab308', '#3b82f6', '#8b5cf6', '#22c55e', '#ef4444', '#64748b'] }] }, options: { responsive: true, maintainAspectRatio: false, cutout: '75%', plugins: { legend: { position: 'bottom' } } } });
-    document.getElementById('megaSearch').addEventListener('keyup', function() { let v = this.value.toLowerCase(); document.querySelectorAll('.report-row').forEach(r => { r.style.display = r.innerText.toLowerCase().includes(v) ? '' : 'none'; }); });
-});
-function copyWA() { const el = document.getElementById('waSnap'); el.select(); document.execCommand('copy'); alert('Executive Audit Report Copied to Clipboard!'); }
-</script>
 <?php require_once 'templates/footer.php'; ?>
