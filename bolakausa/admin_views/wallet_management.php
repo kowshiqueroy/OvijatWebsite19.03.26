@@ -108,6 +108,13 @@ while ($row = $stmt->fetch()) {
     </div>
 <?php endif; ?>
 
+<!-- TAB NAVIGATION -->
+<div style="display: flex; gap: 1rem; margin-bottom: 2rem; border-bottom: 2px solid var(--glass-border); padding-bottom: 1rem;">
+    <button onclick="switchTab('tab-pending')" id="btn-pending" class="btn btn-blue" style="background: var(--primary);"><i class="fas fa-hand-holding-usd"></i> Pending Top-ups</button>
+    <button onclick="switchTab('tab-balances')" id="btn-balances" class="btn btn-blue" style="background: rgba(15,23,42,0.1); color: var(--secondary);"><i class="fas fa-users"></i> Partner Balances</button>
+    <button onclick="switchTab('tab-adjustments')" id="btn-adjustments" class="btn btn-blue" style="background: rgba(15,23,42,0.1); color: var(--secondary);"><i class="fas fa-sliders-h"></i> Manual Adjustments</button>
+</div>
+
 <?php if ($view_history_user_id): ?>
     <!-- VIEWING SPECIFIC USER HISTORY -->
     <div class="card" style="margin-bottom: 3rem;">
@@ -148,126 +155,158 @@ while ($row = $stmt->fetch()) {
     </div>
 <?php endif; ?>
 
-<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 2.5rem; margin-bottom: 3rem;">
-    <!-- LEFT COLUMN: Pending Requests -->
-    <div style="min-width: 0;">
-        <h3 style="font-weight: 800; color: var(--secondary); margin-bottom: 1rem;"><i class="fas fa-hand-holding-usd" style="color: var(--primary);"></i> Pending Top-up Requests</h3>
-        <div class="table-wrap" style="margin-bottom: 0;">
-            <table>
-                <thead>
-                    <tr>
-                        <th>User & Amount</th>
-                        <th>Details</th>
-                        <th>Action</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php if (!$pending_topups): ?>
-                        <tr><td colspan="3" style="text-align: center; color: var(--text-muted);">No pending top-up requests.</td></tr>
-                    <?php endif; ?>
-                    <?php foreach ($pending_topups as $t): ?>
-                    <tr>
-                        <td>
-                            <strong style="color: var(--secondary);"><?php echo e($t['username']); ?></strong><br>
-                            <strong style="color: var(--primary); font-size: 1.1rem;">$<?php echo number_format($t['amount'], 2); ?></strong>
-                        </td>
-                        <td>
-                            <small style="color: var(--text-muted);">Method:</small> <strong><?php echo e($t['payment_method']); ?></strong><br>
-                            <small style="color: var(--text-muted);">TX ID:</small> <?php echo e($t['transaction_id']); ?><br>
-                            <?php if ($t['proof_image']): ?>
-                                <a href="/bolakausa/public/uploads/proofs/<?php echo e($t['proof_image']); ?>" target="_blank" style="font-size: 0.8rem; color: var(--primary); font-weight: 700;"><i class="fas fa-image"></i> View Proof</a>
-                            <?php else: ?>
-                                <span style="color: var(--text-muted); font-size: 0.8rem;">No Proof</span>
-                            <?php endif; ?>
-                        </td>
-                        <td>
-                            <form method="POST" style="display:flex; flex-direction: column; gap: 0.5rem;">
-                                <input type="hidden" name="request_id" value="<?php echo $t['id']; ?>">
-                                <div style="display: flex; gap: 0.5rem;">
-                                    <select name="action" style="padding: 0.5rem; font-size: 0.8rem;">
-                                        <option value="approved">Approve</option>
-                                        <option value="rejected">Reject</option>
-                                    </select>
-                                    <button type="submit" name="process_topup" value="1" class="btn btn-green" style="padding: 0.5rem 1rem; font-size: 0.8rem;">Apply</button>
-                                </div>
-                                <input type="text" name="admin_notes" placeholder="Admin notes..." style="padding: 0.5rem; font-size: 0.8rem;">
-                            </form>
-                        </td>
-                    </tr>
-                    <?php endforeach; ?>
-                </tbody>
-            </table>
-        </div>
-    </div>
+<!-- TAB CONTENT CONTAINERS -->
 
-    <!-- RIGHT COLUMN: User Balances -->
-    <div>
-        <h3 style="font-weight: 800; color: var(--secondary); margin-bottom: 1rem;"><i class="fas fa-users" style="color: #3b82f6;"></i> Wholesale Partner Balances</h3>
-        <div class="table-wrap" style="margin-bottom: 0;">
-            <table>
-                <thead>
-                    <tr>
-                        <th>Partner</th>
-                        <th style="text-align: right;">Current Balance</th>
-                        <th style="text-align: right;">Action</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php foreach ($users as $u): ?>
-                    <?php $bal = $user_balances[$u['id']] ?? 0.00; ?>
-                    <tr>
-                        <td>
-                            <strong style="color: var(--secondary);"><?php echo e($u['full_name'] ?: $u['username']); ?></strong>
-                            <?php if ($u['status'] !== 'active'): ?>
-                                <span style="background: rgba(244,63,94,0.1); color: var(--accent); padding: 2px 6px; border-radius: 8px; font-size: 0.65rem; text-transform: uppercase; font-weight: 800; margin-left: 0.5rem;">Inactive</span>
-                            <?php endif; ?>
-                            <br><small style="color: var(--text-muted);">@<?php echo e($u['username']); ?></small>
-                        </td>
-                        <td style="text-align: right;">
-                            <strong style="font-size: 1.1rem; color: <?php echo ($bal >= 0) ? 'var(--primary)' : 'var(--accent)'; ?>;">
-                                $<?php echo number_format($bal, 2); ?>
-                            </strong>
-                        </td>
-                        <td style="text-align: right;">
-                            <a href="/bolakausa/admin/wallet?history=<?php echo $u['id']; ?>" class="btn btn-blue" style="padding: 0.5rem 1rem; font-size: 0.8rem;"><i class="fas fa-history"></i> Ledger</a>
-                        </td>
-                    </tr>
-                    <?php endforeach; ?>
-                </tbody>
-            </table>
-        </div>
-    </div>
-</div>
-
-<div class="card" style="margin-bottom: 2rem;">
-    <h3 style="font-weight: 800; color: var(--secondary); margin-bottom: 1.5rem;"><i class="fas fa-sliders-h" style="color: #3b82f6;"></i> Manual Adjustment (Credit/Debit)</h3>
-    <form method="POST" style="display: flex; gap: 1rem; align-items: flex-end; flex-wrap: wrap;">
-        <div class="form-group" style="margin: 0; flex: 1; min-width: 200px;">
-            <label>Select User</label>
-            <select name="user_id" required>
-                <option value="">-- Choose User --</option>
-                <?php foreach ($users as $u): ?>
-                    <option value="<?php echo $u['id']; ?>"><?php echo e($u['username']); ?></option>
+<!-- Pending Requests Tab -->
+<div id="tab-pending" class="tab-content" style="display: block;">
+    <h3 style="font-weight: 800; color: var(--secondary); margin-bottom: 1rem;"><i class="fas fa-hand-holding-usd" style="color: var(--primary);"></i> Pending Top-up Requests</h3>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>User & Amount</th>
+                    <th>Details</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php if (!$pending_topups): ?>
+                    <tr><td colspan="3" style="text-align: center; color: var(--text-muted);">No pending top-up requests.</td></tr>
+                <?php endif; ?>
+                <?php foreach ($pending_topups as $t): ?>
+                <tr>
+                    <td>
+                        <strong style="color: var(--secondary);"><?php echo e($t['username']); ?></strong><br>
+                        <strong style="color: var(--primary); font-size: 1.1rem;">$<?php echo number_format($t['amount'], 2); ?></strong>
+                    </td>
+                    <td>
+                        <small style="color: var(--text-muted);">Method:</small> <strong><?php echo e($t['payment_method']); ?></strong><br>
+                        <small style="color: var(--text-muted);">TX ID:</small> <?php echo e($t['transaction_id']); ?><br>
+                        <?php if ($t['proof_image']): ?>
+                            <a href="/bolakausa/public/uploads/proofs/<?php echo e($t['proof_image']); ?>" target="_blank" style="font-size: 0.8rem; color: var(--primary); font-weight: 700;"><i class="fas fa-image"></i> View Proof</a>
+                        <?php else: ?>
+                            <span style="color: var(--text-muted); font-size: 0.8rem;">No Proof</span>
+                        <?php endif; ?>
+                    </td>
+                    <td>
+                        <form method="POST" style="display:flex; flex-direction: column; gap: 0.5rem;">
+                            <input type="hidden" name="request_id" value="<?php echo $t['id']; ?>">
+                            <div style="display: flex; gap: 0.5rem;">
+                                <select name="action" style="padding: 0.5rem; font-size: 0.8rem;">
+                                    <option value="approved">Approve</option>
+                                    <option value="rejected">Reject</option>
+                                </select>
+                                <button type="submit" name="process_topup" value="1" class="btn btn-green" style="padding: 0.5rem 1rem; font-size: 0.8rem;">Apply</button>
+                            </div>
+                            <input type="text" name="admin_notes" placeholder="Admin notes..." style="padding: 0.5rem; font-size: 0.8rem;">
+                        </form>
+                    </td>
+                </tr>
                 <?php endforeach; ?>
-            </select>
-        </div>
-        <div class="form-group" style="margin: 0; flex: 1; min-width: 150px;">
-            <label>Action</label>
-            <select name="type">
-                <option value="credit">Credit (+)</option>
-                <option value="debit">Debit (-)</option>
-            </select>
-        </div>
-        <div class="form-group" style="margin: 0; flex: 1; min-width: 150px;">
-            <label>Amount ($)</label>
-            <input type="number" step="0.01" name="amount" placeholder="0.00" required>
-        </div>
-        <div class="form-group" style="margin: 0; flex: 2; min-width: 250px;">
-            <label>Reason / Description</label>
-            <input type="text" name="description" placeholder="e.g. Refund for damaged goods">
-        </div>
-        <button type="submit" name="manual_adjustment" class="btn btn-blue" style="padding: 1.15rem 1.5rem;"><i class="fas fa-bolt"></i> Process</button>
-    </form>
+            </tbody>
+        </table>
+    </div>
 </div>
+
+<!-- User Balances Tab -->
+<div id="tab-balances" class="tab-content" style="display: none;">
+    <h3 style="font-weight: 800; color: var(--secondary); margin-bottom: 1rem;"><i class="fas fa-users" style="color: #3b82f6;"></i> Wholesale Partner Balances</h3>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Partner</th>
+                    <th style="text-align: right;">Current Balance</th>
+                    <th style="text-align: right;">Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php foreach ($users as $u): ?>
+                <?php $bal = $user_balances[$u['id']] ?? 0.00; ?>
+                <tr>
+                    <td>
+                        <strong style="color: var(--secondary);"><?php echo e($u['full_name'] ?: $u['username']); ?></strong>
+                        <?php if ($u['status'] !== 'active'): ?>
+                            <span style="background: rgba(244,63,94,0.1); color: var(--accent); padding: 2px 6px; border-radius: 8px; font-size: 0.65rem; text-transform: uppercase; font-weight: 800; margin-left: 0.5rem;">Inactive</span>
+                        <?php endif; ?>
+                        <br><small style="color: var(--text-muted);">@<?php echo e($u['username']); ?></small>
+                    </td>
+                    <td style="text-align: right;">
+                        <strong style="font-size: 1.1rem; color: <?php echo ($bal >= 0) ? 'var(--primary)' : 'var(--accent)'; ?>;">
+                            $<?php echo number_format($bal, 2); ?>
+                        </strong>
+                    </td>
+                    <td style="text-align: right;">
+                        <a href="/bolakausa/admin/wallet?history=<?php echo $u['id']; ?>#tab-balances" class="btn btn-blue" style="padding: 0.5rem 1rem; font-size: 0.8rem;"><i class="fas fa-history"></i> Ledger</a>
+                    </td>
+                </tr>
+                <?php endforeach; ?>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Manual Adjustments Tab -->
+<div id="tab-adjustments" class="tab-content" style="display: none;">
+    <div class="card" style="margin-bottom: 2rem;">
+        <h3 style="font-weight: 800; color: var(--secondary); margin-bottom: 1.5rem;"><i class="fas fa-sliders-h" style="color: #3b82f6;"></i> Manual Adjustment (Credit/Debit)</h3>
+        <form method="POST" style="display: flex; gap: 1rem; align-items: flex-end; flex-wrap: wrap;">
+            <div class="form-group" style="margin: 0; flex: 1; min-width: 200px;">
+                <label>Select User</label>
+                <select name="user_id" required>
+                    <option value="">-- Choose User --</option>
+                    <?php foreach ($users as $u): ?>
+                        <option value="<?php echo $u['id']; ?>"><?php echo e($u['username']); ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <div class="form-group" style="margin: 0; flex: 1; min-width: 150px;">
+                <label>Action</label>
+                <select name="type">
+                    <option value="credit">Credit (+)</option>
+                    <option value="debit">Debit (-)</option>
+                </select>
+            </div>
+            <div class="form-group" style="margin: 0; flex: 1; min-width: 150px;">
+                <label>Amount ($)</label>
+                <input type="number" step="0.01" name="amount" placeholder="0.00" required>
+            </div>
+            <div class="form-group" style="margin: 0; flex: 2; min-width: 250px;">
+                <label>Reason / Description</label>
+                <input type="text" name="description" placeholder="e.g. Refund for damaged goods">
+            </div>
+            <button type="submit" name="manual_adjustment" class="btn btn-blue" style="padding: 1.15rem 1.5rem;"><i class="fas fa-bolt"></i> Process</button>
+        </form>
+    </div>
+</div>
+
+<script>
+function switchTab(tabId) {
+    // Hide all tabs
+    document.querySelectorAll('.tab-content').forEach(el => el.style.display = 'none');
+    
+    // Reset all buttons to inactive style
+    document.querySelectorAll('[id^="btn-"]').forEach(btn => {
+        btn.style.background = 'rgba(15,23,42,0.1)';
+        btn.style.color = 'var(--secondary)';
+    });
+
+    // Show selected tab
+    document.getElementById(tabId).style.display = 'block';
+    
+    // Highlight active button
+    const activeBtn = document.getElementById('btn-' + tabId.replace('tab-', ''));
+    activeBtn.style.background = 'var(--primary)';
+    activeBtn.style.color = 'white';
+}
+
+// Auto-switch if URL hash is present (useful for Ledger returns)
+if (window.location.hash) {
+    const hash = window.location.hash.substring(1);
+    if (document.getElementById(hash)) {
+        switchTab(hash);
+    }
+}
+</script>
 
 <p style="margin-top: 2rem;"><a href="/bolakausa/admin" class="btn btn-blue"><i class="fas fa-arrow-left"></i> Back to Dashboard</a></p>

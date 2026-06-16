@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="bn">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Individual Token Generator</title>
-    <link href="https://fonts.googleapis.com/css2?family=Tiro+Bangla:ital@0;1&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
     <style>
         :root {
             --primary-color: #1a1a1a;
@@ -13,7 +13,7 @@
         }
 
         body {
-            font-family: 'Tiro Bangla', serif;
+            font-family: 'Roboto', sans-serif;
             margin: 0;
             padding: 0;
             background-color: var(--bg-color);
@@ -57,7 +57,7 @@
             padding: 10px;
             border: 1px solid #cbd5e1;
             border-radius: 5px;
-            font-family: 'Tiro Bangla', serif;
+            font-family: 'Roboto', sans-serif;
             font-size: 15px;
             box-sizing: border-box;
             background-color: #f8fafc;
@@ -73,7 +73,7 @@
         button {
             padding: 12px 25px;
             font-size: 16px;
-            font-family: 'Tiro Bangla', serif;
+            font-family: 'Roboto', sans-serif;
             font-weight: bold;
             color: white;
             background-color: #3b82f6;
@@ -154,9 +154,9 @@
         }
 
         .t-header { text-align: center; line-height: 1.3; }
-        .t-school { font-size: 17px; font-weight: bold; }
+        .t-school { font-size: 17px; font-weight: bold; color: navy; }
         .t-event { font-size: 14px; margin-top: 3px; font-weight: bold; color: #333;}
-        .t-info { font-size: 12px; color: #444; margin-top: 2px; }
+        .t-info { font-size: 12px; color: green; margin-top: 2px; }
 
         .t-number-container { text-align: center; margin: 4px 0; }
         .t-number {
@@ -202,30 +202,30 @@
 <body>
 
     <div id="controls" class="no-print">
-        <h2>পৃথক টোকেন জেনারেটর (A4 প্রতি ১০টি টোকেন)</h2>
+        <h2>Individual Token Generator (10 per A4)</h2>
         <div class="form-grid">
             <div class="form-group full-width">
-                <label>প্রতিষ্ঠানের নাম</label>
-                <input type="text" id="schoolName" value="গ্রীন সাইন রেসিডেন্সিয়াল স্কুল এন্ড কলেজ">
+                <label>Institution Name</label>
+                <input type="text" id="schoolName" value="Green Sign Residential School & College">
             </div>
             <div class="form-group">
-                <label>অনুষ্ঠানের নাম</label>
-                <input type="text" id="event" value="শিক্ষা সফর - ২০২৬">
+                <label>Event Name</label>
+                <input type="text" id="event" value="Study Tour - 2026">
             </div>
             <div class="form-group">
-                <label>স্থান ও তারিখ</label>
-                <input type="text" id="locationDate" value="স্থানঃ স্বপ্নপুরী | তারিখঃ ১০ এপ্রিল ২০২৬ ইং">
+                <label>Location & Date</label>
+                <input type="text" id="locationDate" value="Location: Swapnapuri | Date: April 10, 2026">
             </div>
             <div class="form-group">
-                <label>লোগো URL (জলছাপের জন্য)</label>
+                <label>Logo URL (Watermark)</label>
                 <input type="url" id="logoUrl" placeholder="https://example.com/logo.png" value="">
             </div>
             <div class="form-group">
-                <label>শুরুর টোকেন নম্বর</label>
+                <label>Start Token Number</label>
                 <input type="number" id="startNum" value="1">
             </div>
             <div class="form-group">
-                <label>মোট টোকেন (কতগুলো বানাতে চান)</label>
+                <label>Total Tokens</label>
                 <input type="number" id="totalTokens" value="20">
             </div>
         </div>
@@ -239,12 +239,6 @@
         </div>
 
     <script>
-        // Convert English numbers to Bengali digits
-        function toBanglaDigit(number) {
-            const banglaDigits = ['০', '১', '২', '৩', '৪', '৫', '৬', '৭', '৮', '৯'];
-            return number.toString().replace(/\d/g, x => banglaDigits[x]);
-        }
-
         function generateTokens() {
             const schoolName = document.getElementById('schoolName').value;
             const event = document.getElementById('event').value;
@@ -258,21 +252,16 @@
 
             const watermarkStyle = logoUrl ? `background-image: url('${logoUrl}');` : '';
 
-            // Calculate how many A4 pages are needed (10 tokens per page)
             const totalPages = Math.ceil(totalTokens / 10);
             let currentToken = startNum;
             let tokensGenerated = 0;
 
             for (let pageNum = 0; pageNum < totalPages; pageNum++) {
-                // Create an A4 Page container
                 const pageDiv = document.createElement('div');
                 pageDiv.className = 'a4-page';
 
-                // Fill the page with up to 10 tokens
                 for (let i = 0; i < 10; i++) {
-                    if (tokensGenerated >= totalTokens) break; // Stop if we reached the requested amount
-
-                    const banglaTokenNumber = toBanglaDigit(currentToken);
+                    if (tokensGenerated >= totalTokens) break;
 
                     const tokenDiv = document.createElement('div');
                     tokenDiv.className = 'token';
@@ -286,16 +275,16 @@
                             </div>
                             
                             <div class="t-number-container">
-                                <div class="t-number">টোকেন নাম্বারঃ ${banglaTokenNumber}</div>
+                                <div class="t-number">Token Number: ${currentToken}</div>
                             </div>
                             
                             <div class="t-form">
                                 <div class="input-row">
-                                    <span>নামঃ</span> <div class="dotted-line"></div>
-                                    <span>শ্রেণিঃ</span> <div class="dotted-line" style="width: 35px; flex-grow: 0;"></div>
+                                    <span>Name:</span> <div class="dotted-line"></div>
+                                    <span>Class:</span> <div class="dotted-line" style="width: 35px; flex-grow: 0;"></div>
                                 </div>
                                 <div class="input-row">
-                                    <span>শ্রেণি শিক্ষকের স্বাক্ষরঃ</span> <div class="dotted-line"></div>
+                                    <span>Teacher's Signature:</span> <div class="dotted-line"></div>
                                 </div>
                             </div>
                         </div>
@@ -310,7 +299,6 @@
             }
         }
 
-        // Generate default tokens when the page loads
         window.onload = generateTokens;
     </script>
 </body>

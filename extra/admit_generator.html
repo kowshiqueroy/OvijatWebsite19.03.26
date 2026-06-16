@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="bn">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Admit Card Generator</title>
-    <link href="https://fonts.googleapis.com/css2?family=Tiro+Bangla:ital@0;1&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
     <style>
         :root {
             --primary-color: #1a1a1a;
@@ -13,7 +13,7 @@
         }
 
         body {
-            font-family: 'Tiro Bangla', serif;
+            font-family: 'Roboto', sans-serif;
             margin: 0;
             padding: 0;
             background-color: var(--bg-color);
@@ -57,7 +57,7 @@
             padding: 10px;
             border: 1px solid #cbd5e1;
             border-radius: 5px;
-            font-family: 'Tiro Bangla', serif;
+            font-family: 'Roboto', sans-serif;
             font-size: 15px;
             box-sizing: border-box;
             background-color: #f8fafc;
@@ -78,7 +78,7 @@
         button {
             padding: 12px 25px;
             font-size: 16px;
-            font-family: 'Tiro Bangla', serif;
+            font-family: 'Roboto', sans-serif;
             font-weight: bold;
             color: white;
             background-color: #3b82f6;
@@ -131,15 +131,20 @@
             padding-bottom: 5px;
             margin-bottom: 10px;
             display: flex;
+            flex-direction: column;
             align-items: center;
             justify-content: center;
-            gap: 15px;
+            position: relative;
         }
 
         .header-logo {
             width: 70px;
             height: 70px;
             object-fit: contain;
+            position: absolute;
+            left: 10px;
+            top: 60%;
+            transform: translateY(-50%);
         }
 
         .school-name {
@@ -147,14 +152,14 @@
             font-weight: bold;
             margin: 0;
             line-height: 1.1;
-            color: #d32f2f;
+            color: navy;
             white-space: nowrap;
         }
 
         .school-address {
             font-size: 13px;
             margin: 1px 0;
-            color: #444;
+            color: green;
         }
 
         .exam-name {
@@ -287,23 +292,26 @@
         <div class="form-grid">
             <div class="form-group full-width">
                 <label>School/College Name</label>
-                <input type="text" id="schoolName" value="গ্রীন সাইন রেসিডেন্সিয়াল স্কুল এন্ড কলেজ">
+                <input type="text" id="schoolName" value="Green Sign Residential School & College">
             </div>
             <div class="form-group full-width">
                 <label>School Address</label>
-                <input type="text" id="schoolAddress" value="উকিলের মোড়, নীলফামারী">
+                <input type="text" id="schoolAddress" value="Ukiler Mor, Nilphamari">
             </div>
-            <div class="form-group">
+            <div class="form-group"> 
                 <label>Examination Name</label>
-                <input type="text" id="examName" value="বার্ষিক পরীক্ষা - ২০২৬">
+                <input type="text" id="examName" value="Monthly Examination - May/2026">
             </div>
             <div class="form-group">
                 <label>Class (Common for all)</label>
-                <input type="text" id="className" value="৬ষ্ঠ">
+                <input type="text" id="className" value="6th">
             </div>
             <div class="form-group full-width">
                 <label>Student Data (Roll [Tab] Name)</label>
-                <textarea id="studentData" placeholder="101	Abdur Rahman&#10;102	Fatima Khatun"></textarea>
+                <textarea id="studentData" placeholder="101	Kowshique Roy&#10;102	Anisur Rahman&#10;103	Mst. Rokeya Begum&#10;104	Sabbir Ahmed">101	Kowshique Roy
+102	Anisur Rahman
+103	Mst. Rokeya Begum
+104	Sabbir Ahmed</textarea>
             </div>
             <div class="form-group">
                 <label>Header Logo URL</label>
@@ -315,7 +323,7 @@
             </div>
             <div class="form-group full-width">
                 <label>Principal's Signature URL (Optional)</label>
-                <input type="url" id="signatureUrl" placeholder="https://example.com/signature.png">
+                <input type="url" id="signatureUrl" value="gsrscnSignbgr.png">
             </div>
             <div class="form-group">
                 <label>Number of Blank Cards</label>
@@ -394,35 +402,35 @@
                         <div class="watermark" style="${watermarkStyle}"></div>
                         <div class="content-layer">
                             <div class="card-header">
-                                ${headerLogoHtml}
                                 <div class="header-text">
                                     <div class="school-name">${schoolName}</div>
                                     <div class="school-address">${schoolAddress}</div>
                                     <div class="exam-name">${examName}</div>
-                                    <div class="card-title">প্রবেশপত্র (ADMIT CARD)</div>
+                                    <div class="card-title">ADMIT CARD</div>
                                 </div>
+                                ${headerLogoHtml}
                             </div>
                             <div class="card-body">
                                 <div class="info-row">
-                                    <span class="info-label">নামঃ</span>
+                                    <span class="info-label">Name:</span>
                                     <span class="info-value">${student.name || '&nbsp;'}</span>
                                 </div>
                                 <div class="info-row">
-                                    <span class="info-label">শ্রেণিঃ</span>
+                                    <span class="info-label">Class:</span>
                                     <span class="info-value" style="flex-grow: 2;">${student.class || '&nbsp;'}</span>
-                                    <span class="info-label" style="margin-left: 30px;">রোলঃ</span>
+                                    <span class="info-label" style="margin-left: 30px;">Roll:</span>
                                     <span class="info-value">${student.roll || '&nbsp;'}</span>
                                 </div>
                             </div>
                             <div class="card-footer">
                                 <div class="signature-box">
                                     <div class="signature-line"></div>
-                                    <div class="signature-text">শ্রেণি শিক্ষক</div>
+                                    <div class="signature-text">Class Teacher</div>
                                 </div>
                                 <div class="signature-box">
                                     ${signatureHtml}
                                     <div class="signature-line"></div>
-                                    <div class="signature-text">প্রধান শিক্ষক</div>
+                                    <div class="signature-text">Principal</div>
                                 </div>
                             </div>
                         </div>

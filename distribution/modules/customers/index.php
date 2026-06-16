@@ -21,6 +21,14 @@ if (isset($_POST['add_customer'])) {
     try {
         $opening_bal = isset($_POST['opening_balance']) ? floatval($_POST['opening_balance']) : 0.00;
 
+        // Check if phone already exists in users table
+        $stmt_check = $conn->prepare("SELECT id FROM users WHERE phone = ? OR username = ?");
+        $stmt_check->bind_param("ss", $phone, $phone);
+        $stmt_check->execute();
+        if ($stmt_check->get_result()->num_rows > 0) {
+            throw new Exception("A user with this phone number already exists.");
+        }
+
         // Create User Account
         $password = password_hash($phone, PASSWORD_DEFAULT);
         $stmt = $conn->prepare("INSERT INTO users (username, password, phone, role, force_password_change) VALUES (?, ?, ?, 'Customer', 1)");
@@ -68,6 +76,13 @@ $total_company_balance = array_sum(array_column($customers, 'balance'));
         <?php endif; ?>
     </div>
 </div>
+
+<?php if (isset($error)): ?>
+    <div class="alert alert-danger alert-dismissible fade show" role="alert">
+        <?php echo $error; ?>
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+<?php endif; ?>
 
 <!-- Company Summary & Filters -->
 <div class="row mb-4">
