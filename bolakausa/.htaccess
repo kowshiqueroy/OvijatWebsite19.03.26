@@ -1,0 +1,12 @@
+RewriteEngine On
+RewriteBase /bolakausa/
+
+# Force trailing slash for clean URLs if needed, or handle in index.php
+# RewriteCond %{REQUEST_FILENAME} !-d
+# RewriteCond %{REQUEST_URI} (.+)/$
+# RewriteRule ^ %1 [L,R=301]
+
+# Redirect all requests to index.php if the file/directory doesn't exist
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^(.*)$ index.php?url=$1 [QSA,L]
