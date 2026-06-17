@@ -96,6 +96,13 @@
         </a>
         <?php endif; ?>
 
+        <?php if (strtolower($_SESSION['role'] ?? '') === 'dmd' || strtolower($_SESSION['username'] ?? '') === 'dmd'): ?>
+        <div class="p-2 text-muted small text-uppercase">Executive</div>
+        <a href="<?php echo BASE_URL; ?>modules/dmd_dashboard/index.php" class="list-group-item list-group-item-action bg-dark text-white border-0 py-2">
+            <i class="fas fa-user-shield me-2"></i> DMD Dashboard
+        </a>
+        <?php endif; ?>
+
         <div class="p-2 text-muted small text-uppercase">Settings</div>
         <a href="<?php echo BASE_URL; ?>profile.php" class="list-group-item list-group-item-action bg-dark text-white border-0 py-2">
             <i class="fas fa-user-circle me-2"></i> My Profile
