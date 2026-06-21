@@ -64,6 +64,15 @@ $users = fetch_all("SELECT * FROM users WHERE isDelete = 0 ORDER BY created_at D
                             <a href="logs.php?id=<?php echo $u['id']; ?>" class="btn btn-sm btn-outline-secondary" title="Activity Logs">
                                 <i class="fas fa-list"></i>
                             </a>
+                            <?php if ($u['role'] === ROLE_VIEWER): ?>
+                            <button class="btn btn-sm btn-outline-warning configure-view-btn"
+                                    data-user-id="<?php echo $u['id']; ?>"
+                                    data-username="<?php echo htmlspecialchars($u['username']); ?>"
+                                    title="Configure View Permissions"
+                                    data-bs-toggle="modal" data-bs-target="#viewPermModal">
+                                ⚙️ Configure View
+                            </button>
+                            <?php endif; ?>
                         </td>
                     </tr>
                     <?php endforeach; ?>
@@ -112,5 +121,136 @@ $users = fetch_all("SELECT * FROM users WHERE isDelete = 0 ORDER BY created_at D
         </form>
     </div>
 </div>
+
+<!-- Configure View Permissions Modal -->
+<div class="modal fade" id="viewPermModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-warning text-dark">
+                <h5 class="modal-title">⚙️ Configure View — <span id="vpm-username"></span></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="vpm-body">
+                <div class="text-center py-4"><div class="spinner-border text-warning"></div><p class="mt-2 text-muted small">Loading permissions…</p></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-warning" id="vpm-save-btn">💾 Save Permissions</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+(function () {
+    const CSRF = <?php echo json_encode(get_csrf_token()); ?>;
+    let currentUserId = null;
+
+    // Permission fields configuration
+    const PERMS = [
+        { key: 'show_local',                   label: '🟦 Show Local Market Products' },
+        { key: 'show_export',                  label: '🟩 Show Export Market Products' },
+        { key: 'show_custom',                  label: '🟧 Show Custom Market Products' },
+        { key: 'show_sales_kpis',              label: '📊 Show Sales KPIs on Dashboard' },
+        { key: 'show_inventory_section',       label: '📦 Show Inventory Section' },
+        { key: 'show_delivery_section',        label: '🚚 Show Delivery Section' },
+        { key: 'show_accounts_section',        label: '💰 Show Accounts Section' },
+        { key: 'can_see_stock_report',         label: '📋 Can See Stock Report' },
+        { key: 'can_see_inventory_report',     label: '📋 Can See Inventory Report' },
+        { key: 'can_see_comprehensive_report', label: '📋 Can See Comprehensive Report' },
+        { key: 'can_see_transactions',         label: '💳 Can See Transactions' },
+        { key: 'can_see_dmd_dashboard',        label: '📡 Can See DMD Dashboard' },
+        { key: 'show_rates',                   label: '💲 Show TP/DP/Retail Rates' },
+        { key: 'show_customer_balances',       label: '👤 Show Customer Balances' },
+    ];
+
+    function buildForm(data) {
+        let html = '<div class="row g-3">';
+        const half = Math.ceil(PERMS.length / 2);
+        PERMS.forEach((p, i) => {
+            if (i === half) html += '</div><div class="row g-3 mt-1">';
+            const checked = data[p.key] == 1 ? 'checked' : '';
+            html += `
+                <div class="col-md-6">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" role="switch"
+                               id="vpm_${p.key}" name="${p.key}" ${checked}>
+                        <label class="form-check-label" for="vpm_${p.key}">${p.label}</label>
+                    </div>
+                </div>`;
+        });
+        html += '</div>';
+        return html;
+    }
+
+    // Triggered when modal button clicked
+    document.addEventListener('click', function (e) {
+        const btn = e.target.closest('.configure-view-btn');
+        if (!btn) return;
+        currentUserId = btn.dataset.userId;
+        document.getElementById('vpm-username').textContent = btn.dataset.username;
+        document.getElementById('vpm-body').innerHTML =
+            '<div class="text-center py-4"><div class="spinner-border text-warning"></div></div>';
+
+        fetch(`save_view_permissions.php?action=get&user_id=${currentUserId}`)
+            .then(r => r.json())
+            .then(res => {
+                if (res.success) {
+                    document.getElementById('vpm-body').innerHTML = buildForm(res.data);
+                } else {
+                    document.getElementById('vpm-body').innerHTML =
+                        `<div class="alert alert-danger">${res.message}</div>`;
+                }
+            })
+            .catch(() => {
+                document.getElementById('vpm-body').innerHTML =
+                    '<div class="alert alert-danger">Failed to load permissions.</div>';
+            });
+    });
+
+    // Save button
+    document.getElementById('vpm-save-btn').addEventListener('click', function () {
+        if (!currentUserId) return;
+
+        const body = document.getElementById('vpm-body');
+        const fd = new FormData();
+        fd.append('action', 'save');
+        fd.append('user_id', currentUserId);
+        fd.append('csrf_token', CSRF);
+
+        PERMS.forEach(p => {
+            const el = body.querySelector(`#vpm_${p.key}`);
+            if (el && el.checked) fd.append(p.key, '1');
+        });
+
+        this.disabled = true;
+        this.textContent = 'Saving…';
+
+        fetch('save_view_permissions.php', { method: 'POST', body: fd })
+            .then(r => r.json())
+            .then(res => {
+                this.disabled = false;
+                this.textContent = '💾 Save Permissions';
+                if (res.success) {
+                    bootstrap.Modal.getInstance(document.getElementById('viewPermModal')).hide();
+                    // Show a quick toast / flash
+                    const alert = document.createElement('div');
+                    alert.className = 'alert alert-success alert-dismissible fade show position-fixed top-0 end-0 m-3';
+                    alert.style.zIndex = 9999;
+                    alert.innerHTML = `✅ ${res.message} <button type="button" class="btn-close" data-bs-dismiss="alert"></button>`;
+                    document.body.appendChild(alert);
+                    setTimeout(() => alert.remove(), 4000);
+                } else {
+                    alert('Error: ' + res.message);
+                }
+            })
+            .catch(() => {
+                this.disabled = false;
+                this.textContent = '💾 Save Permissions';
+                alert('Network error, please try again.');
+            });
+    });
+})();
+</script>
 
 <?php require_once '../../templates/footer.php'; ?>

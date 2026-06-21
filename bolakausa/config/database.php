@@ -17,6 +17,7 @@ $options = [
 
 try {
      $pdo = new PDO($dsn, $user, $pass, $options);
+     $pdo->exec("SET time_zone = '" . date('P') . "'");
 } catch (\PDOException $e) {
      die("Database Connection Failed: " . $e->getMessage());
 }

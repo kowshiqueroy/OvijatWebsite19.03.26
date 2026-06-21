@@ -28,7 +28,7 @@ $low_stock = $pdo->query("SELECT COUNT(*) FROM products WHERE stock_qty <= 5")->
     </div>
 </div>
 
-<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 2.5rem;">
+<div class="grid-stack-mobile" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 2.5rem;">
     <div class="card">
         <h3 style="font-weight: 800; display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem;">
             <i class="fas fa-plus-circle" style="color: var(--primary);"></i> Stock Inbound
@@ -44,7 +44,7 @@ $low_stock = $pdo->query("SELECT COUNT(*) FROM products WHERE stock_qty <= 5")->
             <i class="fas fa-edit" style="color: #3b82f6;"></i> Product Catalog
         </h3>
         <p style="margin-bottom: 2rem; color: var(--text-muted); font-size: 0.9375rem;">Add new products to the catalog or update pricing and descriptions for partners.</p>
-        <a href='/bolakausa/manager/products' class="btn btn-blue">
+        <a href='/bolakausa/admin/products' class="btn btn-blue">
             <i class="fas fa-box-open"></i> Update Catalog
         </a>
     </div>

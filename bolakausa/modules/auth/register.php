@@ -1,6 +1,6 @@
 <?php
 /**
- * Registration Module - Modernized
+ * Registration Module - Premium Redesign
  */
 
 $error = '';
@@ -17,86 +17,91 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt = $pdo->prepare("SELECT id FROM users WHERE username = ? OR email = ?");
         $stmt->execute([$username, $email]);
         if ($stmt->fetch()) {
-            $error = "Username or Email already exists.";
+            $error = "Username or Email already registered in our system.";
         } else {
             $hashed_password = password_hash($password, PASSWORD_BCRYPT);
             $stmt = $pdo->prepare("INSERT INTO users (username, email, password, full_name, phone, role, status) VALUES (?, ?, ?, ?, ?, 'wholesale_user', 'pending')");
             if ($stmt->execute([$username, $email, $hashed_password, $full_name, $phone])) {
-                $success = "Registration successful! Your account is pending admin approval.";
+                $success = "Application successfully submitted. Our operations team will verify your credentials and activate your account shortly.";
             } else {
-                $error = "An error occurred. Please try again.";
+                $error = "An unexpected error occurred. Please try again.";
             }
         }
     } else {
-        $error = "Username, Email, and Password are required.";
+        $error = "Username, Email, and Password fields are strictly required.";
     }
 }
 ?>
 
-<div style="max-width: 600px; margin: 4rem auto;">
-    <div class="card" style="padding: 3rem; border-top: none; position: relative; overflow: hidden;">
-        <!-- Top accent line -->
-        <div style="position: absolute; top: 0; left: 0; width: 100%; height: 6px; background: linear-gradient(90deg, var(--primary), #3b82f6);"></div>
-        
-        <div style="text-align: center; margin-bottom: 2.5rem;">
-            <div style="width: 72px; height: 72px; background: rgba(16, 185, 129, 0.1); border-radius: 20px; display: flex; align-items: center; justify-content: center; margin: 0 auto 1.5rem; border: 1px solid rgba(16, 185, 129, 0.2);">
-                <i class="fas fa-handshake" style="font-size: 1.75rem; color: var(--primary);"></i>
+<div style="max-width: 550px; margin: 4.5rem auto; width: 100%;">
+    <div class="card" style="padding: 0; border: 1px solid var(--border-light); box-shadow: 0 20px 40px -10px rgba(15,23,42,0.15); overflow: hidden;">
+        <!-- Card Header Gradient -->
+        <div style="background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%); padding: 3rem 2.25rem 2.5rem; text-align: center; color: white; position: relative;">
+            <div style="width: 58px; height: 58px; background: rgba(16, 185, 129, 0.12); border-radius: 16px; display: flex; align-items: center; justify-content: center; margin: 0 auto 1.25rem; border: 1px solid rgba(16, 185, 129, 0.25);">
+                <i class="fas fa-handshake" style="font-size: 1.35rem; color: var(--primary);"></i>
             </div>
-            <h2 style="font-weight: 900; color: var(--secondary); margin-bottom: 0.5rem; font-size: 2rem; letter-spacing: -0.5px;">Partner Application</h2>
-            <p style="color: var(--text-muted); font-size: 0.9375rem; font-weight: 500;">Register for a Wholesale Partnership Account</p>
+            <h2 style="font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800; font-size: 1.65rem; margin-bottom: 0.35rem; letter-spacing: -0.5px;">Wholesale Registration</h2>
+            <p style="color: #94a3b8; font-size: 0.825rem; font-weight: 500; text-transform: uppercase; letter-spacing: 0.05em;">Apply for a B2B Partnership Account</p>
         </div>
+        
+        <!-- Form body -->
+        <div style="padding: 2.25rem;">
+            <?php if ($error): ?>
+                <div style="background: rgba(244, 63, 94, 0.08); color: #991b1b; padding: 0.95rem 1.25rem; border-radius: 8px; margin-bottom: 1.75rem; font-size: 0.8rem; border: 1px solid rgba(244, 63, 94, 0.15); font-weight: 600;">
+                    <i class="fas fa-exclamation-triangle" style="margin-right: 6px;"></i> <?php echo e($error); ?>
+                </div>
+            <?php endif; ?>
 
-        <?php if ($error): ?>
-            <div style="background: rgba(244, 63, 94, 0.1); color: var(--accent); padding: 1rem 1.25rem; border-radius: 12px; margin-bottom: 2rem; font-size: 0.875rem; border: 1px solid rgba(244, 63, 94, 0.2); font-weight: 600;">
-                <i class="fas fa-exclamation-triangle" style="margin-right: 8px;"></i> <?php echo e($error); ?>
-            </div>
-        <?php endif; ?>
-
-        <?php if ($success): ?>
-            <div style="background: rgba(16, 185, 129, 0.1); color: #166534; padding: 2.5rem; border-radius: 20px; border: 1px solid rgba(16, 185, 129, 0.2); text-align: center;">
-                <i class="fas fa-check-circle" style="font-size: 3rem; margin-bottom: 1.5rem; display: block; color: var(--primary);"></i>
-                <div style="font-weight: 800; font-size: 1.25rem; margin-bottom: 0.75rem; color: var(--secondary);">Application Received</div>
-                <p style="font-size: 0.9375rem; color: var(--text-muted); margin-bottom: 2rem; line-height: 1.6;"><?php echo e($success); ?></p>
-                <a href="/bolakausa/login" class="btn btn-blue" style="width: 100%; justify-content: center; padding: 1rem; border-radius: 14px;">Return to Portal</a>
-            </div>
-        <?php else: ?>
-            <form method="POST">
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem;">
-                    <div class="form-group" style="margin-bottom: 0;">
-                        <label style="font-weight: 700; color: var(--secondary); margin-bottom: 0.5rem; display: block;">Username *</label>
-                        <input type="text" name="username" placeholder="jdoe_partner" required style="width: 100%;">
+            <?php if ($success): ?>
+                <div style="text-align: center; padding: 1.5rem 0;">
+                    <i class="fas fa-check-circle" style="font-size: 3.5rem; color: var(--primary); margin-bottom: 1.25rem; display: block; filter: drop-shadow(0 0 10px var(--primary-glow));"></i>
+                    <h3 style="font-family: 'Plus Jakarta Sans', sans-serif; font-size: 1.25rem; font-weight: 800; color: var(--secondary); margin-bottom: 0.5rem;">Application Logged</h3>
+                    <p style="font-size: 0.875rem; color: var(--text-muted); line-height: 1.6; margin-bottom: 2rem;">
+                        <?php echo e($success); ?>
+                    </p>
+                    <a href="/bolakausa/login" class="btn btn-green" style="width: 100%; justify-content: center; padding: 0.95rem; border-radius: 8px;">
+                        Return to Partner Portal
+                    </a>
+                </div>
+            <?php else: ?>
+                <form method="POST">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 0.5rem;">
+                        <div class="form-group">
+                            <label style="font-size: 0.775rem; text-transform: uppercase; letter-spacing: 0.025em; color: var(--secondary);">Partner Username *</label>
+                            <input type="text" name="username" placeholder="e.g. jdoe_grocery" required style="border-radius: 8px; font-size: 0.9rem;">
+                        </div>
+                        <div class="form-group">
+                            <label style="font-size: 0.775rem; text-transform: uppercase; letter-spacing: 0.025em; color: var(--secondary);">Corporate Email *</label>
+                            <input type="email" name="email" placeholder="e.g. jdoe@company.com" required style="border-radius: 8px; font-size: 0.9rem;">
+                        </div>
                     </div>
-                    <div class="form-group" style="margin-bottom: 0;">
-                        <label style="font-weight: 700; color: var(--secondary); margin-bottom: 0.5rem; display: block;">Business Email *</label>
-                        <input type="email" name="email" placeholder="john@company.com" required style="width: 100%;">
+
+                    <div class="form-group">
+                        <label style="font-size: 0.775rem; text-transform: uppercase; letter-spacing: 0.025em; color: var(--secondary);">Primary Contact Person Name</label>
+                        <input type="text" name="full_name" placeholder="e.g. John Doe" style="border-radius: 8px; font-size: 0.9rem;">
                     </div>
+
+                    <div class="form-group">
+                        <label style="font-size: 0.775rem; text-transform: uppercase; letter-spacing: 0.025em; color: var(--secondary);">Direct Telephone / Mobile</label>
+                        <input type="text" name="phone" placeholder="e.g. +1 (555) 019-2834" style="border-radius: 8px; font-size: 0.9rem;">
+                    </div>
+
+                    <div class="form-group" style="margin-bottom: 2rem;">
+                        <label style="font-size: 0.775rem; text-transform: uppercase; letter-spacing: 0.025em; color: var(--secondary);">Security Password *</label>
+                        <input type="password" name="password" placeholder="••••••••" required style="border-radius: 8px; font-size: 0.9rem;">
+                    </div>
+
+                    <button type="submit" class="btn btn-green" style="width: 100%; justify-content: center; padding: 0.95rem; border-radius: 8px; font-size: 0.95rem; font-family: 'Plus Jakarta Sans', sans-serif; box-shadow: 0 10px 15px -3px var(--primary-glow);">
+                        Submit Application <i class="fas fa-paper-plane" style="margin-left: 6px; font-size: 0.75rem;"></i>
+                    </button>
+                </form>
+
+                <div style="text-align: center; margin-top: 2rem; border-top: 1px solid var(--border-light); padding-top: 1.5rem;">
+                    <p style="font-size: 0.825rem; color: var(--text-muted); font-weight: 500;">
+                        Already have a partner account? <a href="/bolakausa/login" style="color: var(--accent); font-weight: 800; text-decoration: none;">Login Here</a>
+                    </p>
                 </div>
-
-                <div class="form-group" style="margin-bottom: 1.5rem;">
-                    <label style="font-weight: 700; color: var(--secondary); margin-bottom: 0.5rem; display: block;">Contact Person</label>
-                    <input type="text" name="full_name" placeholder="John Doe" style="width: 100%;">
-                </div>
-
-                <div class="form-group" style="margin-bottom: 1.5rem;">
-                    <label style="font-weight: 700; color: var(--secondary); margin-bottom: 0.5rem; display: block;">Phone Number</label>
-                    <input type="text" name="phone" placeholder="+1 234 567 890" style="width: 100%;">
-                </div>
-
-                <div class="form-group" style="margin-bottom: 2.5rem;">
-                    <label style="font-weight: 700; color: var(--secondary); margin-bottom: 0.5rem; display: block;">Security Password *</label>
-                    <input type="password" name="password" placeholder="••••••••" required style="width: 100%;">
-                </div>
-
-                <button type="submit" class="btn btn-green" style="width: 100%; justify-content: center; padding: 1.15rem; border-radius: 16px; font-size: 1rem;">
-                    Submit Application <i class="fas fa-paper-plane" style="margin-left: 8px; font-size: 0.8rem;"></i>
-                </button>
-            </form>
-
-            <div style="text-align: center; margin-top: 2.5rem; border-top: 1px solid var(--glass-border); padding-top: 2rem;">
-                <p style="font-size: 0.875rem; color: var(--text-muted); font-weight: 500;">
-                    Already registered? <a href="/bolakausa/login" style="color: var(--primary); font-weight: 800; text-decoration: none;">Login Here</a>
-                </p>
-            </div>
-        <?php endif; ?>
+            <?php endif; ?>
+        </div>
     </div>
 </div>

@@ -5,7 +5,8 @@
  */
 
 session_start();
-$setup_pin = "5877";
+// Use environment variable BOLAKAUSA_SETUP_PIN if set, otherwise fall back
+$setup_pin = getenv('BOLAKAUSA_SETUP_PIN') ?: "5877";
 
 $step = $_SESSION['setup_step'] ?? 1;
 $error = '';
@@ -35,17 +36,21 @@ if ($step > 1 && !isset($_SESSION['setup_auth'])) {
 
 // Handle DB Config & Setup
 if (isset($_POST['run_setup']) && isset($_SESSION['setup_auth'])) {
-    $host = $_POST['db_host'];
-    $dbname = $_POST['db_name'];
-    $user = $_POST['db_user'];
+    $host = trim($_POST['db_host']);
+    $dbname = trim($_POST['db_name']);
+    $user = trim($_POST['db_user']);
     $pass = $_POST['db_pass'];
 
-    try {
+    // Validate database name contains only safe characters
+    if (!preg_match('/^[a-zA-Z0-9_]+$/', $dbname)) {
+        $error = "Invalid database name. Use only letters, numbers, and underscores.";
+    } else {
+        try {
         // 1. Test Connection
         $dsn = "mysql:host=$host;charset=utf8mb4";
         $pdo = new PDO($dsn, $user, $pass, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
 
-        // 2. Create Database if not exists
+        // 2. Create Database if not exists (validated safe above)
         $pdo->exec("CREATE DATABASE IF NOT EXISTS `$dbname` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
         $pdo->exec("USE `$dbname` ");
 
@@ -60,7 +65,9 @@ if (isset($_POST['run_setup']) && isset($_SESSION['setup_auth'])) {
                 ['manager', 'manager@bolakausa.com', 'manager123', 'manager', 'active', 'Operations Manager'],
                 ['warehouse', 'warehouse@bolakausa.com', 'warehouse123', 'warehouse', 'active', 'Logistics Staff'],
                 ['viewer', 'viewer@bolakausa.com', 'viewer123', 'viewer', 'active', 'System Auditor'],
-                ['user', 'user@bolakausa.com', 'user123', 'wholesale_user', 'active', 'Sample Wholesale User']
+                ['user', 'user@bolakausa.com', 'user123', 'wholesale_user', 'active', 'Sample Wholesale User'],
+                ['editor', 'editor@bolakausa.com', 'editor123', 'editor', 'active', 'Sample Editor'],
+                ['executive', 'executive@bolakausa.com', 'executive123', 'executive', 'active', 'Sample Executive']
             ];
 
             $stmt = $pdo->prepare("INSERT IGNORE INTO users (username, email, password, role, status, full_name) VALUES (?, ?, ?, ?, ?, ?)");
@@ -105,6 +112,7 @@ try {
 
     } catch (PDOException $e) {
         $error = "Setup Failed: " . $e->getMessage();
+    }
     }
 }
 
@@ -169,6 +177,8 @@ $_SESSION['setup_step'] = $step;
                         <li><strong>Admin:</strong> admin / admin123</li>
                         <li><strong>Manager:</strong> manager / manager123</li>
                         <li><strong>Wholesale User:</strong> user / user123</li>
+                        <li><strong>Editor:</strong> editor / editor123</li>
+                        <li><strong>Executive:</strong> executive / executive123</li>
                     </ul>
                 </div>
                 

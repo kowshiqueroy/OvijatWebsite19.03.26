@@ -1,9 +1,17 @@
 <?php
 /**
- * Login Module - Modernized
+ * Login Module - Premium Redesign
  */
 
 $error = '';
+
+if (isset($_GET['error'])) {
+    if ($_GET['error'] === 'suspended') {
+        $error = "Your wholesale account has been suspended. Please contact operations support.";
+    } elseif ($_GET['error'] === 'account_deleted') {
+        $error = "Your account has been deleted.";
+    }
+}
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $username = trim($_POST['username'] ?? '');
@@ -16,7 +24,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if ($user && password_verify($password, $user['password'])) {
             if ($user['status'] === 'suspended') {
-                $error = "Your account has been suspended. Please contact support.";
+                $error = "Your wholesale account has been suspended. Please reach out to operations support.";
             } else {
                 // Set Session
                 $_SESSION['user_id'] = $user['id'];
@@ -25,16 +33,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $_SESSION['user_status'] = $user['status'];
 
                 // Log Login
-                require_once 'includes/auth_helper.php';
                 log_action($pdo, $user['id'], 'User Login');
 
                 // Redirect based on role
-                if ($user['role'] === 'admin') {
-                    header('Location: /bolakausa/admin');
+                if (in_array($user['role'], ['admin', 'editor'])) {
+                    header('Location: ' . BASE_URL . 'admin');
                 } elseif ($user['role'] === 'manager') {
-                    header('Location: /bolakausa/manager');
+                    header('Location: ' . BASE_URL . 'manager');
                 } else {
-                    header('Location: /bolakausa/home');
+                    header('Location: ' . BASE_URL . 'home');
                 }
                 exit;
             }
@@ -47,50 +54,52 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 ?>
 
-<div style="max-width: 480px; margin: 6rem auto;">
-    <div class="card" style="padding: 3rem; border-top: none; position: relative; overflow: hidden;">
-        <!-- Top accent line -->
-        <div style="position: absolute; top: 0; left: 0; width: 100%; height: 6px; background: linear-gradient(90deg, var(--primary), #3b82f6);"></div>
-        
-        <div style="text-align: center; margin-bottom: 2.5rem;">
-            <div style="width: 72px; height: 72px; background: rgba(16, 185, 129, 0.1); border-radius: 20px; display: flex; align-items: center; justify-content: center; margin: 0 auto 1.5rem; border: 1px solid rgba(16, 185, 129, 0.2);">
-                <i class="fas fa-shield-alt" style="font-size: 1.75rem; color: var(--primary);"></i>
+<div style="max-width: 440px; margin: 5rem auto; width: 100%;">
+    <div class="card" style="padding: 0; border: 1px solid var(--border-light); box-shadow: 0 20px 40px -10px rgba(15,23,42,0.15); overflow: hidden;">
+        <!-- Card Header Gradient -->
+        <div style="background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%); padding: 3rem 2.25rem 2.5rem; text-align: center; color: white; position: relative;">
+            <div style="width: 58px; height: 58px; background: rgba(16, 185, 129, 0.12); border-radius: 16px; display: flex; align-items: center; justify-content: center; margin: 0 auto 1.25rem; border: 1px solid rgba(16, 185, 129, 0.25);">
+                <i class="fas fa-lock" style="font-size: 1.35rem; color: var(--primary);"></i>
             </div>
-            <h2 style="font-weight: 900; color: var(--secondary); margin-bottom: 0.5rem; font-size: 2rem; letter-spacing: -0.5px;">Portal Access</h2>
-            <p style="color: var(--text-muted); font-size: 0.9375rem; font-weight: 500;">Authorized <?php echo e(get_setting($pdo, 'company_name', 'Bolakausa')); ?> Partners Only</p>
+            <h2 style="font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800; font-size: 1.65rem; margin-bottom: 0.35rem; letter-spacing: -0.5px;">Partner Authentication</h2>
+            <p style="color: #94a3b8; font-size: 0.825rem; font-weight: 500; text-transform: uppercase; letter-spacing: 0.05em;">Bolakausa Wholesale Network</p>
         </div>
-
-        <?php if ($error): ?>
-            <div style="background: rgba(244, 63, 94, 0.1); color: var(--accent); padding: 1rem 1.25rem; border-radius: 12px; margin-bottom: 2rem; font-size: 0.875rem; border: 1px solid rgba(244, 63, 94, 0.2); font-weight: 600;">
-                <i class="fas fa-exclamation-triangle" style="margin-right: 8px;"></i> <?php echo e($error); ?>
-            </div>
-        <?php endif; ?>
-
-        <form method="POST">
-            <div class="form-group">
-                <label style="font-weight: 700; color: var(--secondary); margin-bottom: 0.75rem;">Identity</label>
-                <div style="position: relative;">
-                    <i class="fas fa-user-circle" style="position: absolute; left: 1.25rem; top: 1.15rem; color: var(--text-muted); font-size: 1.1rem;"></i>
-                    <input type="text" name="username" placeholder="partner_handle" required autofocus style="padding-left: 3.25rem; width: 100%;">
+        
+        <!-- Form body -->
+        <div style="padding: 2.25rem;">
+            <?php if ($error): ?>
+                <div style="background: rgba(244, 63, 94, 0.08); color: #991b1b; padding: 0.95rem 1.25rem; border-radius: 8px; margin-bottom: 1.75rem; font-size: 0.8rem; border: 1px solid rgba(244, 63, 94, 0.15); font-weight: 600;">
+                    <i class="fas fa-exclamation-triangle" style="margin-right: 6px;"></i> <?php echo e($error); ?>
                 </div>
-            </div>
-            <div class="form-group" style="margin-bottom: 2rem;">
-                <label style="font-weight: 700; color: var(--secondary); margin-bottom: 0.75rem;">Access Key</label>
-                <div style="position: relative;">
-                    <i class="fas fa-fingerprint" style="position: absolute; left: 1.25rem; top: 1.15rem; color: var(--text-muted); font-size: 1.1rem;"></i>
-                    <input type="password" name="password" placeholder="••••••••" required style="padding-left: 3.25rem; width: 100%;">
-                </div>
-            </div>
-            
-            <button type="submit" class="btn btn-green" style="width: 100%; justify-content: center; padding: 1.15rem; border-radius: 16px; font-size: 1rem;">
-                Authenticate <i class="fas fa-chevron-right" style="margin-left: 8px; font-size: 0.8rem;"></i>
-            </button>
-        </form>
+            <?php endif; ?>
 
-        <div style="text-align: center; margin-top: 2.5rem; border-top: 1px solid var(--glass-border); padding-top: 2rem;">
-            <p style="font-size: 0.875rem; color: var(--text-muted); font-weight: 500;">
-                New wholesale partner? <a href="/bolakausa/register" style="color: var(--primary); font-weight: 800; text-decoration: none;">Apply for Account</a>
-            </p>
+            <form method="POST">
+                <div class="form-group">
+                    <label style="font-size: 0.775rem; text-transform: uppercase; letter-spacing: 0.025em; color: var(--secondary);">Partner Username</label>
+                    <div style="position: relative;">
+                        <i class="fas fa-user" style="position: absolute; left: 1rem; top: 0.85rem; color: var(--text-muted); font-size: 0.95rem;"></i>
+                        <input type="text" name="username" placeholder="Enter username handle" required autofocus style="padding-left: 2.5rem; border-radius: 8px; font-size: 0.9rem;">
+                    </div>
+                </div>
+                
+                <div class="form-group" style="margin-bottom: 1.75rem;">
+                    <label style="font-size: 0.775rem; text-transform: uppercase; letter-spacing: 0.025em; color: var(--secondary);">Security Password</label>
+                    <div style="position: relative;">
+                        <i class="fas fa-key" style="position: absolute; left: 1rem; top: 0.85rem; color: var(--text-muted); font-size: 0.95rem;"></i>
+                        <input type="password" name="password" placeholder="••••••••" required style="padding-left: 2.5rem; border-radius: 8px; font-size: 0.9rem;">
+                    </div>
+                </div>
+                
+                <button type="submit" class="btn btn-green" style="width: 100%; justify-content: center; padding: 0.95rem; border-radius: 8px; font-size: 0.95rem; font-family: 'Plus Jakarta Sans', sans-serif; box-shadow: 0 10px 15px -3px var(--primary-glow);">
+                    Authenticate <i class="fas fa-arrow-right" style="margin-left: 6px; font-size: 0.75rem;"></i>
+                </button>
+            </form>
+
+            <div style="text-align: center; margin-top: 2rem; border-top: 1px solid var(--border-light); padding-top: 1.5rem;">
+                <p style="font-size: 0.825rem; color: var(--text-muted); font-weight: 500;">
+                    New business client? <a href="/bolakausa/register" style="color: var(--accent); font-weight: 800; text-decoration: none;">Submit Partnership Application</a>
+                </p>
+            </div>
         </div>
     </div>
 </div>

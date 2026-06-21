@@ -4,7 +4,7 @@ check_login();
 
 // Management Roles that see the modern dashboard
 $mgmt_roles = [ROLE_ADMIN, ROLE_MANAGER, ROLE_ACCOUNTANT, ROLE_VIEWER];
-$is_mgmt = in_array($_SESSION['role'], $mgmt_roles);
+$is_mgmt = in_array($_SESSION['role'] ?? '', $mgmt_roles);
 
 // Filters for Management
 $start_date = $_GET['start_date'] ?? date('Y-m-01');
@@ -246,7 +246,7 @@ if ($is_mgmt) {
 <?php else: ?>
     <!-- DASHBOARD FOR OTHER ROLES (SR, CUSTOMER) -->
     <div class="row g-3">
-        <?php if ($_SESSION['role'] == ROLE_SR): ?>
+        <?php if (($_SESSION['role'] ?? '') == ROLE_SR): ?>
         <div class="col-md-4">
             <div class="card bg-warning text-dark shadow-sm h-100">
                 <div class="card-body">
@@ -269,7 +269,7 @@ if ($is_mgmt) {
         </div>
         <?php endif; ?>
 
-        <?php if ($_SESSION['role'] == ROLE_CUSTOMER): ?>
+        <?php if (($_SESSION['role'] ?? '') == ROLE_CUSTOMER): ?>
         <div class="col-md-6">
             <div class="card shadow-sm border-0">
                 <div class="card-header bg-white py-3"><strong>My Account Summary</strong></div>

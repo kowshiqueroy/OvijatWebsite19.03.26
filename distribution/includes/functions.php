@@ -247,4 +247,7 @@ function number_to_words($number, $is_currency = true) {
 function get_company_settings() {
     return fetch_one("SELECT * FROM company_settings LIMIT 1");
 }
+
+// Load permission helpers (viewer access controls, journal utilities)
+require_once __DIR__ . '/permissions.php';
 ?>

@@ -1,4 +1,5 @@
 RewriteEngine On
+# On production (bolakausa.com), change to: RewriteBase /
 RewriteBase /bolakausa/
 
 # Force trailing slash for clean URLs if needed, or handle in index.php

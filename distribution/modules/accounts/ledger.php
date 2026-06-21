@@ -1,65 +1,107 @@
 <?php
-require_once '../../templates/header.php';
+require_once '../../includes/header.php';
 check_role([ROLE_ADMIN, ROLE_ACCOUNTANT]);
 
-$customer_id = $_GET['customer_id'] ?? 0;
-$start_date = $_GET['start_date'] ?? date('Y-m-01');
-$end_date = $_GET['end_date'] ?? date('Y-m-d');
+$company = get_company_settings();
+$customer_id = intval($_GET['customer_id'] ?? 0);
+$start_date  = $_GET['start_date'] ?? date('Y-m-01');
+$end_date    = $_GET['end_date']   ?? date('Y-m-d');
 
-$customers = fetch_all("SELECT id, name, phone FROM customers WHERE isDelete = 0 ORDER BY name ASC");
+$customers = fetch_all("SELECT id, name, phone, balance FROM customers WHERE isDelete = 0 ORDER BY name ASC");
 
-$ledger = [];
+$ledger   = [];
 $customer = null;
+$opening_dr = 0;
+$opening_cr = 0;
 
 if ($customer_id) {
     $customer = fetch_one("SELECT * FROM customers WHERE id = ?", [$customer_id]);
-    
-    // 1. Get Invoices (Debits)
-    $invoices = fetch_all("SELECT 'Invoice' as entry_type, id, grand_total as amount, created_at, 'Debit' as type, delivery_status as note, hide_from_print 
-                           FROM sales_drafts 
-                           WHERE customer_id = ? AND status = 'Confirmed' AND isDelete = 0 
-                           AND DATE(created_at) BETWEEN ? AND ?", [$customer_id, $start_date, $end_date]);
-    
-    // 2. Get Transactions (Credits/Manual Debits)
-    $transactions = fetch_all("SELECT 'Transaction' as entry_type, id, amount, created_at, type, description as note, hide_from_print 
-                               FROM transactions 
-                               WHERE customer_id = ? AND isDelete = 0 
-                               AND DATE(created_at) BETWEEN ? AND ?", [$customer_id, $start_date, $end_date]);
-    
-    // Merge and Sort
-    $ledger = array_merge($invoices, $transactions);
-    usort($ledger, function($a, $b) {
-        return strtotime($a['created_at']) - strtotime($b['created_at']);
-    });
+
+    // Opening balance: sum of all confirmed invoices + all transactions BEFORE start_date
+    $ob_invoices = fetch_one(
+        "SELECT COALESCE(SUM(grand_total),0) as total FROM sales_drafts
+         WHERE customer_id=? AND status='Confirmed' AND isDelete=0 AND DATE(created_at) < ?",
+        [$customer_id, $start_date]
+    );
+    $ob_credits = fetch_one(
+        "SELECT COALESCE(SUM(amount),0) as total FROM transactions
+         WHERE customer_id=? AND type='Credit' AND isDelete=0 AND DATE(created_at) < ?",
+        [$customer_id, $start_date]
+    );
+    $ob_debits = fetch_one(
+        "SELECT COALESCE(SUM(amount),0) as total FROM transactions
+         WHERE customer_id=? AND type='Debit' AND isDelete=0 AND DATE(created_at) < ?",
+        [$customer_id, $start_date]
+    );
+
+    $opening_dr = floatval($ob_invoices['total']) + floatval($ob_debits['total']) + floatval($customer['opening_balance']);
+    $opening_cr = floatval($ob_credits['total']);
+
+    // Period: invoices (debit)
+    $invoices = fetch_all(
+        "SELECT 'Invoice' as entry_type, id, grand_total as amount, created_at,
+                'Debit' as type, CONCAT('Invoice #',id) as note, hide_from_print
+         FROM sales_drafts
+         WHERE customer_id=? AND status='Confirmed' AND isDelete=0
+         AND DATE(created_at) BETWEEN ? AND ?
+         ORDER BY created_at ASC",
+        [$customer_id, $start_date, $end_date]
+    );
+
+    // Period: transactions (credit/debit)
+    $txns = fetch_all(
+        "SELECT 'Transaction' as entry_type, id, amount, created_at, type, description as note, hide_from_print
+         FROM transactions
+         WHERE customer_id=? AND isDelete=0
+         AND DATE(created_at) BETWEEN ? AND ?
+         ORDER BY created_at ASC",
+        [$customer_id, $start_date, $end_date]
+    );
+
+    // Period: approved returns (credit)
+    $returns = fetch_all(
+        "SELECT 'Return' as entry_type, id, total_amount as amount, processed_at as created_at,
+                'Credit' as type, CONCAT('Return #',id) as note, 0 as hide_from_print
+         FROM sales_returns
+         WHERE customer_id=? AND status='Approved' AND isDelete=0
+         AND DATE(processed_at) BETWEEN ? AND ?",
+        [$customer_id, $start_date, $end_date]
+    );
+
+    $ledger = array_merge($invoices, $txns, $returns);
+    usort($ledger, fn($a,$b) => strtotime($a['created_at']) - strtotime($b['created_at']));
 }
+
+include '../../templates/header.php';
 ?>
 
 <div class="row mb-4 no-print">
     <div class="col-12">
-        <div class="card shadow-sm">
+        <div class="card shadow-sm border-0">
             <div class="card-body">
+                <h5 class="card-title mb-3"><i class="fas fa-book-open me-2 text-primary"></i>Customer Ledger</h5>
                 <form method="GET" class="row g-3 align-items-end">
                     <div class="col-md-4">
-                        <label class="form-label">Select Customer</label>
-                        <select name="customer_id" class="form-select select2" required>
-                            <option value="">-- Choose Customer --</option>
+                        <label class="form-label fw-semibold">Customer</label>
+                        <select name="customer_id" class="form-select select2">
+                            <option value="">-- Select Customer --</option>
                             <?php foreach ($customers as $c): ?>
-                                <option value="<?php echo $c['id']; ?>" <?php echo ($customer_id == $c['id']) ? 'selected' : ''; ?>>
-                                    <?php echo $c['name']; ?> (<?php echo $c['phone']; ?>)
-                                </option>
+                            <option value="<?= $c['id'] ?>" <?= $customer_id == $c['id'] ? 'selected' : '' ?>>
+                                <?= htmlspecialchars($c['name']) ?> (<?= $c['phone'] ?>)
+                            </option>
                             <?php endforeach; ?>
                         </select>
                     </div>
                     <div class="col-md-3">
-                        <label class="form-label">Start Date</label>
-                        <input type="date" name="start_date" class="form-control" value="<?php echo $start_date; ?>">
+                        <label class="form-label fw-semibold">From Date</label>
+                        <input type="date" name="start_date" class="form-control" value="<?= $start_date ?>">
                     </div>
                     <div class="col-md-3">
-                        <label class="form-label">End Date</label>
-                        <input type="date" name="end_date" class="form-control" value="<?php echo $end_date; ?>">
+                        <label class="form-label fw-semibold">To Date</label>
+                        <input type="date" name="end_date" class="form-control" value="<?= $end_date ?>">
                     </div>
                     <div class="col-md-2">
-                        <button type="submit" class="btn btn-primary w-100">Generate Ledger</button>
+                        <button type="submit" class="btn btn-primary w-100"><i class="fas fa-search me-1"></i> View</button>
                     </div>
                 </form>
             </div>
@@ -69,109 +111,147 @@ if ($customer_id) {
 
 <?php if ($customer): ?>
 <div class="text-end mb-3 no-print">
-    <button onclick="window.print()" class="btn btn-dark"><i class="fas fa-print me-1"></i> Print Ledger</button>
+    <button onclick="window.print()" class="btn btn-dark me-2"><i class="fas fa-print me-1"></i> Print</button>
+    <a href="?customer_id=<?= $customer_id ?>&start_date=<?= date('Y-01-01') ?>&end_date=<?= date('Y-m-d') ?>" class="btn btn-outline-secondary">Full Year</a>
 </div>
 
-<div class="ledger-print-wrap bg-white p-4 shadow-sm">
+<div class="ledger-print-wrap bg-white p-4 shadow-sm rounded">
+    <!-- Company Header -->
     <div class="row border-bottom pb-3 mb-4">
-        <div class="col-6">
-            <h2 class="text-primary"><?php echo $company['name']; ?></h2>
-            <p class="mb-0"><?php echo $company['address']; ?></p>
-            <p>Phone: <?php echo $company['phone']; ?></p>
+        <div class="col-7">
+            <h3 class="text-primary mb-0 fw-bold"><?= htmlspecialchars($company['name'] ?? '') ?></h3>
+            <p class="text-muted mb-0 small"><?= htmlspecialchars($company['address'] ?? '') ?></p>
+            <p class="text-muted small">Phone: <?= htmlspecialchars($company['phone'] ?? '') ?></p>
         </div>
-        <div class="col-6 text-end">
-            <h4>CUSTOMER LEDGER</h4>
-            <p class="mb-0"><strong>Customer:</strong> <?php echo $customer['name']; ?></p>
-            <p class="mb-0"><strong>Period:</strong> <?php echo date('d M Y', strtotime($start_date)); ?> to <?php echo date('d M Y', strtotime($end_date)); ?></p>
-            <p class="mb-0"><strong>Current Balance:</strong> <?php echo format_currency($customer['balance']); ?></p>
+        <div class="col-5 text-end">
+            <h5 class="fw-bold text-dark">CUSTOMER LEDGER</h5>
+            <p class="mb-0 small">Period: <strong><?= date('d M Y', strtotime($start_date)) ?></strong> to <strong><?= date('d M Y', strtotime($end_date)) ?></strong></p>
+            <p class="mb-0 small">Printed: <?= date('d M Y H:i') ?></p>
         </div>
     </div>
 
-    <table class="table table-bordered align-middle">
-        <thead class="table-light">
+    <!-- Customer Info -->
+    <div class="row mb-4 p-3 rounded" style="background:#f8f9fa">
+        <div class="col-md-6">
+            <h5 class="mb-1 fw-bold"><?= htmlspecialchars($customer['name']) ?></h5>
+            <p class="mb-0 text-muted"><?= htmlspecialchars($customer['address'] ?? '') ?></p>
+            <p class="mb-0">📞 <?= htmlspecialchars($customer['phone']) ?> &nbsp;|&nbsp; Type: <span class="badge bg-primary"><?= $customer['type'] ?></span></p>
+        </div>
+        <div class="col-md-6 text-md-end">
+            <p class="mb-1">Opening Balance (before period):</p>
+            <?php $ob_net = $opening_dr - $opening_cr; ?>
+            <h5 class="fw-bold <?= $ob_net > 0 ? 'text-danger' : ($ob_net < 0 ? 'text-success' : '') ?>">
+                <?= format_currency(abs($ob_net)) ?>
+                <small class="fs-6"><?= $ob_net > 0 ? '(DR)' : ($ob_net < 0 ? '(CR)' : '') ?></small>
+            </h5>
+        </div>
+    </div>
+
+    <!-- Ledger Table -->
+    <table class="table table-bordered table-sm ledger-table">
+        <thead class="table-dark">
             <tr>
                 <th>Date</th>
                 <th>Type</th>
                 <th>Reference</th>
-                <th>Description / Note</th>
-                <th class="text-end">Debit (+)</th>
-                <th class="text-end">Credit (-)</th>
-                <th class="text-end">Balance</th>
+                <th class="text-end">Debit (৳)</th>
+                <th class="text-end">Credit (৳)</th>
+                <th class="text-end">Balance (৳)</th>
             </tr>
         </thead>
         <tbody>
-            <?php 
-            $running_balance = 0; // In a real system, you'd calculate opening balance before start_date
+            <!-- Opening Row -->
+            <tr class="table-secondary fw-semibold">
+                <td><?= date('d M Y', strtotime($start_date)) ?></td>
+                <td>Opening Balance</td>
+                <td>—</td>
+                <td class="text-end"><?= $ob_net > 0 ? number_format($ob_net, 2) : '—' ?></td>
+                <td class="text-end"><?= $ob_net < 0 ? number_format(abs($ob_net), 2) : '—' ?></td>
+                <td class="text-end fw-bold"><?= number_format(abs($ob_net), 2) ?> <?= $ob_net > 0 ? 'Dr' : ($ob_net < 0 ? 'Cr' : '') ?></td>
+            </tr>
+
+            <?php
+            $running = $ob_net; // positive = Dr (customer owes)
+            $total_dr = 0;
+            $total_cr = 0;
+            foreach ($ledger as $row):
+                $is_debit = $row['type'] === 'Debit' || $row['entry_type'] === 'Invoice';
+                $amt = floatval($row['amount']);
+                if ($is_debit) {
+                    $running += $amt;
+                    $total_dr += $amt;
+                } else {
+                    $running -= $amt;
+                    $total_cr += $amt;
+                }
+                $bal_type = $running > 0 ? 'Dr' : ($running < 0 ? 'Cr' : '');
             ?>
             <tr>
-                <td colspan="6" class="text-end text-muted"><em>Opening Balance (Prior to <?php echo $start_date; ?>)</em></td>
-                <td class="text-end fw-bold">---</td>
+                <td><?= date('d M Y', strtotime($row['created_at'])) ?></td>
+                <td>
+                    <span class="badge <?= $is_debit ? 'bg-danger' : 'bg-success' ?>">
+                        <?= $row['entry_type'] ?>
+                    </span>
+                </td>
+                <td class="small text-muted"><?= htmlspecialchars($row['note'] ?? '') ?></td>
+                <td class="text-end <?= $is_debit ? 'text-danger fw-semibold' : 'text-muted' ?>">
+                    <?= $is_debit ? number_format($amt, 2) : '—' ?>
+                </td>
+                <td class="text-end <?= !$is_debit ? 'text-success fw-semibold' : 'text-muted' ?>">
+                    <?= !$is_debit ? number_format($amt, 2) : '—' ?>
+                </td>
+                <td class="text-end fw-semibold <?= $running > 0 ? 'text-danger' : ($running < 0 ? 'text-success' : '') ?>">
+                    <?= number_format(abs($running), 2) ?> <?= $bal_type ?>
+                </td>
             </tr>
-            <?php foreach ($ledger as $row): ?>
-                <?php 
-                    // Skip hidden rows in print mode
-                    $hidden_class = $row['hide_from_print'] ? 'table-warning d-print-none' : '';
-                ?>
-                <tr class="<?php echo $hidden_class; ?>">
-                    <td><?php echo date('d-m-Y', strtotime($row['created_at'])); ?></td>
-                    <td><span class="badge <?php echo ($row['entry_type'] == 'Invoice') ? 'bg-info' : 'bg-secondary'; ?>"><?php echo $row['entry_type']; ?></span></td>
-                    <td>#<?php echo $row['id']; ?></td>
-                    <td>
-                        <?php echo $row['note']; ?>
-                        <?php if($row['hide_from_print']): ?>
-                            <small class="text-danger ms-2">[HIDDEN FROM PRINT]</small>
-                        <?php endif; ?>
-                    </td>
-                    <td class="text-end"><?php echo ($row['type'] == 'Debit') ? number_format($row['amount'], 2) : '-'; ?></td>
-                    <td class="text-end"><?php echo ($row['type'] == 'Credit') ? number_format($row['amount'], 2) : '-'; ?></td>
-                    <td class="text-end">
-                        <?php 
-                            if ($row['type'] == 'Debit') $running_balance -= $row['amount'];
-                            else $running_balance += $row['amount'];
-                            echo number_format($running_balance, 2);
-                        ?>
-                    </td>
-                </tr>
             <?php endforeach; ?>
-        </tbody>
-        <tfoot>
-            <tr class="table-primary">
-                <td colspan="4" class="text-end fw-bold">TOTALS FOR PERIOD</td>
-                <td class="text-end fw-bold">
-                    <?php 
-                        $total_debit = array_sum(array_column(array_filter($ledger, function($r){ return $r['type'] == 'Debit'; }), 'amount'));
-                        echo number_format($total_debit, 2);
-                    ?>
+
+            <!-- Totals Row -->
+            <tr class="table-dark fw-bold">
+                <td colspan="3">Total for Period</td>
+                <td class="text-end text-danger"><?= number_format($total_dr, 2) ?></td>
+                <td class="text-end text-success"><?= number_format($total_cr, 2) ?></td>
+                <td class="text-end <?= $running > 0 ? 'text-danger' : 'text-success' ?>">
+                    <?= number_format(abs($running), 2) ?> <?= $running > 0 ? 'Dr' : 'Cr' ?>
                 </td>
-                <td class="text-end fw-bold">
-                    <?php 
-                        $total_credit = array_sum(array_column(array_filter($ledger, function($r){ return $r['type'] == 'Credit'; }), 'amount'));
-                        echo number_format($total_credit, 2);
-                    ?>
-                </td>
-                <td class="text-end fw-bold"><?php echo number_format($running_balance, 2); ?></td>
             </tr>
-        </tfoot>
+        </tbody>
     </table>
 
-    <div class="mt-5 pt-4 d-none d-print-block">
-        <div class="row">
-            <div class="col-4 text-center border-top">Customer Signature</div>
-            <div class="col-4"></div>
-            <div class="col-4 text-center border-top">Authorized Signature</div>
+    <div class="row mt-4">
+        <div class="col-md-6"></div>
+        <div class="col-md-6">
+            <table class="table table-bordered table-sm">
+                <tr class="table-light"><th>Current Balance (System)</th>
+                    <td class="text-end fw-bold <?= $customer['balance'] < 0 ? 'text-danger' : 'text-success' ?>">
+                        <?= format_currency(abs($customer['balance'])) ?> <?= $customer['balance'] < 0 ? 'Due' : 'Advance' ?>
+                    </td>
+                </tr>
+                <tr class="table-light"><th>Closing Balance (Ledger)</th>
+                    <td class="text-end fw-bold <?= $running > 0 ? 'text-danger' : 'text-success' ?>">
+                        <?= format_currency(abs($running)) ?> <?= $running > 0 ? 'Due' : 'Advance' ?>
+                    </td>
+                </tr>
+            </table>
         </div>
     </div>
 </div>
+<?php else: ?>
+<div class="text-center py-5 text-muted">
+    <i class="fas fa-book fa-3x mb-3 opacity-25"></i>
+    <p>Select a customer and date range to view their ledger.</p>
+</div>
 <?php endif; ?>
 
-<style>
-    @media print {
-        #sidebar-wrapper, .navbar, .no-print, .alert { display: none !important; }
-        #page-content-wrapper { padding: 0 !important; width: 100% !important; margin: 0 !important; }
-        .container-fluid { padding: 0 !important; }
-        .ledger-print-wrap { box-shadow: none !important; padding: 0 !important; }
-        .d-print-none { display: none !important; }
-    }
-</style>
+<?php include '../../templates/footer.php'; ?>
 
-<?php require_once '../../templates/footer.php'; ?>
+<style>
+@media print {
+    .no-print { display: none !important; }
+    .sidebar-wrapper, #menu-toggle { display: none !important; }
+    .page-content-wrapper { margin-left: 0 !important; }
+    body { background: white; }
+    .ledger-print-wrap { box-shadow: none !important; }
+}
+.ledger-table td, .ledger-table th { font-size: .85rem; padding: 6px 10px; }
+</style>

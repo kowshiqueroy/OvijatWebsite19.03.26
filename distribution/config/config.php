@@ -8,10 +8,10 @@ ob_start();
 define('DB_HOST', 'localhost');
 define('DB_USER', 'root');
 define('DB_PASS', '');
-define('DB_NAME', 'food_company_db');
+define('DB_NAME', 'u312077073_fd'); // Production DB name from dump
 
 // Application Settings
-define('APP_NAME', 'Food Distribution Management');
+define('APP_NAME', 'Ovijat Food Distribution');
 define('BASE_URL', '/distribution/');
 
 // User Roles

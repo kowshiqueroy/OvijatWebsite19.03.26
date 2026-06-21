@@ -44,13 +44,13 @@ function send_system_email($pdo, $to, $subject, $message) {
 
     if ($host && $user && $pass) {
         // Log sending attempt
-        log_action($pdo, 0, "Email Attempt", "To: $to | Subject: $subject");
+        log_action($pdo, null, "Email Attempt", "To: $to | Subject: $subject");
         
         // Suppress errors to prevent breaking the UI flow
         return @mail($to, $subject, $html_message, implode("\r\n", $headers));
     } else {
         // Fallback: Just log it in system_logs for the admin to see if SMTP isn't set up yet
-        log_action($pdo, 0, "Email Logged (SMTP Not Configured)", "To: $to | Subject: $subject");
+        log_action($pdo, null, "Email Logged (SMTP Not Configured)", "To: $to | Subject: $subject");
         return true; 
     }
 }
