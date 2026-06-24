@@ -4,8 +4,8 @@
  */
 restrict_to(['warehouse', 'admin']);
 
-// Fetch active fulfillment orders (Payment Verified & Processing)
-$stmt = $pdo->prepare("SELECT o.*, u.username FROM orders o JOIN users u ON o.user_id = u.id WHERE o.status IN ('Payment Verified', 'Processing') ORDER BY o.created_at ASC");
+// Fetch active fulfillment orders based on fulfillment status
+$stmt = $pdo->prepare("SELECT o.*, u.username FROM orders o JOIN users u ON o.user_id = u.id WHERE o.fulfillment_status IN ('Pending', 'Processing') ORDER BY o.created_at ASC");
 $stmt->execute();
 $fulfillment_orders = $stmt->fetchAll();
 
@@ -50,7 +50,7 @@ $pending_shipments = count($fulfillment_orders);
                     <!-- Order Header -->
                     <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-light); padding-bottom: 1rem; margin-bottom: 1.25rem; flex-wrap: wrap; gap: 1rem;">
                         <div>
-                            <span style="font-size: 0.72rem; font-weight: 800; text-transform: uppercase; padding: 3px 8px; border-radius: 4px; background: rgba(99,102,241,0.08); color: var(--accent);"><?php echo $ord['status']; ?></span>
+                            <span style="font-size: 0.72rem; font-weight: 800; text-transform: uppercase; padding: 3px 8px; border-radius: 4px; background: rgba(99,102,241,0.08); color: var(--accent);"><?php echo htmlspecialchars($ord['fulfillment_status']); ?></span>
                             <strong style="color: var(--secondary); font-size: 1.15rem; margin-left: 0.5rem;">Order Invoice #<?php echo $ord['id']; ?></strong>
                             <span style="color: var(--text-muted); font-size: 0.85rem; margin-left: 0.5rem;">Client: <strong>@<?php echo e($ord['username']); ?></strong></span>
                         </div>

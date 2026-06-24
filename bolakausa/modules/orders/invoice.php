@@ -317,7 +317,8 @@ $company_name = $stmt->fetch()['setting_value'] ?? 'Bolakausa Wholesale';
                 <strong>INVOICE</strong><br>
                 Invoice ID: <strong>#<?php echo $order['id']; ?></strong><br>
                 Date Placed: <?php echo date('M d, Y', strtotime($order['created_at'])); ?><br>
-                Fulfillment Status: <strong style="text-transform: uppercase; color: <?php echo ($order['status'] === 'Delivered') ? 'var(--primary)' : 'var(--text-main)'; ?>"><?php echo $order['status']; ?></strong>
+                Payment Status: <strong style="text-transform: uppercase; color: <?php echo ($order['payment_status'] === 'Paid') ? 'var(--primary)' : 'var(--text-main)'; ?>"><?php echo htmlspecialchars($order['payment_status']); ?></strong><br>
+                Fulfillment Status: <strong style="text-transform: uppercase; color: <?php echo ($order['fulfillment_status'] === 'Delivered') ? 'var(--primary)' : 'var(--text-main)'; ?>"><?php echo htmlspecialchars($order['fulfillment_status']); ?></strong>
             </div>
         </div>
         
@@ -425,6 +426,12 @@ $company_name = $stmt->fetch()['setting_value'] ?? 'Bolakausa Wholesale';
     <!-- Actions -->
     <div class="actions-panel">
         <button onclick="window.print()" class="btn btn-print"><i class="fas fa-print"></i> Print Invoice</button>
+        <?php if (!$is_admin): ?>
+            <a href="/bolakausa/orders?action=reorder&order_id=<?php echo $order['id']; ?>" class="btn btn-print" style="background: #10b981; color: white;"><i class="fas fa-redo"></i> Reorder Order</a>
+        <?php endif; ?>
+        <?php if (!$is_admin && in_array($order['fulfillment_status'], ['Pending', 'Processing', 'Pending Customer Approval'])): ?>
+            <a href="/bolakausa/orders/edit?id=<?php echo $order['id']; ?>" class="btn btn-print" style="background: #3b82f6; color: white;"><i class="fas fa-edit"></i> Edit Order</a>
+        <?php endif; ?>
         <a href="/bolakausa/orders" class="btn btn-back"><i class="fas fa-arrow-left"></i> Back to Orders</a>
     </div>
 

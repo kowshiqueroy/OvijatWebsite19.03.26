@@ -15,7 +15,7 @@ $address_success = '';
 $address_error = '';
 
 // Fetch User Addresses with location info
-$stmt = $pdo->prepare("SELECT a.*, l.name as location_name, l.tax_percent, l.base_delivery_charge, l.per_unit_weight_charge FROM user_addresses a LEFT JOIN locations l ON a.location_id = l.id WHERE a.user_id = ? AND a.is_deleted = 0");
+$stmt = $pdo->prepare("SELECT a.*, l.name as location_name, l.tax_percent, l.base_delivery_charge, l.per_unit_weight_charge, l.min_order_amount, l.max_order_amount, l.shipping_type FROM user_addresses a LEFT JOIN locations l ON a.location_id = l.id WHERE a.user_id = ? AND a.is_deleted = 0");
 $stmt->execute([$user_id]);
 $addresses = $stmt->fetchAll();
 
@@ -199,7 +199,7 @@ $global_discount = calculate_global_discount_amount($pdo, $subtotal, $user_id);
                         <select name="address_id" id="checkout-address-select" required style="border-radius: 8px;">
                             <option value="">-- Choose a shipping address --</option>
                             <?php foreach ($addresses as $addr): ?>
-                                <option value="<?php echo $addr['id']; ?>" data-location="<?php echo $addr['location_id'] ?? ''; ?>" data-tax="<?php echo $addr['tax_percent'] ?? 0; ?>" data-base="<?php echo $addr['base_delivery_charge'] ?? 0; ?>" data-weight-charge="<?php echo $addr['per_unit_weight_charge'] ?? 0; ?>" <?php echo ($addr['is_default']) ? 'selected' : ''; ?>>
+                                <option value="<?php echo $addr['id']; ?>" data-location="<?php echo $addr['location_id'] ?? ''; ?>" data-tax="<?php echo $addr['tax_percent'] ?? 0; ?>" data-base="<?php echo $addr['base_delivery_charge'] ?? 0; ?>" data-weight-charge="<?php echo $addr['per_unit_weight_charge'] ?? 0; ?>" data-min-order="<?php echo $addr['min_order_amount'] ?? 0; ?>" data-max-order="<?php echo $addr['max_order_amount'] ?? 999999.99; ?>" data-shipping-type="<?php echo e($addr['shipping_type'] ?? 'default'); ?>" <?php echo ($addr['is_default']) ? 'selected' : ''; ?>>
                                     <?php echo e($addr['address_line']) . ', ' . e($addr['city']); ?>
                                     <?php if (!empty($addr['location_name'])): ?>
                                         — <?php echo e($addr['location_name']); ?> (Tax: <?php echo $addr['tax_percent']; ?>%)
@@ -395,7 +395,10 @@ $global_discount = calculate_global_discount_amount($pdo, $subtotal, $user_id);
                     <strong>To Pay</strong>
                     <strong id="grand-total-display" style="color: var(--primary); font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 800;">$<?php echo number_format($subtotal - $global_discount, 2); ?></strong>
                 </div>
-                <button type="submit" class="btn btn-green" style="width: 100%; justify-content: center; padding: 1.15rem; font-size: 1.05rem; border-radius: 12px; box-shadow: 0 10px 20px -5px var(--primary-glow); margin-top: 1.5rem;">
+                <div id="checkout-validation-warning" style="display: none; background: rgba(244,63,94,0.06); color: var(--rose); padding: 1rem; border-radius: 12px; border: 1px solid rgba(244,63,94,0.15); margin-top: 1rem; font-size: 0.85rem; font-weight: 700;">
+                    <i class="fas fa-exclamation-triangle"></i> <span id="warning-text"></span>
+                </div>
+                <button type="submit" id="place-order-btn" class="btn btn-green" style="width: 100%; justify-content: center; padding: 1.15rem; font-size: 1.05rem; border-radius: 12px; box-shadow: 0 10px 20px -5px var(--primary-glow); margin-top: 1.5rem;">
                     <i class="fas fa-check-circle"></i> Place Wholesale Order
                 </button>
             </div>
@@ -494,17 +497,56 @@ document.addEventListener('DOMContentLoaded', () => {
         const taxPercent = parseFloat(selectedOption.getAttribute('data-tax') || 0);
         const baseCharge = parseFloat(selectedOption.getAttribute('data-base') || 0);
         const weightCharge = parseFloat(selectedOption.getAttribute('data-weight-charge') || 0);
+        const minOrder = parseFloat(selectedOption.getAttribute('data-min-order') || 0);
+        const maxOrder = parseFloat(selectedOption.getAttribute('data-max-order') || 999999.99);
+        const shipType = selectedOption.getAttribute('data-shipping-type') || 'default';
         
-        const shipping = baseCharge + (totalWeight * weightCharge);
+        let shipping = baseCharge + (totalWeight * weightCharge);
+        let shipText = '$' + shipping.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        
+        if (shipType === 'free') {
+            shipping = 0;
+            shipText = 'Free';
+        } else if (shipType === 'manual') {
+            shipping = 0;
+            shipText = 'Set later by Admin';
+        }
+        
         const taxable = discountedSubtotal + (taxOnShipping ? shipping : 0);
         const tax = (taxable * taxPercent) / 100;
         const total = discountedSubtotal + shipping;
         const grandTotal = total + tax;
         
-        shippingDisplay.innerText = '$' + shipping.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        shippingDisplay.innerText = shipText;
         taxDisplay.innerText = '$' + tax.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
         totalDisplay.innerText = '$' + total.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
         grandTotalDisplay.innerText = '$' + grandTotal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+
+        // Min/Max Validations
+        let hasError = false;
+        let errorMsg = "";
+        if (subtotal < minOrder) {
+            hasError = true;
+            errorMsg = "Order subtotal ($" + subtotal.toFixed(2) + ") is below the minimum order amount ($" + minOrder.toFixed(2) + ") for this state.";
+        } else if (subtotal > maxOrder) {
+            hasError = true;
+            errorMsg = "Order subtotal ($" + subtotal.toFixed(2) + ") exceeds the maximum order amount ($" + maxOrder.toFixed(2) + ") for this state.";
+        }
+        
+        const warningDiv = document.getElementById('checkout-validation-warning');
+        const warningText = document.getElementById('warning-text');
+        const submitBtn = document.getElementById('place-order-btn');
+        
+        if (hasError) {
+            if (warningDiv && warningText) {
+                warningText.innerText = errorMsg;
+                warningDiv.style.display = 'block';
+            }
+            if (submitBtn) submitBtn.disabled = true;
+        } else {
+            if (warningDiv) warningDiv.style.display = 'none';
+            if (submitBtn) submitBtn.disabled = false;
+        }
 
         // Wallet / Payment logic
         const walletNotice = document.getElementById('wallet-notice');

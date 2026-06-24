@@ -5,7 +5,10 @@ check_login();
 check_role([ROLE_ADMIN, ROLE_MANAGER, ROLE_ACCOUNTANT, ROLE_SR, ROLE_CUSTOMER]);
 
 $customers = fetch_all("SELECT id, name, phone, type, balance FROM customers WHERE is_active = 1");
-$products = fetch_all("SELECT id, name, tp_rate, dp_rate, retail_rate, stock_qty FROM products WHERE is_active = 1");
+// Exclude products hidden from this user's UI
+$hidden_ids = get_hidden_product_ids();
+$hidden_sql = $hidden_ids ? "AND p.id NOT IN (" . implode(',', array_map('intval', $hidden_ids)) . ")" : "";
+$products = fetch_all("SELECT p.id, p.name, p.tp_rate, p.dp_rate, p.retail_rate, p.stock_qty FROM products p WHERE p.is_active = 1 $hidden_sql");
 ?>
 
 <div class="row">
@@ -45,8 +48,19 @@ $products = fetch_all("SELECT id, name, tp_rate, dp_rate, retail_rate, stock_qty
                     <label class="form-label">Current Balance</label>
                     <input type="text" id="display_balance" class="form-control" readonly>
                 </div>
-                <div class="col-md-3 text-end d-flex align-items-end justify-content-end">
-                     <div class="text-uppercase small text-muted me-2">Draft Status</div>
+                <div class="col-md-2">
+                    <label class="form-label">Order Type</label>
+                    <?php
+                    $ot_options = ['Local', 'Export', 'Custom'];
+                    if (in_array($_SESSION['role'], [ROLE_ADMIN, ROLE_MANAGER, ROLE_ACCOUNTANT])) $ot_options[] = 'DMD';
+                    ?>
+                    <select name="order_type" id="order_type" class="form-select">
+                        <?php foreach ($ot_options as $ot): ?>
+                            <option value="<?php echo $ot; ?>"><?php echo $ot; ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="col-md-1 text-end d-flex align-items-end justify-content-end">
                      <span class="badge bg-warning p-2">DRAFT</span>
                 </div>
             </div>
@@ -231,26 +245,33 @@ document.addEventListener('DOMContentLoaded', function() {
                     else rate = options[i].getAttribute('data-retail');
                     
                     row.querySelector('.rate').value = rate;
-                    checkStock(row);
 
-                    // Fetch Product Notes (NEW)
+                    // Recalculate row total immediately when product (and thus rate) changes
+                    const qty = parseInt(row.querySelector('.billed-qty').value) || 0;
+                    row.querySelector('.row-total').value = (parseFloat(rate) * qty).toFixed(2);
+                    checkStock(row);
+                    calculateGrandTotal();
+
+                    // Fetch Product Notes
                     const noteInput = row.querySelector('.product-note');
                     const noteDatalist = row.querySelector('.note-suggestions');
-                    const uniqueId = 'notes-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
-                    noteInput.setAttribute('list', uniqueId);
-                    noteDatalist.id = uniqueId;
+                    if (noteInput && noteDatalist) {
+                        const uniqueId = 'notes-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
+                        noteInput.setAttribute('list', uniqueId);
+                        noteDatalist.id = uniqueId;
 
-                    fetch('get_product_notes.php?product_id=' + productId)
-                        .then(response => response.json())
-                        .then(data => {
-                            noteInput.value = data.latest; // Set default to last note
-                            noteDatalist.innerHTML = ''; // Clear suggestions
-                            data.history.forEach(note => {
-                                let opt = document.createElement('option');
-                                opt.value = note;
-                                noteDatalist.appendChild(opt);
+                        fetch('get_product_notes.php?product_id=' + productId)
+                            .then(response => response.json())
+                            .then(data => {
+                                noteInput.value = data.latest;
+                                noteDatalist.innerHTML = '';
+                                data.history.forEach(note => {
+                                    let opt = document.createElement('option');
+                                    opt.value = note;
+                                    noteDatalist.appendChild(opt);
+                                });
                             });
-                        });
+                    }
                     break;
                 }
             }

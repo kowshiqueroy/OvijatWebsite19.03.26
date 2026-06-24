@@ -17,7 +17,7 @@ $pending_orders = 0;
 $total_orders = 0;
 if (in_array($user_role, ['admin', 'manager'])) {
     $active_users = $pdo->query("SELECT COUNT(*) FROM users WHERE role = 'wholesale_user' AND status = 'active' AND is_deleted = 0")->fetchColumn() ?: 0;
-    $pending_orders = $pdo->query("SELECT COUNT(*) FROM orders WHERE status = 'Pending Payment'")->fetchColumn() ?: 0;
+    $pending_orders = $pdo->query("SELECT COUNT(*) FROM orders WHERE payment_status = 'Unpaid' AND fulfillment_status NOT IN ('Cancelled', 'Rejected')")->fetchColumn() ?: 0;
     $total_orders = $pdo->query("SELECT COUNT(*) FROM orders")->fetchColumn() ?: 0;
 }
 
@@ -26,8 +26,8 @@ $total_sales = 0;
 $avg_order_value = 0;
 $wallet_credits_held = 0;
 if ($user_role === 'admin') {
-    $total_sales = $pdo->query("SELECT SUM(total_amount) FROM orders WHERE status NOT IN ('Cancelled', 'Rejected', 'Pending Payment')")->fetchColumn() ?: 0;
-    $avg_order_value = $pdo->query("SELECT AVG(total_amount) FROM orders WHERE status NOT IN ('Cancelled', 'Rejected')")->fetchColumn() ?: 0;
+    $total_sales = $pdo->query("SELECT SUM(total_amount) FROM orders WHERE payment_status = 'Paid'")->fetchColumn() ?: 0;
+    $avg_order_value = $pdo->query("SELECT AVG(total_amount) FROM orders WHERE fulfillment_status NOT IN ('Cancelled', 'Rejected')")->fetchColumn() ?: 0;
     $wallet_credits_held = $pdo->query("SELECT SUM(CASE WHEN type='credit' THEN amount ELSE -amount END) FROM wallet_transactions")->fetchColumn() ?: 0;
 }
 

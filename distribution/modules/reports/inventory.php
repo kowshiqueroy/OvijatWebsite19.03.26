@@ -52,10 +52,15 @@ usort($movements, function($a, $b) {
 });
 ?>
 
-<div class="row mb-4 no-print">
-    <div class="col-12">
+<div class="d-flex justify-content-between align-items-center mb-4 no-print">
+    <div>
         <h3>Inventory Movement Report</h3>
-        <p class="text-muted">Consolidated view of all stock arrivals, sales, and damages.</p>
+        <p class="text-muted small mb-0">Consolidated view of all stock arrivals, sales, and damages.</p>
+    </div>
+    <div class="d-flex gap-2">
+        <button onclick="copyInventoryWhatsApp(this)" class="btn btn-outline-success btn-sm"><i class="fa-brands fa-whatsapp me-1"></i>WhatsApp</button>
+        <button onclick="downloadTableCSV('inventory_movements_<?php echo date('Y-m-d'); ?>.csv','#inv-table')" class="btn btn-outline-primary btn-sm"><i class="fa-solid fa-file-csv me-1"></i>CSV</button>
+        <button onclick="window.print()" class="btn btn-dark btn-sm"><i class="fa-solid fa-print me-1"></i>Print</button>
     </div>
 </div>
 
@@ -102,7 +107,7 @@ usort($movements, function($a, $b) {
     </div>
 
     <div class="table-responsive">
-        <table class="table table-bordered align-middle">
+        <table class="table table-bordered align-middle export-table" id="inv-table">
             <thead class="table-light">
                 <tr>
                     <th>Date & Time</th>
@@ -153,4 +158,32 @@ usort($movements, function($a, $b) {
     }
 </style>
 
+<script>
+const INV_MOVEMENTS = <?php echo json_encode(array_map(fn($m) => [
+    'type'    => $m['type'],
+    'product' => $m['product_name'],
+    'qty'     => $m['quantity'],
+    'ref'     => $m['reference'],
+    'user'    => $m['user'],
+    'date'    => $m['created_at'],
+], $movements)); ?>;
+
+function copyInventoryWhatsApp(btn) {
+    const period = '<?php echo $start_date; ?> to <?php echo $end_date; ?>';
+    let in_qty = 0, out_qty = 0, dmg_qty = 0;
+    INV_MOVEMENTS.forEach(m => {
+        if (m.type === 'Stock IN') in_qty += parseInt(m.qty);
+        else if (m.type === 'Stock OUT') out_qty += parseInt(m.qty);
+        else if (m.type === 'Damage') dmg_qty += parseInt(m.qty);
+    });
+    let text = '*Inventory Movement — ' + period + '*\n';
+    text += '─'.repeat(32) + '\n';
+    text += '📦 Stock IN:  ' + in_qty.toLocaleString() + ' units\n';
+    text += '📤 Stock OUT: ' + out_qty.toLocaleString() + ' units\n';
+    text += '⚠ Damage:    ' + dmg_qty.toLocaleString() + ' units\n';
+    text += '─'.repeat(32) + '\n';
+    text += 'Net Change: ' + (in_qty - out_qty - dmg_qty).toLocaleString() + ' units';
+    copyText(text, btn);
+}
+</script>
 <?php require_once '../../templates/footer.php'; ?>

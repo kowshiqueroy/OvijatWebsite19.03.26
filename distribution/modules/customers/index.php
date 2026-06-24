@@ -61,17 +61,24 @@ if (isset($_POST['add_customer'])) {
 }
 
 $customers = fetch_all("SELECT c.*, u.is_active as user_active FROM customers c JOIN users u ON c.user_id = u.id WHERE c.isDelete = 0 AND u.isDelete = 0");
-
-// Calculate Company Totals
 $total_company_balance = array_sum(array_column($customers, 'balance'));
 ?>
 
-<div class="row">
-    <div class="col-12 d-flex justify-content-between align-items-center mb-4">
-        <h3>Customer Management</h3>
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h3>Customers</h3>
+        <p class="text-muted small mb-0"><?php echo count($customers); ?> total &mdash; Balance due: <strong class="text-danger"><?php echo format_currency(array_sum(array_column(array_filter($customers, fn($c)=>$c['balance']<0), 'balance'))); ?></strong></p>
+    </div>
+    <div class="d-flex gap-2 flex-wrap">
+        <button onclick="copyCustomersWhatsApp(this)" class="btn btn-outline-success btn-sm">
+            <i class="fa-brands fa-whatsapp me-1"></i>WhatsApp
+        </button>
+        <button onclick="downloadTableCSV('customers_<?php echo date('Y-m-d'); ?>.csv', '#customerTable')" class="btn btn-outline-primary btn-sm">
+            <i class="fa-solid fa-file-csv me-1"></i>Export CSV
+        </button>
         <?php if ($_SESSION['role'] != ROLE_VIEWER): ?>
-        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addCustomerModal">
-            <i class="fas fa-plus me-2"></i> Add New Customer
+        <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#addCustomerModal">
+            <i class="fa-solid fa-plus me-1"></i>Add Customer
         </button>
         <?php endif; ?>
     </div>
@@ -120,16 +127,16 @@ $total_company_balance = array_sum(array_column($customers, 'balance'));
 <div class="card shadow-sm">
     <div class="card-body">
         <div class="table-responsive">
-            <table class="table table-hover align-middle" id="customerTable">
+            <table class="table table-hover align-middle export-table" id="customerTable">
                 <thead class="table-light">
                     <tr>
                         <th>Name</th>
-                        <th>Phone / Username</th>
+                        <th>Phone</th>
                         <th>Address</th>
                         <th>Type</th>
                         <th>Balance</th>
                         <th>Status</th>
-                        <th>Actions</th>
+                        <th data-no-export>Actions</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -152,7 +159,7 @@ $total_company_balance = array_sum(array_column($customers, 'balance'));
                                 <span class="badge bg-danger">Inactive</span>
                             <?php endif; ?>
                         </td>
-                        <td>
+                        <td data-no-export>
                             <a href="view.php?id=<?php echo $c['id']; ?>" class="btn btn-sm btn-outline-info" title="View Details"><i class="fas fa-eye"></i></a>
                             <?php if (($_SESSION['role'] == ROLE_ACCOUNTANT || $_SESSION['role'] == ROLE_ADMIN) && $_SESSION['role'] != ROLE_VIEWER): ?>
                                 <a href="toggle_status.php?id=<?php echo $c['id']; ?>" class="btn btn-sm btn-outline-warning" title="Toggle Status"><i class="fas fa-power-off"></i></a>
@@ -262,4 +269,32 @@ filterAndSort();
     </div>
 </div>
 
+<script>
+const CUSTOMERS_DATA = <?php echo json_encode(array_map(fn($c) => [
+    'name'    => $c['name'],
+    'phone'   => $c['phone'],
+    'type'    => $c['type'],
+    'balance' => $c['balance'],
+    'address' => $c['address'],
+], $customers)); ?>;
+
+function copyCustomersWhatsApp(btn) {
+    const company = '<?php echo addslashes($company['name'] ?? 'Company'); ?>';
+    const date    = '<?php echo date('d M Y'); ?>';
+    let text = '*' + company + ' — Customer Balance Report*\n';
+    text += 'Date: ' + date + '\n';
+    text += '─'.repeat(30) + '\n';
+    let totalOwed = 0;
+    CUSTOMERS_DATA.forEach(c => {
+        if (c.balance !== 0) {
+            const bal = parseFloat(c.balance);
+            text += '• ' + c.name + ' (' + c.type + '): ৳' + Math.abs(bal).toLocaleString() + (bal < 0 ? ' owed' : ' prepaid') + '\n';
+            if (bal < 0) totalOwed += Math.abs(bal);
+        }
+    });
+    text += '─'.repeat(30) + '\n';
+    text += '*Total Receivable: ৳' + totalOwed.toLocaleString() + '*';
+    copyText(text, btn);
+}
+</script>
 <?php require_once '../../templates/footer.php'; ?>

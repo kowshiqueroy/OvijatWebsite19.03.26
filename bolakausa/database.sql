@@ -139,11 +139,13 @@ CREATE TABLE IF NOT EXISTS `coupons` (
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- 11. Orders (Enhanced with v2 status list, rejection, and refunds)
+-- 11. Orders (Enhanced with separate payment and fulfillment statuses)
 CREATE TABLE IF NOT EXISTS `orders` (
   `id` INT AUTO_INCREMENT PRIMARY KEY,
   `user_id` INT NOT NULL,
   `status` ENUM('Pending Payment', 'Payment Verified', 'Confirmed', 'Processing', 'Hold', 'Stock Out', 'Ready to Ship', 'Shipped', 'Out for Delivery', 'Delivered', 'Cancelled', 'Rejected', 'Pending Customer Approval') DEFAULT 'Pending Payment',
+  `payment_status` ENUM('Unpaid', 'Paid', 'Refunded') DEFAULT 'Unpaid',
+  `fulfillment_status` ENUM('Pending', 'Processing', 'Hold', 'Stock Out', 'Ready to Ship', 'Shipped', 'Out for Delivery', 'Delivered', 'Cancelled', 'Rejected', 'Pending Customer Approval') DEFAULT 'Pending',
   `total_amount` DECIMAL(10, 2) NOT NULL,
   `tax_amount` DECIMAL(10, 2) DEFAULT 0.00,
   `shipping_amount` DECIMAL(10, 2) DEFAULT 0.00,

@@ -105,14 +105,17 @@ switch ($route) {
 
     case 'admin':
         if (!in_array($user_role, ['admin', 'manager', 'editor', 'viewer'])) {
-            die("Access Denied: Admins, Managers, Editors, and Viewers Only");
+            require_once 'includes/access_denied.php';
+            render_access_denied('Staff Portal Only', 'This area is restricted to Admins, Managers, Editors, and Viewers. If you need access, please contact your administrator.');
         }
         $subroute = $parts[1] ?? 'dashboard';
         if ($user_role === 'viewer' && !in_array($subroute, ['users', 'dashboard'])) {
-            die("Access Denied: Viewers can only access User Management.");
+            require_once 'includes/access_denied.php';
+            render_access_denied('Viewer Access Restricted', 'Your Viewer role only has access to the Financial Overview and User Management sections.');
         }
         if ($user_role === 'editor' && !in_array($subroute, ['products', 'categories', 'orders', 'users', 'dashboard'])) {
-            die("Access Denied: Editors can only access Products, Orders, and User Management.");
+            require_once 'includes/access_denied.php';
+            render_access_denied('Editor Access Restricted', 'Your Editor role only has access to Catalog Control, Order Management, and User Management.');
         }
         if ($subroute === 'categories') {
             require_once 'modules/products/admin_categories.php';
@@ -120,7 +123,8 @@ switch ($route) {
             require_once 'modules/products/admin_products.php';
         } elseif ($subroute === 'payments') {
             if ($user_role !== 'admin') {
-                die("Access Denied: Payment Approvals can only be accessed by Administrators.");
+                require_once 'includes/access_denied.php';
+                render_access_denied('Administrators Only', 'Payment Approvals can only be accessed by system Administrators.');
             }
             require_once 'admin_views/payment_approvals.php';
         } elseif ($subroute === 'users') {
@@ -137,8 +141,12 @@ switch ($route) {
             require_once 'admin_views/promotions_management.php';
         } elseif ($subroute === 'inventory-insights') {
             require_once 'admin_views/inventory_insights.php';
+        } elseif ($subroute === 'accounting') {
+            require_once 'admin_views/accounting_hub.php';
         } elseif ($subroute === 'settings') {
             require_once 'admin_views/settings.php';
+        } elseif ($subroute === 'emails') {
+            require_once 'admin_views/email_logs.php';
         } else {
             require_once 'admin_views/dashboard.php';
         }
@@ -146,7 +154,8 @@ switch ($route) {
 
     case 'manager':
         if (!in_array($user_role, ['admin', 'manager'])) {
-            die("Access Denied: Managers/Admins Only");
+            require_once 'includes/access_denied.php';
+            render_access_denied('Managers & Admins Only', 'The Operations area is restricted to Managers and Administrators.');
         }
         $subroute = $parts[1] ?? 'dashboard';
         if ($subroute === 'stock') {
@@ -157,17 +166,28 @@ switch ($route) {
         break;
 
     case 'warehouse':
-        if ($user_role !== 'warehouse') die("Access Denied: Warehouse Staff Only");
+        if ($user_role !== 'warehouse') {
+            require_once 'includes/access_denied.php';
+            render_access_denied('Warehouse Staff Only', 'The Fulfillment area is restricted to authorized Warehouse staff.');
+        }
         require_once 'warehouse_views/dashboard.php';
         break;
 
     case 'viewer':
-        if ($user_role !== 'viewer') die("Access Denied: Auditors Only");
+        if ($user_role !== 'viewer') {
+            require_once 'includes/access_denied.php';
+            render_access_denied('Auditors Only', 'The Financial Overview is restricted to Viewer/Auditor accounts.');
+        }
         require_once 'viewer_views/dashboard.php';
         break;
 
     case 'orders':
-        require_once 'modules/orders/list.php';
+        $subroute = $parts[1] ?? '';
+        if ($subroute === 'edit') {
+            require_once 'modules/orders/edit_order.php';
+        } else {
+            require_once 'modules/orders/list.php';
+        }
         break;
 
     case 'chats':
@@ -202,7 +222,21 @@ switch ($route) {
 
     default:
         http_response_code(404);
-        echo "404 - Page Not Found";
+        echo '<style>
+        .error-page-wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:60vh;padding:2rem 1rem;text-align:center}
+        .error-icon-ring{width:96px;height:96px;border-radius:50%;background:linear-gradient(135deg,rgba(99,102,241,.12),rgba(99,102,241,.04));border:2px solid rgba(99,102,241,.2);display:flex;align-items:center;justify-content:center;margin:0 auto 1.75rem;box-shadow:0 0 0 8px rgba(99,102,241,.06)}
+        .error-icon-ring i{font-size:2.5rem;color:#6366f1}
+        .error-code{font-family:"Plus Jakarta Sans",sans-serif;font-size:5rem;font-weight:800;color:#6366f1;line-height:1;letter-spacing:-2px;margin-bottom:.25rem;opacity:.15}
+        .error-title{font-family:"Plus Jakarta Sans",sans-serif;font-size:1.65rem;font-weight:800;color:#0f172a;margin-bottom:.75rem}
+        .error-msg{color:#64748b;font-size:.975rem;max-width:420px;line-height:1.65;margin-bottom:2rem}
+        </style>
+        <div class="error-page-wrap">
+            <div class="error-icon-ring"><i class="fas fa-map-signs"></i></div>
+            <div class="error-code">404</div>
+            <h1 class="error-title">Page Not Found</h1>
+            <p class="error-msg">The page you are looking for does not exist or may have been moved.</p>
+            <a href="' . BASE_URL . 'home" style="background:#10b981;color:white;padding:.7rem 1.6rem;border-radius:10px;font-weight:700;font-size:.875rem;text-decoration:none;display:inline-flex;align-items:center;gap:.5rem;"><i class="fas fa-home"></i> Back to Home</a>
+        </div>';
         break;
 }
 

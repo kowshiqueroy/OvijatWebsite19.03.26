@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gemini AI Pro Invoice Creator</title>
+    <style>
+        :root {
+            --google-blue: #1a73e8;
+            --gemini-purple: #7c4dff;
+            --gemini-gradient: linear-gradient(135deg, #4285f4, #9b51e0, #e91e63);
+            --text-main: #3c4043;
+            --text-light: #5f6368;
+            --border-color: #dadce0;
+            --bg-light: #f8f9fa;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        body {
+            background-color: #f1f3f4;
+            color: var(--text-main);
+            padding: 40px 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        /* Controls Panel */
+        .controls {
+            width: 100%;
+            max-width: 850px;
+            background: white;
+            padding: 15px 25px;
+            margin-bottom: 20px;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(60,64,67,0.3);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .btn {
+            background-color: var(--google-blue);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 500;
+            font-size: 14px;
+            transition: background 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn:hover {
+            background-color: #1557b0;
+        }
+
+        .btn-secondary {
+            background-color: transparent;
+            color: var(--text-light);
+            border: 1px solid var(--border-color);
+        }
+
+        .btn-secondary:hover {
+            background-color: var(--bg-light);
+            color: var(--text-main);
+        }
+
+        /* Invoice Container */
+        .invoice-box {
+            width: 100%;
+            max-width: 850px;
+            background: white;
+            padding: 50px;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(60,64,67,0.3);
+            position: relative;
+            min-height: 1050px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Decorative top bar mimicking Gemini styling */
+        .invoice-box::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 6px;
+            background: var(--gemini-gradient);
+            border-top-left-radius: 8px;
+            border-top-right-radius: 8px;
+        }
+
+        /* Header Section */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 40px;
+        }
+
+        .branding {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .logo-container {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 5px;
+        }
+
+        .google-logo {
+            font-size: 22px;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+        }
+        .g-b { color: #4285F4; }
+        .g-r { color: #EA4335; }
+        .g-y { color: #FBBC05; }
+        .g-g { color: #34A853; }
+
+        .gemini-badge {
+            background: var(--gemini-gradient);
+            color: white;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .company-details {
+            font-size: 13px;
+            color: var(--text-light);
+            line-height: 1.5;
+        }
+
+        .invoice-title {
+            text-align: right;
+        }
+
+        .invoice-title h1 {
+            font-size: 32px;
+            font-weight: 300;
+            color: #1a73e8;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        /* Meta Metadata Information */
+        .meta-info {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            margin-bottom: 40px;
+            gap: 20px;
+            font-size: 14px;
+        }
+
+        .bill-to h3, .invoice-details h3 {
+            font-size: 12px;
+            text-transform: uppercase;
+            color: var(--google-blue);
+            margin-bottom: 10px;
+            letter-spacing: 0.5px;
+        }
+
+        .bill-to p, .invoice-details p {
+            line-height: 1.6;
+        }
+
+        .invoice-details table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .invoice-details td {
+            padding: 3px 0;
+        }
+
+        .invoice-details td:first-child {
+            color: var(--text-light);
+            width: 45%;
+        }
+
+        /* Items Table */
+        .items-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 30px;
+        }
+
+        .items-table th {
+            background-color: var(--bg-light);
+            color: var(--text-main);
+            text-align: left;
+            padding: 12px 10px;
+            font-size: 13px;
+            text-transform: uppercase;
+            border-bottom: 2px solid var(--border-color);
+        }
+
+        .items-table td {
+            padding: 15px 10px;
+            border-bottom: 1px solid var(--border-color);
+            font-size: 14px;
+            vertical-align: top;
+        }
+
+        .items-table th:nth-child(3), .items-table td:nth-child(3),
+        .items-table th:nth-child(4), .items-table td:nth-child(4),
+        .items-table th:nth-child(5), .items-table td:nth-child(5) {
+            text-align: right;
+        }
+
+        .item-description {
+            font-size: 12px;
+            color: var(--text-light);
+            margin-top: 4px;
+        }
+
+        /* Totals Section */
+        .totals-section {
+            margin-top: auto;
+            display: flex;
+            justify-content: flex-end;
+            margin-bottom: 5px;
+        }
+
+        .totals-table {
+            width: 300px;
+            border-collapse: collapse;
+            font-size: 14px;
+        }
+
+        .totals-table td {
+            padding: 8px 0;
+        }
+
+        .totals-table td:last-child {
+            text-align: right;
+        }
+
+        .totals-table tr.grand-total {
+            font-size: 18px;
+            font-weight: bold;
+            border-top: 2px solid var(--text-main);
+            color: var(--google-blue);
+        }
+
+        .totals-table tr.grand-total td {
+            padding-top: 15px;
+        }
+
+        /* Footer / Notes Section */
+        .invoice-footer {
+            margin-top: 50px;
+            border-top: 1px solid var(--border-color);
+            padding-top: 20px;
+            font-size: 12px;
+            color: var(--text-light);
+            line-height: 1.6;
+        }
+
+        /* Content Editable Visual Cue */
+        [contenteditable="true"] {
+            border: 1px dashed transparent;
+            padding: 2px;
+            border-radius: 4px;
+            transition: all 0.2s;
+            outline: none;
+        }
+
+        [contenteditable="true"]:hover {
+            border-color: #cbd5e1;
+            background-color: #f8fafc;
+        }
+
+        [contenteditable="true"]:focus {
+            border-color: var(--google-blue);
+            background-color: #fff;
+            box-shadow: 0 0 0 2px rgba(26, 115, 232, 0.2);
+        }
+
+        .action-cell {
+            width: 40px;
+            text-align: center !important;
+        }
+
+        .btn-delete {
+            background: none;
+            border: none;
+            color: #ea4335;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 16px;
+            padding: 2px 6px;
+            border-radius: 4px;
+        }
+        .btn-delete:hover {
+            background-color: #fce8e6;
+        }
+
+        /* Print Settings */
+        @media print {
+            body {
+                background-color: white;
+                padding: 0;
+            }
+            .controls, .btn-delete, .action-cell, .add-row-container {
+                display: none !important;
+            }
+            .invoice-box {
+                box-shadow: none;
+                padding: 0;
+                border-radius: 0;
+                min-height: auto;
+            }
+            .invoice-box::before {
+                border-radius: 0;
+            }
+            [contenteditable="true"]:hover {
+                border-color: transparent;
+                background-color: transparent;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Controls Menu Container -->
+    <div class="controls">
+        <div>
+            <button class="btn" onclick="window.print()">
+                <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M2.5 8a.5.5 0 1 0 0-1 .5.5 0 0 0 0 1z"/><path d="M5 1a2 2 0 0 0-2 2v2H2a2 2 0 0 0-2 2v3a2 2 0 0 0 2 2h1v1a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2v-1h1a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-1V3a2 2 0 0 0-2-2H5zM4 3a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2H4V3zm1 5a2 2 0 0 0-2 2v1H2a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1v-1a2 2 0 0 0-2-2H5zm7 2v3a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1z"/></svg>
+                Print / Save PDF
+            </button>
+            <button class="btn btn-secondary" onclick="addNewItem()">+ Add Item</button>
+        </div>
+        <div style="font-size: 13px; color: var(--text-light)">
+            💡 <em>Click any text, dynamic price, or number directly to modify it.</em>
+        </div>
+    </div>
+
+    <!-- Printable Invoice Sheet -->
+    <div class="invoice-box">
+        
+        <!-- Top branding layout -->
+        <div class="header">
+            <div class="branding">
+                <div class="logo-container">
+                    <span class="google-logo">
+                        <span class="g-b">G</span><span class="g-r">o</span><span class="g-y">o</span><span class="g-b">g</span><span class="g-g">l</span><span class="g-r">e</span>
+                    </span>
+                    <span class="gemini-badge">Gemini AI</span>
+                </div>
+                <div class="company-details">
+                    <p id="comp-name" contenteditable="true">Authorized Reseller Cloud Network</p>
+                    <p id="comp-addr" contenteditable="true">1600 Amphitheatre Parkway</p>
+                    <p id="comp-city" contenteditable="true">Mountain View, CA 94043</p>
+                    <p id="comp-email" contenteditable="true">billing@cloudpartner-auth.com</p>
+                </div>
+            </div>
+            <div class="invoice-title">
+                <h1>Invoice</h1>
+                <div class="company-details">
+                    <p>Invoice status: <strong>Paid</strong></p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Meta Client & Dates layout -->
+        <div class="meta-info">
+            <div class="bill-to">
+                <h3>Bill To</h3>
+                <p id="client-name" contenteditable="true" font-weight="bold"><strong>John Doe</strong></p>
+                <p id="client-company" contenteditable="true">Acme Corporation Inc.</p>
+                <p id="client-address" contenteditable="true">123 Business Innovation St, Suite 400</p>
+                <p id="client-email" contenteditable="true">john.doe@acme.com</p>
+            </div>
+            <div class="invoice-details">
+                <h3>Invoice Details</h3>
+                <table>
+                    <tr>
+                        <td>Invoice No:</td>
+                        <td id="inv-number" contenteditable="true">INV-2026-8941</td>
+                    </tr>
+                    <tr>
+                        <td>Date issued:</td>
+                        <td id="inv-date" contenteditable="true">Auto-Populating...</td>
+                    </tr>
+                    <tr>
+                        <td>Due date:</td>
+                        <td id="inv-due" contenteditable="true">Due on Receipt</td>
+                    </tr>
+                    <tr>
+                        <td>PO Number:</td>
+                        <td id="inv-po" contenteditable="true">PO-99421A</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+
+        <!-- Items Ledger Table -->
+        <table class="items-table" id="invoice-items">
+            <thead>
+                <tr>
+                    <th>Item Description</th>
+                    <th style="width: 12%;">Qty</th>
+                    <th style="width: 15%;">Unit Price (৳)</th>
+                    <th style="width: 15%;">Total (৳)</th>
+                    <th class="action-cell"></th>
+                </tr>
+            </thead>
+            <tbody>
+                <!-- Row 1 Default -->
+                <tr>
+                    <td>
+                        <div contenteditable="true" style="font-weight: 600;">Google Gemini Advanced / Pro Enterprise License</div>
+                        <div contenteditable="true" class="item-description">Annual seat commitment subscription package setup. Priority ultra-fast response token tier window infrastructure capacity.</div>
+                    </td>
+                    <td contenteditable="true" class="qty-cell" oninput="calculateTotals()">5</td>
+                    <td contenteditable="true" class="price-cell" oninput="calculateTotals()">240.00</td>
+                    <td class="total-cell">1200.00</td>
+                    <td class="action-cell"><button class="btn-delete" onclick="deleteRow(this)">×</button></td>
+                </tr>
+                <!-- Row 2 Default -->
+                <tr>
+                    <td>
+                        <div contenteditable="true" style="font-weight: 600;">API Compute Tokens Allocation Bundle</div>
+                        <div contenteditable="true" class="item-description">High-volume payload throughput tier addon context scaling option (1 Million Flash context base pack integration value).</div>
+                    </td>
+                    <td contenteditable="true" class="qty-cell" oninput="calculateTotals()">1</td>
+                    <td contenteditable="true" class="price-cell" oninput="calculateTotals()">150.00</td>
+                    <td class="total-cell">150.00</td>
+                    <td class="action-cell"><button class="btn-delete" onclick="deleteRow(this)">×</button></td>
+                </tr>
+            </tbody>
+        </table>
+
+        <!-- Calculations Aggregation Layer -->
+        <div class="totals-section">
+            <table class="totals-table">
+                <tr>
+                    <td>Subtotal:</td>
+                    <td id="subtotal-val">৳0.00</td>
+                </tr>
+                <tr>
+                    <td>Tax / VAT (<span id="tax-rate" contenteditable="true" oninput="calculateTotals()">0</span>%):</td>
+                    <td id="tax-val">৳0.00</td>
+                </tr>
+                <tr class="grand-total">
+                    <td>Total Due:</td>
+                    <td id="grand-total-val">৳0.00</td>
+                </tr>
+            </table>
+        </div>
+
+        <!-- System Disclaimers / Signatures -->
+        <div class="invoice-footer">
+            <div contenteditable="true" style="margin-bottom: 15px;">
+                <strong>Payment Terms & Instructive Notes:</strong><br>
+                Thank you for choosing Gemini Cloud AI application suites. All infrastructure subscription paths activate automatically inside your workspace tenant console portal upon clean checkout validation clearing steps. If execution questions surface, open support tickets referencing your target invoice code sequence identifier string block seamlessly.
+            </div>
+            <div style="text-align: center; font-size: 11px; margin-top: 30px; color: #9aa0a6;">
+                Google, Gemini, and associated cloud structural emblems represent verified corporate operational trademarks belonging strictly to Google LLC ecosystems.
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // Automatic Date Aggregator Functionality
+        document.addEventListener("DOMContentLoaded", () => {
+            const today = new Date();
+            const options = { year: 'numeric', month: 'long', day: 'numeric' };
+            document.getElementById("inv-date").innerText = today.toLocaleDateString("en-US", options);
+            
+            // Generate arbitrary transactional index fallback strings just for UI realism
+            if(document.getElementById("inv-number").innerText === "INV-2026-8941") {
+                const randomId = Math.floor(100000 + Math.random() * 900000);
+                document.getElementById("inv-number").innerText = `GG-GEM-${today.getFullYear()}-${randomId}`;
+            }
+            
+            calculateTotals();
+        });
+
+        // Dynamic Calculations Loop Engine
+        function calculateTotals() {
+            const tableRows = document.getElementById("invoice-items").getElementsByTagName("tbody")[0].rows;
+            let subtotal = 0;
+
+            for (let row of tableRows) {
+                const qtyText = row.querySelector(".qty-cell").innerText.replace(/[^0-9.]/g, '') || 0;
+                const priceText = row.querySelector(".price-cell").innerText.replace(/[^0-9.]/g, '') || 0;
+                
+                const qty = parseFloat(qtyText);
+                const price = parseFloat(priceText);
+                const rowTotal = qty * price;
+                
+                row.querySelector(".total-cell").innerText = rowTotal.toFixed(2);
+                subtotal += rowTotal;
+            }
+
+            // Read dynamic text inputs safely
+            const taxRateText = document.getElementById("tax-rate").innerText.replace(/[^0-9.]/g, '') || 0;
+            const taxRate = parseFloat(taxRateText);
+            const taxCalculated = subtotal * (taxRate / 100);
+            const grandTotal = subtotal + taxCalculated;
+
+            // Update UI nodes cleanly
+            document.getElementById("subtotal-val").innerText = `৳${subtotal.toFixed(2)}`;
+            document.getElementById("tax-val").innerText = `৳${taxCalculated.toFixed(2)}`;
+            document.getElementById("grand-total-val").innerText = `৳${grandTotal.toFixed(2)}`;
+        }
+
+        // Add Dynamic New Entry Row Utility
+        function addNewItem() {
+            const tbody = document.getElementById("invoice-items").getElementsByTagName("tbody")[0];
+            const newRow = document.createElement("tr");
+
+            newRow.innerHTML = `
+                <td>
+                    <div contenteditable="true" style="font-weight: 600;">Custom Workspace Service Added</div>
+                    <div contenteditable="true" class="item-description">Click description here to customize technical line metrics parameters freely.</div>
+                </td>
+                <td contenteditable="true" class="qty-cell" oninput="calculateTotals()">1</td>
+                <td contenteditable="true" class="price-cell" oninput="calculateTotals()">0.00</td>
+                <td class="total-cell">0.00</td>
+                <td class="action-cell"><button class="btn-delete" onclick="deleteRow(this)">×</button></td>
+            `;
+
+            tbody.appendChild(newRow);
+            calculateTotals();
+            
+            // Focus instantly onto the newly minted row name element
+            newRow.querySelector("div").focus();
+        }
+
+        // Clean removal workflow loops
+        function deleteRow(buttonElement) {
+            const row = buttonElement.closest("tr");
+            row.remove();
+            calculateTotals();
+        }
+    </script>
+</body>
+</html>

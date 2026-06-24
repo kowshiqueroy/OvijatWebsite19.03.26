@@ -33,8 +33,52 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stmt_hist->execute([$order_id]);
                 $prev_status = $stmt_hist->fetchColumn() ?: 'Payment Verified';
 
-                $stmt_up = $pdo->prepare("UPDATE orders SET status = ?, pending_change_details = NULL WHERE id = ?");
-                $stmt_up->execute([$prev_status, $order_id]);
+                $prev_payment_status = 'Unpaid';
+                $prev_fulfillment_status = 'Pending';
+                switch ($prev_status) {
+                    case 'Payment Verified':
+                        $prev_payment_status = 'Paid';
+                        $prev_fulfillment_status = 'Pending';
+                        break;
+                    case 'Confirmed':
+                    case 'Processing':
+                        $prev_payment_status = 'Paid';
+                        $prev_fulfillment_status = 'Processing';
+                        break;
+                    case 'Hold':
+                        $prev_fulfillment_status = 'Hold';
+                        break;
+                    case 'Ready to Ship':
+                        $prev_payment_status = 'Paid';
+                        $prev_fulfillment_status = 'Ready to Ship';
+                        break;
+                    case 'Shipped':
+                        $prev_payment_status = 'Paid';
+                        $prev_fulfillment_status = 'Shipped';
+                        break;
+                    case 'Out for Delivery':
+                        $prev_payment_status = 'Paid';
+                        $prev_fulfillment_status = 'Out for Delivery';
+                        break;
+                    case 'Delivered':
+                        $prev_payment_status = 'Paid';
+                        $prev_fulfillment_status = 'Delivered';
+                        break;
+                    case 'Cancelled':
+                        $prev_fulfillment_status = 'Cancelled';
+                        break;
+                    case 'Rejected':
+                        $prev_fulfillment_status = 'Rejected';
+                        break;
+                    case 'Pending Payment':
+                    default:
+                        $prev_payment_status = 'Unpaid';
+                        $prev_fulfillment_status = 'Pending';
+                        break;
+                }
+
+                $stmt_up = $pdo->prepare("UPDATE orders SET status = ?, payment_status = ?, fulfillment_status = ?, pending_change_details = NULL WHERE id = ?");
+                $stmt_up->execute([$prev_status, $prev_payment_status, $prev_fulfillment_status, $order_id]);
 
                 $stmt_hist_ins = $pdo->prepare("INSERT INTO order_status_history (order_id, status, changed_by, notes) VALUES (?, ?, ?, 'Customer rejected proposed edits')");
                 $stmt_hist_ins->execute([$order_id, $prev_status, $user_id]);
@@ -60,31 +104,59 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 } else {
                     $pdo->beginTransaction();
                     try {
-                        // Apply proposed changes
+                        // 1. Restore the current order stock temporarily
+                        restore_order_stock($pdo, $order_id);
+
+                        // 2. Validate proposed stock levels to avoid overselling
                         if (isset($change_details['items']) && is_array($change_details['items'])) {
                             foreach ($change_details['items'] as $item) {
-                                $item_id = (int)$item['item_id'];
                                 $qty = (int)$item['qty'];
-                                if ($qty <= 0) {
-                                    $stmt_item = $pdo->prepare("UPDATE order_items SET is_deleted = 1 WHERE id = ?");
-                                    $stmt_item->execute([$item_id]);
-                                } else {
-                                    $stmt_item = $pdo->prepare("UPDATE order_items SET qty = ? WHERE id = ?");
-                                    $stmt_item->execute([$qty, $item_id]);
+                                if ($qty <= 0) continue;
+                                $stmt_check = $pdo->prepare("SELECT stock_qty FROM products WHERE id = ?");
+                                $stmt_check->execute([$item['product_id']]);
+                                $prod_qty = (int)$stmt_check->fetchColumn();
+                                if ($item['variant_id'] > 0) {
+                                    $stmt_check = $pdo->prepare("SELECT stock_qty FROM product_variants WHERE id = ? AND product_id = ? AND is_deleted = 0");
+                                    $stmt_check->execute([$item['variant_id'], $item['product_id']]);
+                                    $v_stock = $stmt_check->fetchColumn();
+                                    if ($v_stock !== false) {
+                                        $prod_qty = (int)$v_stock;
+                                    }
+                                }
+                                if ($qty > $prod_qty) {
+                                    throw new Exception("Insufficient stock for product: " . htmlspecialchars($item['name']) . " (Requested: $qty, Available: $prod_qty).");
                                 }
                             }
                         }
 
-                        // Stock was already deducted at checkout.
+                        // 3. Apply proposed changes and item-level adjusted discounts
+                        if (isset($change_details['items']) && is_array($change_details['items'])) {
+                            foreach ($change_details['items'] as $item) {
+                                $item_id = (int)$item['item_id'];
+                                $qty = (int)$item['qty'];
+                                $item_disc = (float)($item['admin_adjusted_discount'] ?? 0);
+                                if ($qty <= 0) {
+                                    $stmt_item = $pdo->prepare("UPDATE order_items SET is_deleted = 1 WHERE id = ?");
+                                    $stmt_item->execute([$item_id]);
+                                } else {
+                                    $stmt_item = $pdo->prepare("UPDATE order_items SET qty = ?, admin_adjusted_discount = ? WHERE id = ?");
+                                    $stmt_item->execute([$qty, $item_disc, $item_id]);
+                                }
+                            }
+                        }
 
-                        $stmt_up = $pdo->prepare("UPDATE orders SET delivery_address = ?, shipping_amount = ?, tax_amount = ?, total_amount = ?, pending_change_details = NULL, status = 'Payment Verified' WHERE id = ?");
+                        $stmt_up = $pdo->prepare("UPDATE orders SET delivery_address = ?, shipping_amount = ?, tax_amount = ?, total_amount = ?, admin_adjusted_discount = ?, pending_change_details = NULL, status = 'Payment Verified', payment_status = 'Paid', fulfillment_status = 'Pending' WHERE id = ?");
                         $stmt_up->execute([
                             $change_details['delivery_address'],
                             (float)$change_details['shipping_amount'],
                             (float)$change_details['tax_amount'],
                             $proposed_total,
+                            (float)($change_details['admin_adjusted_discount'] ?? 0),
                             $order_id
                         ]);
+
+                        // 4. Re-deduct the stock
+                        deduct_order_stock($pdo, $order_id);
 
                         // Debit or credit wallet if shortfall is non-zero
                         if ($shortfall > 0) {
@@ -103,8 +175,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $success_msg = "Order #$order_id changes approved successfully.";
                         // Reload wallet balance
                         $wallet_balance -= $shortfall;
+
+                        // Send the modification confirmation invoice email
+                        require_once 'includes/mailer.php';
+                        send_invoice_email($pdo, $order_id, "Order Modification Confirmed");
                     } catch (Exception $e) {
                         $pdo->rollBack();
+                        // Re-deduct stock if it was restored and transaction failed
+                        try {
+                            deduct_order_stock($pdo, $order_id);
+                        } catch (Exception $ex) {}
                         $error_msg = "Error approving changes: " . $e->getMessage();
                     }
                 }
@@ -164,7 +244,7 @@ $stmt_bal->execute([$user_id]);
 $wallet_balance = (float)($stmt_bal->fetch()['balance'] ?? 0);
 
 // Fetch outstanding orders or orders pending customer approval
-$stmt = $pdo->prepare("SELECT * FROM orders WHERE user_id = ? AND (status IN ('Pending Payment', 'Pending Customer Approval') OR (payment_method = 'Pay Later' AND status NOT IN ('Cancelled', 'Rejected', 'Delivered', 'Payment Verified'))) ORDER BY created_at DESC");
+$stmt = $pdo->prepare("SELECT * FROM orders WHERE user_id = ? AND (payment_status = 'Unpaid' OR fulfillment_status = 'Pending Customer Approval') AND fulfillment_status NOT IN ('Cancelled', 'Rejected') ORDER BY created_at DESC");
 $stmt->execute([$user_id]);
 $orders = $stmt->fetchAll();
 
@@ -172,7 +252,7 @@ $orders = $stmt->fetchAll();
 $total_outstanding = 0;
 $pending_approval_count = 0;
 foreach ($orders as $o) {
-    if ($o['status'] === 'Pending Customer Approval') {
+    if ($o['fulfillment_status'] === 'Pending Customer Approval') {
         $pending_approval_count++;
         $change_details = json_decode($o['pending_change_details'], true);
         if ($change_details) {
@@ -232,7 +312,7 @@ foreach ($orders as $o) {
 <div style="display:flex; flex-direction:column; gap:2rem;">
     <?php foreach ($orders as $o): ?>
         <?php
-        $is_gated = ($o['status'] === 'Pending Customer Approval');
+        $is_gated = ($o['fulfillment_status'] === 'Pending Customer Approval');
         $change_details = $is_gated ? json_decode($o['pending_change_details'], true) : null;
         $order_total = (float)$o['total_amount'];
         $proposed_total = $is_gated && $change_details ? (float)$change_details['total_amount'] : $order_total;

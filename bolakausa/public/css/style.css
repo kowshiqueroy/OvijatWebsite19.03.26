@@ -833,3 +833,310 @@ footer {
         gap: 1.25rem !important;
     }
 }
+
+/* ═══════════════════════════════════════════
+   EXTENDED RESPONSIVE FIXES
+═══════════════════════════════════════════ */
+
+/* ── Stat grid: shrink min to avoid overflow on mid screens ── */
+@media (max-width: 900px) {
+    .stat-grid {
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 1rem;
+    }
+}
+
+/* ── Footer: force 3-column inline grid to stack ── */
+@media (max-width: 768px) {
+    /* Footer override – the footer uses inline style so we target the child container */
+    footer .container,
+    footer > div {
+        display: flex !important;
+        flex-direction: column !important;
+        gap: 2rem !important;
+    }
+
+    /* Section title sizing */
+    .section-title {
+        font-size: 1.4rem;
+        margin-bottom: 1.5rem;
+    }
+
+    /* Hero banner */
+    .hero-banner {
+        padding: 2rem 1.25rem;
+        border-radius: 14px;
+    }
+    .hero-title {
+        font-size: 1.6rem;
+        letter-spacing: -0.5px;
+    }
+    .hero-desc {
+        font-size: 0.95rem;
+    }
+
+    /* Feature grid */
+    .features-grid {
+        grid-template-columns: 1fr 1fr;
+        gap: 1rem;
+    }
+
+    /* Stat boxes – prevent icon overflow */
+    .stat-box {
+        padding: 1.25rem;
+    }
+    .stat-box i {
+        font-size: 4.5rem;
+        right: -10px;
+        bottom: -10px;
+    }
+
+    /* Product grid – 2 columns on mid mobile */
+    .product-grid {
+        grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+        gap: 1rem;
+    }
+
+    /* Product card compact */
+    .product-img {
+        height: 140px;
+        font-size: 2.5rem;
+    }
+    .product-info {
+        padding: 1rem;
+    }
+    .product-name { font-size: 0.95rem; }
+    .product-price { font-size: 1.3rem; }
+
+    /* Buttons – full width on small screens when stacked */
+    .btn {
+        padding: 0.65rem 1.1rem;
+        font-size: 0.825rem;
+    }
+
+    /* Cards */
+    .card {
+        border-radius: 14px;
+    }
+
+    /* Wallet card */
+    .wallet-card {
+        padding: 1.5rem;
+        border-radius: 14px;
+    }
+
+    /* Form groups */
+    .form-group {
+        margin-bottom: 1rem;
+    }
+
+    /* Top header – prevent items from wrapping awkwardly */
+    .top-header > div:last-child {
+        gap: 0.5rem !important;
+    }
+
+    /* Notification dropdown goes full width on small screens */
+    #notif-dropdown {
+        width: 280px !important;
+        right: -1rem !important;
+    }
+
+    /* Sidebar nav padding */
+    .nav-menu a {
+        padding: 0.75rem 0.85rem;
+        font-size: 0.9rem;
+    }
+
+    /* Overflow guard for tables that don't use .table-wrap */
+    .container table,
+    main table {
+        display: block;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        white-space: nowrap;
+    }
+    .container table tbody,
+    .container table thead,
+    main table tbody,
+    main table thead {
+        display: table;
+        width: 100%;
+    }
+}
+
+/* ── Very small screens (≤480px) ── */
+@media (max-width: 480px) {
+    .features-grid {
+        grid-template-columns: 1fr;
+    }
+    .product-grid {
+        grid-template-columns: 1fr;
+    }
+    .hero-title {
+        font-size: 1.35rem;
+    }
+    .section-title {
+        font-size: 1.2rem;
+        gap: 0.5rem;
+    }
+    .container {
+        width: 95%;
+    }
+    /* Error page wraps */
+    .error-page-wrap,
+    .pending-page-wrap {
+        padding: 1.5rem 0.75rem;
+    }
+    .error-title,
+    .pending-title {
+        font-size: 1.35rem;
+    }
+    .error-actions,
+    .pending-actions {
+        flex-direction: column;
+        width: 100%;
+    }
+    .error-actions a,
+    .pending-actions a {
+        width: 100%;
+        justify-content: center;
+        text-align: center;
+    }
+    /* Stat grid single column */
+    .stat-grid {
+        grid-template-columns: 1fr;
+    }
+    /* Mobile toggle – avoid overlapping with header content */
+    .mobile-toggle {
+        top: 8px !important;
+        left: 10px !important;
+    }
+    /* Top header items tight */
+    .top-header {
+        padding: 0.6rem 0.75rem 0.6rem 3.25rem !important;
+        gap: 0.4rem;
+    }
+    /* Notification dropdown tighter */
+    #notif-dropdown {
+        width: 260px !important;
+        right: -0.5rem !important;
+    }
+}
+
+/* ── Prevent text overflow in table cells ── */
+td {
+    word-break: break-word;
+    max-width: 300px;
+}
+
+/* ── Overflow protection for long email/address strings ── */
+.overflow-ellipsis {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 200px;
+    display: inline-block;
+    vertical-align: middle;
+}
+
+/* ── Fix sidebar z-index overlay (backdrop) ── */
+.sidebar-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(15,23,42,0.4);
+    z-index: 999;
+    -webkit-backdrop-filter: blur(2px);
+    backdrop-filter: blur(2px);
+}
+.sidebar-overlay.active {
+    display: block;
+}
+
+/* ── Top header flex wrap fix ── */
+.top-header {
+    flex-wrap: nowrap;
+    min-height: 60px;
+}
+.top-header > div:last-child {
+    flex-shrink: 0;
+}
+
+/* ── Checkout / Form two-column grids stack on mobile ── */
+@media (max-width: 768px) {
+    div[style*="display: grid"][style*="grid-template-columns: 1fr 1fr"],
+    div[style*="display:grid"][style*="grid-template-columns:1fr 1fr"],
+    div[style*="display: grid"][style*="grid-template-columns: repeat(2"] {
+        grid-template-columns: 1fr !important;
+    }
+    /* Checkout steps / order summary sidebar */
+    div[style*="grid-template-columns: 1.6fr"],
+    div[style*="grid-template-columns: 1.5fr"],
+    div[style*="grid-template-columns: 2fr"] {
+        grid-template-columns: 1fr !important;
+    }
+}
+
+/* ── Admin table action buttons shouldn't wrap weirdly ── */
+.action-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+}
+
+/* ── Badge / pill text overflow fix ── */
+.status-badge {
+    white-space: nowrap;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.75rem;
+    font-weight: 700;
+    padding: 0.25rem 0.65rem;
+    border-radius: 20px;
+}
+
+/* ── Print / invoice hidden on mobile toggle button ── */
+@media print {
+    .mobile-toggle,
+    .sidebar,
+    .wholesale-sidebar,
+    .top-header,
+    footer,
+    .no-print {
+        display: none !important;
+    }
+    .main-content {
+        margin-left: 0 !important;
+    }
+}
+
+/* ── Scrollbar styling for sidebar ── */
+.sidebar::-webkit-scrollbar,
+.wholesale-sidebar::-webkit-scrollbar {
+    width: 4px;
+}
+.sidebar::-webkit-scrollbar-track,
+.wholesale-sidebar::-webkit-scrollbar-track {
+    background: transparent;
+}
+.sidebar::-webkit-scrollbar-thumb,
+.wholesale-sidebar::-webkit-scrollbar-thumb {
+    background: rgba(15,23,42,0.1);
+    border-radius: 2px;
+}
+
+/* ── Smooth transitions for interactive elements ── */
+.stat-box,
+.product-card,
+.feature-card,
+.card {
+    will-change: transform;
+}
+
+/* ── Ensure main content area doesn't hide overflow on desktop ── */
+@media (min-width: 769px) {
+    .main-content {
+        overflow-x: clip;
+    }
+}

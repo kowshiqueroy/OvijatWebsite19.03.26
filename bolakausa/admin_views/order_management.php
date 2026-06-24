@@ -43,21 +43,26 @@ $statuses = [
 // Handle Status Changes & Stock Deduction
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_status']) && $user_role !== 'viewer') {
     $order_id = (int)$_POST['order_id'];
-    $new_status = $_POST['status'];
+    $new_fulfillment = $_POST['fulfillment_status'];
+    $new_payment = $_POST['payment_status'];
     $notes = $_POST['notes'] ?? '';
 
     // Fetch current status
-    $stmt = $pdo->prepare("SELECT status FROM orders WHERE id = ?");
+    $stmt = $pdo->prepare("SELECT status, fulfillment_status, payment_status FROM orders WHERE id = ?");
     $stmt->execute([$order_id]);
-    $current_status = $stmt->fetch()['status'] ?? '';
+    $current_order = $stmt->fetch();
 
-    if ($current_status && $current_status !== $new_status) {
-        $current_weight = $status_weights[$current_status] ?? 0;
-        $new_weight = $status_weights[$new_status] ?? 0;
+    if ($current_order) {
+        $current_fulfillment = $current_order['fulfillment_status'];
+        $current_payment = $current_order['payment_status'];
+        $current_legacy = $current_order['status'];
+
+        $current_weight = $status_weights[$current_fulfillment] ?? 0;
+        $new_weight = $status_weights[$new_fulfillment] ?? 0;
 
         // Constraint: Status action cannot be backward without Admin approval
         if ($new_weight < $current_weight && $user_role !== 'admin') {
-            $error = "Access Denied: Reverting status backward (from '$current_status' to '$new_status') is blocked for non-admin accounts.";
+            $error = "Access Denied: Reverting status backward (from '$current_fulfillment' to '$new_fulfillment') is blocked for non-admin accounts.";
         } else {
             $pdo->beginTransaction();
             try {
@@ -68,19 +73,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_status']) && $
                 $cust_id = $ord_data['user_id'] ?? null;
                 $order_total = (float)($ord_data['total_amount'] ?? 0);
 
-                // Update Order Status
-                $stmt = $pdo->prepare("UPDATE orders SET status = ? WHERE id = ?");
-                $stmt->execute([$new_status, $order_id]);
-
-                // LOGIC: Deduct Product Stock only when moving to/past "Payment Verified" status
-                $payment_verified_weight = $status_weights['Payment Verified'] ?? 2;
-                if ($new_weight >= $payment_verified_weight && $current_weight < $payment_verified_weight) {
-                    deduct_order_stock($pdo, $order_id);
-                }
+                // Update Order Statuses
+                // Keep legacy status in sync with fulfillment status
+                $stmt = $pdo->prepare("UPDATE orders SET status = ?, fulfillment_status = ?, payment_status = ? WHERE id = ?");
+                $stmt->execute([$new_fulfillment, $new_fulfillment, $new_payment, $order_id]);
 
                 // Restore stock from picking splits if Cancelled or Rejected
-                if (in_array($new_status, ['Cancelled', 'Rejected'])) {
-                    if (($current_weight ?? 0) >= $payment_verified_weight) {
+                if (in_array($new_fulfillment, ['Cancelled', 'Rejected'])) {
+                    // Restore catalog stock if transitioning to Cancelled/Rejected from a non-Cancelled/Rejected status
+                    if (!in_array($current_fulfillment, ['Cancelled', 'Rejected'])) {
                         restore_order_stock($pdo, $order_id);
                     }
 
@@ -96,54 +97,64 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_status']) && $
                     $dStmt = $pdo->prepare("UPDATE order_item_picks SET is_deleted = 1 WHERE order_item_id IN (SELECT id FROM order_items WHERE order_id = ? AND is_deleted = 0)");
                     $dStmt->execute([$order_id]);
 
-                    // Automatic Wallet Refund if Cancelled
-                    if ($new_status === 'Cancelled' && $cust_id) {
+                    // Automatic Wallet Refund if Cancelled AND was Paid
+                    if ($new_fulfillment === 'Cancelled' && $cust_id) {
                         // Check if already refunded to prevent double credit
                         $stmt_ref_chk = $pdo->prepare("SELECT COUNT(*) FROM wallet_transactions WHERE user_id = ? AND type = 'credit' AND description LIKE ?");
                         $stmt_ref_chk->execute([$cust_id, "Refund for Cancelled Order #$order_id%"]);
                         $already_refunded = $stmt_ref_chk->fetchColumn() > 0;
                         
-                        if (!$already_refunded) {
+                        if (!$already_refunded && $current_payment === 'Paid') {
                             $stmt_ref = $pdo->prepare("INSERT INTO wallet_transactions (user_id, type, amount, description) VALUES (?, 'credit', ?, ?)");
                             $stmt_ref->execute([$cust_id, $order_total, "Refund for Cancelled Order #$order_id"]);
+                            
+                            $stmt_up_pay = $pdo->prepare("UPDATE orders SET payment_status = 'Refunded' WHERE id = ?");
+                            $stmt_up_pay->execute([$order_id]);
                         }
                     }
                 }
 
-                // Restore stock on backward status transition past "Payment Verified"
-                if ($new_weight < $current_weight && ($current_weight ?? 0) >= $payment_verified_weight && $new_weight < $payment_verified_weight && !in_array($new_status, ['Cancelled', 'Rejected'])) {
-                    restore_order_stock($pdo, $order_id);
+                // If moving from Cancelled/Rejected to Pending/Processing/etc, re-deduct catalog stock
+                if (in_array($current_fulfillment, ['Cancelled', 'Rejected']) && !in_array($new_fulfillment, ['Cancelled', 'Rejected'])) {
+                    deduct_order_stock($pdo, $order_id);
                 }
 
                 // Record in Status History
+                $hist_notes = "Fulfillment: $new_fulfillment | Payment: $new_payment";
+                if ($notes) {
+                    $hist_notes .= " | Notes: $notes";
+                }
                 $stmt = $pdo->prepare("INSERT INTO order_status_history (order_id, status, changed_by, notes) VALUES (?, ?, ?, ?)");
-                $stmt->execute([$order_id, $new_status, $_SESSION['user_id'], $notes]);
+                $stmt->execute([$order_id, $new_fulfillment, $_SESSION['user_id'], $hist_notes]);
 
                 $pdo->commit();
-                $success = "Order #$order_id successfully transitioned to status: $new_status.";
-                log_action($pdo, $_SESSION['user_id'], "Order Status Changed", "Order #$order_id: $current_status -> $new_status");
+                $success = "Order #$order_id successfully updated. Fulfillment: $new_fulfillment, Payment: $new_payment.";
+                log_action($pdo, $_SESSION['user_id'], "Order Status Changed", "Order #$order_id: $current_fulfillment/$current_payment -> $new_fulfillment/$new_payment");
 
                 // Trigger customer notification
-                $stmt_cust = $pdo->prepare("SELECT user_id FROM orders WHERE id = ?");
-                $stmt_cust->execute([$order_id]);
-                $cust_id = $stmt_cust->fetchColumn();
                 if ($cust_id) {
                     $stmt_notif = $pdo->prepare("INSERT INTO notifications (user_id, title, message) VALUES (?, ?, ?)");
-                    $stmt_notif->execute([$cust_id, "Order Update #$order_id", "Your order status has been updated to: $new_status."]);
+                    $stmt_notif->execute([$cust_id, "Order Update #$order_id", "Your order has been updated. Fulfillment: $new_fulfillment, Payment: $new_payment."]);
                 }
 
                 // Trigger Email Notification
                 require_once __DIR__ . '/../includes/mailer.php';
-                $uStmt = $pdo->prepare("SELECT u.email, u.full_name FROM users u JOIN orders o ON u.id = o.user_id WHERE o.id = ?");
-                $uStmt->execute([$order_id]);
-                $user_data = $uStmt->fetch();
-                if ($user_data) {
-                    $email_body = "<h3>Order Status Update</h3>
-                    <p>Hello " . e($user_data['full_name']) . ",</p>
-                    <p>The status of your order <strong>#$order_id</strong> has been updated to: <strong style='color: #3b82f6;'>" . e($new_status) . "</strong></p>
-                    <p>Notes: " . e($notes) . "</p>
-                    <p>Log in to your wholesale dashboard to view full details.</p>";
-                    send_system_email($pdo, $user_data['email'], "Order Update #$order_id: $new_status", $email_body);
+                if ($new_fulfillment === 'Ready to Ship') {
+                    send_invoice_email($pdo, $order_id, "Order Ready to Ship");
+                } else {
+                    $uStmt = $pdo->prepare("SELECT u.email, u.full_name FROM users u JOIN orders o ON u.id = o.user_id WHERE o.id = ?");
+                    $uStmt->execute([$order_id]);
+                    $user_data = $uStmt->fetch();
+                    if ($user_data) {
+                        $email_body = "<h3>Order Status Update</h3>
+                        <p>Hello " . e($user_data['full_name']) . ",</p>
+                        <p>Your order <strong>#$order_id</strong> has been updated:</p>
+                        <p>Fulfillment Status: <strong style='color: #3b82f6;'>" . e($new_fulfillment) . "</strong></p>
+                        <p>Payment Status: <strong style='color: #10b981;'>" . e($new_payment) . "</strong></p>
+                        <p>Notes: " . e($notes) . "</p>
+                        <p>Log in to your wholesale dashboard to view full details.</p>";
+                        send_system_email($pdo, $user_data['email'], "Order Update #$order_id: $new_fulfillment", $email_body);
+                    }
                 }
 
             } catch (Exception $e) {
@@ -203,7 +214,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_order']) && $use
     $delivery_address = trim($_POST['delivery_address'] ?? '');
     $shipping_amount = (float)($_POST['shipping_amount'] ?? 0);
     $tax_amount = (float)($_POST['tax_amount'] ?? 0);
+    $admin_adjusted_discount = (float)($_POST['admin_adjusted_discount'] ?? 0);
     $item_quantities = is_array($_POST['item_qty'] ?? null) ? $_POST['item_qty'] : [];
+    $item_discounts = is_array($_POST['item_discount'] ?? null) ? $_POST['item_discount'] : [];
     
     $pdo->beginTransaction();
     try {
@@ -234,15 +247,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_order']) && $use
                 if ($qty > $old_item['qty']) {
                     $qty_increased = true;
                 }
+                $item_disc = (float)($item_discounts[$item_id] ?? 0);
                 if ($qty > 0) {
-                    $subtotal += ($old_item['price_at_purchase'] * $qty);
+                    $subtotal += (($old_item['price_at_purchase'] - $item_disc) * $qty);
                     $proposed_items[] = [
                         'item_id' => $item_id,
                         'product_id' => $old_item['product_id'],
                         'variant_id' => $old_item['variant_id'],
                         'name' => $old_item['name'],
                         'qty' => $qty,
-                        'price' => $old_item['price_at_purchase']
+                        'price' => $old_item['price_at_purchase'],
+                        'admin_adjusted_discount' => $item_disc
                     ];
                 } else {
                     $proposed_items[] = [
@@ -251,13 +266,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_order']) && $use
                         'variant_id' => $old_item['variant_id'],
                         'name' => $old_item['name'],
                         'qty' => 0,
-                        'price' => $old_item['price_at_purchase']
+                        'price' => $old_item['price_at_purchase'],
+                        'admin_adjusted_discount' => $item_disc
                     ];
                 }
             }
         }
         
-        $new_total = max(0, $subtotal + $shipping_amount + $tax_amount - (float)$old_order['discount_amount']);
+        $new_total = max(0, $subtotal + $shipping_amount + $tax_amount - (float)$old_order['discount_amount'] - $admin_adjusted_discount);
         $requires_approval = ($new_total > $old_total) || $qty_increased;
         
         if ($requires_approval) {
@@ -266,11 +282,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_order']) && $use
                 'shipping_amount' => $shipping_amount,
                 'tax_amount' => $tax_amount,
                 'total_amount' => $new_total,
+                'admin_adjusted_discount' => $admin_adjusted_discount,
                 'items' => $proposed_items
             ];
             $pending_json = json_encode($proposed_change);
             
-            $stmt = $pdo->prepare("UPDATE orders SET status = 'Pending Customer Approval', pending_change_details = ? WHERE id = ?");
+            $stmt = $pdo->prepare("UPDATE orders SET status = 'Pending Customer Approval', fulfillment_status = 'Pending Customer Approval', pending_change_details = ? WHERE id = ?");
             $stmt->execute([$pending_json, $order_id]);
             
             $stmt = $pdo->prepare("INSERT INTO order_status_history (order_id, status, changed_by, notes) VALUES (?, 'Pending Customer Approval', ?, ?)");
@@ -284,19 +301,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_order']) && $use
         } else {
             foreach ($item_quantities as $item_id => $qty) {
                 $qty = (int)$qty;
+                $item_disc = (float)($item_discounts[$item_id] ?? 0);
                 if ($qty <= 0) {
                     $stmt = $pdo->prepare("UPDATE order_items SET is_deleted = 1 WHERE id = ?");
                     $stmt->execute([$item_id]);
                 } else {
-                    $stmt = $pdo->prepare("UPDATE order_items SET qty = ? WHERE id = ?");
-                    $stmt->execute([$qty, $item_id]);
+                    $stmt = $pdo->prepare("UPDATE order_items SET qty = ?, admin_adjusted_discount = ? WHERE id = ?");
+                    $stmt->execute([$qty, $item_disc, $item_id]);
                 }
             }
             
-            $stmt = $pdo->prepare("UPDATE orders SET delivery_address = ?, shipping_amount = ?, tax_amount = ?, total_amount = ?, pending_change_details = NULL WHERE id = ?");
-            $stmt->execute([$delivery_address, $shipping_amount, $tax_amount, $new_total, $order_id]);
+            $stmt = $pdo->prepare("UPDATE orders SET delivery_address = ?, shipping_amount = ?, tax_amount = ?, total_amount = ?, admin_adjusted_discount = ?, pending_change_details = NULL WHERE id = ?");
+            $stmt->execute([$delivery_address, $shipping_amount, $tax_amount, $new_total, $admin_adjusted_discount, $order_id]);
             
-            // Adjust wallet for decreased total immediately
+            // Adjust wallet for decreased total immediately (refund approved discount difference)
             $diff = $old_total - $new_total;
             if ($diff > 0) {
                 $stmt_tx = $pdo->prepare("INSERT INTO wallet_transactions (user_id, type, amount, description) VALUES (?, 'credit', ?, ?)");
@@ -308,6 +326,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_order']) && $use
             
             $success = "Order #$order_id details successfully updated. New Total: $$new_total.";
             log_action($pdo, $_SESSION['user_id'], "Order Edited by Admin", "Order #$order_id: Address: $delivery_address, Total: $new_total");
+            
+            // Dispatch Invoice Email
+            require_once __DIR__ . '/../includes/mailer.php';
+            send_invoice_email($pdo, $order_id, "Order Modified by Admin");
         }
         $pdo->commit();
     } catch (Exception $e) {
@@ -384,7 +406,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_picks']) && $use
         
         if ($all_ok) {
             // Move order to Ready to Ship
-            $stmt = $pdo->prepare("UPDATE orders SET status = 'Ready to Ship' WHERE id = ?");
+            $stmt = $pdo->prepare("UPDATE orders SET status = 'Ready to Ship', fulfillment_status = 'Ready to Ship' WHERE id = ?");
             $stmt->execute([$order_id]);
             
             $stmt = $pdo->prepare("INSERT INTO order_status_history (order_id, status, changed_by, notes) VALUES (?, 'Ready to Ship', ?, 'Inventory picking split allocated')");
@@ -401,6 +423,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_picks']) && $use
             
             $stmt_notif = $pdo->prepare("INSERT INTO notifications (user_id, title, message) VALUES (?, ?, ?)");
             $stmt_notif->execute([$cust_id, "Order Ready for Shipping", "Your order #$order_id items have been picked and verified."]);
+            
+            // Trigger Email Notification
+            require_once __DIR__ . '/../includes/mailer.php';
+            send_invoice_email($pdo, $order_id, "Order Ready to Ship");
             
         } else {
             $pdo->rollBack();
@@ -436,9 +462,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['record_order_payment'
                 $stmt = $pdo->prepare("INSERT INTO wallet_transactions (user_id, type, amount, description) VALUES (?, 'credit', ?, ?)");
                 $stmt->execute([$ord_user_id, $amount, $desc]);
 
+                // Update order's payment status to Paid
+                $stmt_up = $pdo->prepare("UPDATE orders SET payment_status = 'Paid' WHERE id = ?");
+                $stmt_up->execute([$order_id]);
+
+                // Also if legacy status was 'Pending Payment', change it to 'Payment Verified'
+                $stmt_status = $pdo->prepare("UPDATE orders SET status = 'Payment Verified' WHERE id = ? AND status = 'Pending Payment'");
+                $stmt_status->execute([$order_id]);
+
                 // Log history for status update/payment recorded
                 $stmt = $pdo->prepare("INSERT INTO order_status_history (order_id, status, changed_by, notes) VALUES (?, (SELECT status FROM orders WHERE id = ?), ?, ?)");
-                $stmt->execute([$order_id, $order_id, $_SESSION['user_id'], "Admin recorded offline payment of $" . number_format($amount, 2) . " via $method_ref."]);
+                $stmt->execute([$order_id, $order_id, $_SESSION['user_id'], "Admin recorded offline payment of $" . number_format($amount, 2) . " via $method_ref. Payment status marked Paid."]);
 
                 $pdo->commit();
                 $success = "Payment of $" . number_format($amount, 2) . " successfully recorded and credited to wholesaler's wallet.";
@@ -857,7 +891,8 @@ if (!$active_order_id && !empty($orders)) {
                         <th style="text-align: left;">Order info</th>
                         <th style="text-align: left;">Client</th>
                         <th style="text-align: right;">Total</th>
-                        <th style="text-align: center;">Status</th>
+                        <th style="text-align: center;">Payment</th>
+                        <th style="text-align: center;">Fulfillment</th>
                     </tr>
                 </thead>
                 <tbody id="ordersTableBody">
@@ -874,21 +909,32 @@ if (!$active_order_id && !empty($orders)) {
                         <td style="text-align: right; font-weight: 800; color: var(--primary);">$<?php echo number_format($o['total_amount'], 2); ?></td>
                         <td style="text-align: center;">
                             <?php
-                                $bg = 'rgba(15,23,42,0.1)'; $color = 'var(--secondary)';
-                                if ($o['status'] === 'Pending Payment') { $bg = 'rgba(244, 63, 94, 0.08)'; $color = 'var(--rose)'; }
-                                if ($o['status'] === 'Pending Customer Approval') { $bg = 'rgba(245, 158, 11, 0.15)'; $color = '#d97706'; }
-                                if ($o['status'] === 'Delivered') { $bg = 'rgba(16, 185, 129, 0.08)'; $color = 'var(--primary)'; }
-                                if ($o['status'] === 'Processing') { $bg = 'rgba(59, 130, 246, 0.08)'; $color = '#3b82f6'; }
-                                if ($o['status'] === 'Payment Verified') { $bg = 'rgba(16, 185, 129, 0.08)'; $color = 'var(--primary-dark)'; }
-                                if ($o['status'] === 'Out for Delivery') { $bg = 'rgba(99, 102, 241, 0.08)'; $color = 'var(--accent)'; }
-                                if ($o['status'] === 'Rejected') { $bg = 'rgba(15, 23, 42, 0.7)'; $color = 'white'; }
-                                if ($o['status'] === 'Confirmed') { $bg = 'rgba(16, 185, 129, 0.15)'; $color = 'var(--primary)'; }
-                                if ($o['status'] === 'Hold') { $bg = 'rgba(245, 158, 11, 0.15)'; $color = '#d97706'; }
-                                if ($o['status'] === 'Stock Out') { $bg = 'rgba(244, 63, 94, 0.15)'; $color = 'var(--rose)'; }
-                                if ($o['status'] === 'Ready to Ship') { $bg = 'rgba(99, 102, 241, 0.15)'; $color = 'var(--accent)'; }
+                                $p_bg = 'rgba(15,23,42,0.05)'; $p_color = 'var(--secondary)';
+                                if ($o['payment_status'] === 'Unpaid') { $p_bg = 'rgba(244, 63, 94, 0.08)'; $p_color = 'var(--rose)'; }
+                                elseif ($o['payment_status'] === 'Paid') { $p_bg = 'rgba(16, 185, 129, 0.08)'; $p_color = 'var(--primary-dark)'; }
+                                elseif ($o['payment_status'] === 'Refunded') { $p_bg = 'rgba(99, 102, 241, 0.08)'; $p_color = '#4f46e5'; }
                             ?>
-                            <span style="padding: 4px 8px; border-radius: 8px; font-size: 0.65rem; font-weight: 800; background: <?php echo $bg; ?>; color: <?php echo $color; ?>; text-transform: uppercase;">
-                                <?php echo $o['status']; ?>
+                            <span style="padding: 4px 8px; border-radius: 8px; font-size: 0.65rem; font-weight: 800; background: <?php echo $p_bg; ?>; color: <?php echo $p_color; ?>; text-transform: uppercase; white-space: nowrap;">
+                                <?php echo htmlspecialchars($o['payment_status']); ?>
+                            </span>
+                        </td>
+                        <td style="text-align: center;">
+                            <?php
+                                $f_bg = 'rgba(15,23,42,0.05)'; $f_color = 'var(--secondary)';
+                                if ($o['fulfillment_status'] === 'Pending') { $f_bg = 'rgba(100, 116, 139, 0.1)'; $f_color = '#475569'; }
+                                elseif ($o['fulfillment_status'] === 'Processing') { $f_bg = 'rgba(59, 130, 246, 0.08)'; $f_color = '#3b82f6'; }
+                                elseif ($o['fulfillment_status'] === 'Hold') { $f_bg = 'rgba(245, 158, 11, 0.15)'; $f_color = '#d97706'; }
+                                elseif ($o['fulfillment_status'] === 'Stock Out') { $f_bg = 'rgba(239, 68, 68, 0.08)'; $f_color = '#ef4444'; }
+                                elseif ($o['fulfillment_status'] === 'Ready to Ship') { $f_bg = 'rgba(99, 102, 241, 0.08)'; $f_color = '#4f46e5'; }
+                                elseif ($o['fulfillment_status'] === 'Shipped') { $f_bg = 'rgba(139, 92, 246, 0.08)'; $f_color = '#8b5cf6'; }
+                                elseif ($o['fulfillment_status'] === 'Out for Delivery') { $f_bg = 'rgba(249, 115, 22, 0.08)'; $f_color = '#f97316'; }
+                                elseif ($o['fulfillment_status'] === 'Delivered') { $f_bg = 'rgba(16, 185, 129, 0.08)'; $f_color = 'var(--primary-dark)'; }
+                                elseif ($o['fulfillment_status'] === 'Cancelled') { $f_bg = 'rgba(100, 116, 139, 0.08)'; $f_color = '#64748b'; }
+                                elseif ($o['fulfillment_status'] === 'Rejected') { $f_bg = 'rgba(239, 68, 68, 0.15)'; $f_color = '#b91c1c'; }
+                                elseif ($o['fulfillment_status'] === 'Pending Customer Approval') { $f_bg = 'rgba(245, 158, 11, 0.15)'; $f_color = '#d97706'; }
+                            ?>
+                            <span style="padding: 4px 8px; border-radius: 8px; font-size: 0.65rem; font-weight: 800; background: <?php echo $f_bg; ?>; color: <?php echo $f_color; ?>; text-transform: uppercase; white-space: nowrap;">
+                                <?php echo htmlspecialchars($o['fulfillment_status']); ?>
                             </span>
                         </td>
                         <!-- Hidden search columns -->
@@ -926,52 +972,58 @@ if (!$active_order_id && !empty($orders)) {
             <div class="hub-body">
                 
                 <!-- Visual Stepper Progress Bar -->
-                <?php if (!in_array($o['status'], ['Cancelled', 'Rejected'])): ?>
+                <?php if (!in_array($o['fulfillment_status'], ['Cancelled', 'Rejected'])): ?>
                     <?php
                     // Stepper Progress Calculations
                     $prog_p = 10;
-                    $status = $o['status'];
-                    if ($status === 'Payment Verified') $prog_p = 28;
-                    if ($status === 'Confirmed') $prog_p = 46;
-                    if (in_array($status, ['Processing', 'Hold', 'Stock Out'])) $prog_p = 64;
-                    if ($status === 'Ready to Ship') $prog_p = 82;
-                    if (in_array($status, ['Shipped', 'Out for Delivery'])) $prog_p = 91;
+                    $status = $o['fulfillment_status'];
+                    if ($status === 'Pending') $prog_p = 10;
+                    if ($status === 'Processing') $prog_p = 28;
+                    if ($status === 'Hold') $prog_p = 46;
+                    if ($status === 'Ready to Ship') $prog_p = 64;
+                    if (in_array($status, ['Shipped', 'Out for Delivery'])) $prog_p = 82;
                     if ($status === 'Delivered') $prog_p = 100;
                     
-                    $w_status = $status_weights[$status] ?? 0;
+                    $w_status = 0;
+                    if ($status === 'Pending') $w_status = 1;
+                    elseif ($status === 'Processing') $w_status = 2;
+                    elseif ($status === 'Hold') $w_status = 3;
+                    elseif ($status === 'Ready to Ship') $w_status = 4;
+                    elseif (in_array($status, ['Shipped', 'Out for Delivery'])) $w_status = 5;
+                    elseif ($status === 'Delivered') $w_status = 6;
                     ?>
                     <div class="stepper-wrapper">
                         <div class="stepper-bg-line"></div>
                         <div class="stepper-progress-line" style="width: <?php echo $prog_p; ?>%;"></div>
                         
                         <div class="step-node <?php echo ($w_status >= 1) ? (($w_status == 1) ? 'active' : 'completed') : ''; ?>">
-                            <div class="step-circle"><i class="fas fa-dollar-sign"></i></div>
-                            <div class="step-label">Paid</div>
+                            <div class="step-circle"><i class="fas fa-file-invoice"></i></div>
+                            <div class="step-label">Pending</div>
+                        </div>
+                        <div class="step-node <?php echo ($w_status >= 2) ? (($w_status == 2) ? 'active' : 'completed') : ''; ?>">
+                            <div class="step-circle"><i class="fas fa-cog"></i></div>
+                            <div class="step-label">Processing</div>
                         </div>
                         <div class="step-node <?php echo ($w_status >= 3) ? (($w_status == 3) ? 'active' : 'completed') : ''; ?>">
-                            <div class="step-circle"><i class="fas fa-check"></i></div>
-                            <div class="step-label">Confirm</div>
+                            <div class="step-circle"><i class="fas fa-pause"></i></div>
+                            <div class="step-label">Hold</div>
                         </div>
-                        <div class="step-node <?php echo ($w_status >= 4) ? ((in_array($status, ['Processing', 'Hold', 'Stock Out'])) ? 'active' : 'completed') : ''; ?>">
-                            <div class="step-circle"><i class="fas fa-cog"></i></div>
-                            <div class="step-label">Process</div>
-                        </div>
-                        <div class="step-node <?php echo ($w_status >= 7) ? (($w_status == 7) ? 'active' : 'completed') : ''; ?>">
+                        <div class="step-node <?php echo ($w_status >= 4) ? (($w_status == 4) ? 'active' : 'completed') : ''; ?>">
                             <div class="step-circle"><i class="fas fa-boxes"></i></div>
                             <div class="step-label">Ready</div>
                         </div>
-                        <div class="step-node <?php echo ($w_status >= 8) ? ((in_array($status, ['Shipped', 'Out for Delivery'])) ? 'active' : 'completed') : ''; ?>">
+                        <div class="step-node <?php echo ($w_status >= 5) ? (($w_status == 5) ? 'active' : 'completed') : ''; ?>">
                             <div class="step-circle"><i class="fas fa-truck"></i></div>
                             <div class="step-label">Ship</div>
                         </div>
-                        <div class="step-node <?php echo ($w_status >= 10) ? (($w_status == 10) ? 'active' : 'completed') : ''; ?>">
+                        <div class="step-node <?php echo ($w_status >= 6) ? (($w_status == 6) ? 'active' : 'completed') : ''; ?>">
                             <div class="step-circle"><i class="fas fa-home"></i></div>
                             <div class="step-label">Done</div>
                         </div>
                     </div>
                 <?php else: ?>
                     <div style="background: rgba(244, 63, 94, 0.08); border: 1px solid rgba(244, 63, 94, 0.15); padding: 0.75rem 1rem; border-radius: 10px; text-align: center; margin-bottom: 1.5rem; font-weight: 800; color: var(--rose); text-transform: uppercase; font-size: 0.8rem; letter-spacing: 0.05em;">
-                        <i class="fas fa-ban"></i> Order Terminated - Status: <?php echo $o['status']; ?>
+                        <i class="fas fa-ban"></i> Order Terminated - Fulfillment Status: <?php echo htmlspecialchars($o['fulfillment_status']); ?>
                     </div>
                 <?php endif; ?>
 
@@ -1060,10 +1112,19 @@ if (!$active_order_id && !empty($orders)) {
                             <h4 style="margin:0 0 0.85rem 0; font-family:'Plus Jakarta Sans',sans-serif; color:var(--secondary); font-size:0.9rem;"><i class="fas fa-exchange-alt" style="color:var(--accent);"></i> Transition Status Gate</h4>
                             
                             <div class="form-group">
-                                <label style="font-size:0.75rem; font-weight:700;">Target State</label>
-                                <select name="status" style="border-radius:8px; font-size:0.85rem; padding:0.6rem; border:1px solid #cbd5e1;">
+                                <label style="font-size:0.75rem; font-weight:700;">Fulfillment Status</label>
+                                <select name="fulfillment_status" style="border-radius:8px; font-size:0.85rem; padding:0.6rem; border:1px solid #cbd5e1; width: 100%;">
                                     <?php foreach ($statuses as $st): ?>
-                                        <option value="<?php echo $st; ?>" <?php echo ($o['status'] === $st) ? 'selected' : ''; ?>><?php echo $st; ?></option>
+                                        <option value="<?php echo $st; ?>" <?php echo ($o['fulfillment_status'] === $st) ? 'selected' : ''; ?>><?php echo $st; ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+
+                            <div class="form-group">
+                                <label style="font-size:0.75rem; font-weight:700;">Payment Status</label>
+                                <select name="payment_status" style="border-radius:8px; font-size:0.85rem; padding:0.6rem; border:1px solid #cbd5e1; width: 100%;">
+                                    <?php foreach (['Unpaid', 'Paid', 'Refunded'] as $pst): ?>
+                                        <option value="<?php echo $pst; ?>" <?php echo ($o['payment_status'] === $pst) ? 'selected' : ''; ?>><?php echo $pst; ?></option>
                                     <?php endforeach; ?>
                                 </select>
                             </div>
@@ -1082,7 +1143,7 @@ if (!$active_order_id && !empty($orders)) {
                     <?php endif; ?>
                     
                     <!-- Refund gate for admin -->
-                    <?php if ($o['status'] === 'Rejected' && !$o['refund_approved']): ?>
+                    <?php if ($o['fulfillment_status'] === 'Rejected' && !$o['refund_approved']): ?>
                         <div style="margin-top: 1.5rem; background: rgba(244, 63, 94, 0.05); border: 1px dashed var(--rose); padding: 1.25rem; border-radius: 12px;">
                             <h4 style="margin:0 0 0.5rem 0; font-family:'Plus Jakarta Sans',sans-serif; color:var(--rose); font-size:0.9rem;"><i class="fas fa-undo"></i> B2B Refund Management Gate</h4>
                             <?php if ($user_role === 'admin'): ?>
@@ -1111,7 +1172,7 @@ if (!$active_order_id && !empty($orders)) {
                     $stmt_items->execute([$o['id']]);
                     $o_items = $stmt_items->fetchAll();
                     ?>
-                    <?php if ($o['status'] === 'Processing'): ?>
+                    <?php if ($o['fulfillment_status'] === 'Processing'): ?>
                         <h4 style="margin:0 0 1rem 0; font-family:'Plus Jakarta Sans',sans-serif; color:var(--secondary); font-size:0.9rem;"><i class="fas fa-boxes" style="color:var(--accent);"></i> Inventory Lot Picking Allocation</h4>
                         
                         <form method="POST">
@@ -1238,7 +1299,7 @@ if (!$active_order_id && !empty($orders)) {
                                 <input type="text" name="delivery_address" value="<?php echo e($o['delivery_address']); ?>" style="padding:0.6rem; border-radius:8px; font-size:0.85rem; border:1px solid #cbd5e1;">
                             </div>
                             
-                            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:1rem; margin-bottom:1.5rem;">
+                            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:1rem; margin-bottom:1rem;">
                                 <div class="form-group" style="margin:0;">
                                     <label style="font-size:0.75rem; font-weight:700;">Shipping Fee ($)</label>
                                     <input type="number" step="0.01" name="shipping_amount" value="<?php echo $o['shipping_amount']; ?>" style="padding:0.6rem; border-radius:8px; font-size:0.85rem; border:1px solid #cbd5e1;">
@@ -1248,15 +1309,46 @@ if (!$active_order_id && !empty($orders)) {
                                     <input type="number" step="0.01" name="tax_amount" value="<?php echo $o['tax_amount']; ?>" style="padding:0.6rem; border-radius:8px; font-size:0.85rem; border:1px solid #cbd5e1;">
                                 </div>
                             </div>
+
+                            <div style="background: #f8fafc; border: 1px solid var(--border-light); padding: 1rem; border-radius: 8px; margin-bottom: 1.5rem;">
+                                <div style="font-size: 0.75rem; font-weight: 700; color: var(--secondary); margin-bottom: 0.25rem;">Negotiated Grand Total Discount:</div>
+                                <div style="font-size: 0.8rem; color: #b45309; margin-bottom: 0.5rem; font-weight: 700;">
+                                    <?php 
+                                    if ($o['requested_discount_type'] !== 'none') {
+                                        $symbol = $o['requested_discount_type'] === 'percent' ? '%' : '$';
+                                        echo "Wholesaler requested: " . $o['requested_discount_value'] . $symbol;
+                                    } else {
+                                        echo "No grand discount requested.";
+                                    }
+                                    ?>
+                                </div>
+                                <div class="form-group" style="margin:0;">
+                                    <label style="font-size:0.7rem; font-weight:700; color: var(--secondary);">Admin Approved Discount ($) *</label>
+                                    <input type="number" step="0.01" min="0" name="admin_adjusted_discount" value="<?php echo $o['admin_adjusted_discount']; ?>" style="padding:0.5rem; border-radius:6px; font-size:0.8rem; border:1px solid #cbd5e1; width: 100%;">
+                                </div>
+                            </div>
                             
-                            <h5 style="font-weight:800; margin:0 0 0.5rem 0; font-size:0.75rem; color:var(--text-muted); text-transform:uppercase;">Adjust Items Quantities</h5>
-                            <div style="display:flex; flex-direction:column; gap:0.5rem; margin-bottom:1.5rem;">
+                            <h5 style="font-weight:800; margin:0 0 0.5rem 0; font-size:0.75rem; color:var(--text-muted); text-transform:uppercase;">Adjust Items Quantities & Discounts</h5>
+                            <div style="display:flex; flex-direction:column; gap:0.75rem; margin-bottom:1.5rem;">
                                 <?php foreach ($o_items as $item): ?>
-                                    <div style="display:flex; justify-content:space-between; align-items:center; gap:1rem; background:#f8fafc; padding:0.5rem 0.85rem; border-radius:8px; border:1px solid #f1f5f9;">
-                                        <span style="font-size:0.75rem; font-weight:700; color:var(--text-main);"><?php echo e($item['name']); ?> ($<?php echo number_format($item['price_at_purchase'], 2); ?>)</span>
-                                        <div style="display:flex; align-items:center; gap:0.5rem;">
-                                            <span style="font-size:0.7rem; color:var(--text-muted);">Qty:</span>
-                                            <input type="number" name="item_qty[<?php echo $item['id']; ?>]" value="<?php echo $item['qty']; ?>" min="0" style="width:65px; padding:0.35rem; text-align:center; border-radius:6px; border:1px solid #cbd5e1; font-size:0.8rem;">
+                                    <div style="background:#f8fafc; padding:1rem; border-radius:8px; border:1px solid #f1f5f9;">
+                                        <div style="font-weight:700; font-size:0.8rem; color:var(--secondary); margin-bottom:0.5rem;">
+                                            <?php echo e($item['name']); ?> ($<?php echo number_format($item['price_at_purchase'], 2); ?>)
+                                        </div>
+                                        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:0.5rem;">
+                                            <div class="form-group" style="margin:0;">
+                                                <label style="font-size:0.65rem; color:var(--text-muted); font-weight:700;">Quantity:</label>
+                                                <input type="number" name="item_qty[<?php echo $item['id']; ?>]" value="<?php echo $item['qty']; ?>" min="0" style="width:100%; padding:0.35rem; text-align:center; border-radius:6px; border:1px solid #cbd5e1; font-size:0.8rem;">
+                                            </div>
+                                            <div class="form-group" style="margin:0;">
+                                                <label style="font-size:0.65rem; color:var(--text-muted); font-weight:700;">
+                                                    Discount Adjust ($):
+                                                    <?php if ($item['requested_discount_type'] !== 'none'): ?>
+                                                        <small style="color:#b45309;">(Req: <?php echo $item['requested_discount_value']; ?><?php echo $item['requested_discount_type'] === 'percent' ? '%' : '$'; ?>)</small>
+                                                    <?php endif; ?>
+                                                </label>
+                                                <input type="number" step="0.01" min="0" name="item_discount[<?php echo $item['id']; ?>]" value="<?php echo $item['admin_adjusted_discount']; ?>" style="width:100%; padding:0.35rem; text-align:center; border-radius:6px; border:1px solid #cbd5e1; font-size:0.8rem;">
+                                            </div>
                                         </div>
                                     </div>
                                 <?php endforeach; ?>

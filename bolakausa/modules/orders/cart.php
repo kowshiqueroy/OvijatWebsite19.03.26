@@ -87,9 +87,41 @@ if ($action === 'update' && $_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if ($qty <= 0) {
             unset($_SESSION['cart'][$item_key]);
+            if (isset($_SESSION['cart_discounts'][$item_key])) {
+                unset($_SESSION['cart_discounts'][$item_key]);
+            }
         } else {
             $_SESSION['cart'][$item_key] = $qty;
         }
+    }
+    
+    // Save item requested discounts
+    if (isset($_POST['discount_types']) && is_array($_POST['discount_types'])) {
+        foreach ($_POST['discount_types'] as $item_key => $type) {
+            $val = (float)($_POST['discount_values'][$item_key] ?? 0);
+            if (in_array($type, ['percent', 'amount']) && $val > 0) {
+                $_SESSION['cart_discounts'][$item_key] = [
+                    'type' => $type,
+                    'value' => $val
+                ];
+            } else {
+                if (isset($_SESSION['cart_discounts'][$item_key])) {
+                    unset($_SESSION['cart_discounts'][$item_key]);
+                }
+            }
+        }
+    }
+    
+    // Save grand total requested discount
+    $grand_type = $_POST['grand_discount_type'] ?? 'none';
+    $grand_val = (float)($_POST['grand_discount_value'] ?? 0);
+    if (in_array($grand_type, ['percent', 'amount']) && $grand_val > 0) {
+        $_SESSION['cart_grand_discount'] = [
+            'type' => $grand_type,
+            'value' => $grand_val
+        ];
+    } else {
+        unset($_SESSION['cart_grand_discount']);
     }
     
     if (isset($_POST['redirect_to_checkout']) && $_POST['redirect_to_checkout'] === '1' && empty($_SESSION['cart_error'])) {
@@ -190,10 +222,30 @@ if (!empty($_SESSION['cart'])) {
 $base_delivery = $user_location ? (float)$user_location['base_delivery_charge'] : 0;
 $grand_delivery = $base_delivery + $total_delivery;
 
-// Get MOV (Minimum Order Value)
-$stmt = $pdo->prepare("SELECT setting_value FROM settings WHERE setting_key = 'min_order_value'");
-$stmt->execute();
-$mov = (float)($stmt->fetch()['setting_value'] ?? 0);
+$state_min_order = $user_location ? (float)$user_location['min_order_amount'] : 0;
+$state_max_order = $user_location ? (float)$user_location['max_order_amount'] : 999999.99;
+$shipping_type = $user_location ? $user_location['shipping_type'] : 'default';
+
+// Override global MOV if state min_order_amount is set
+$mov = 100.00;
+if ($state_min_order > 0) {
+    $mov = $state_min_order;
+} else {
+    $stmt = $pdo->prepare("SELECT setting_value FROM settings WHERE setting_key = 'min_order_value'");
+    $stmt->execute();
+    $mov = (float)($stmt->fetch()['setting_value'] ?? 100.00);
+}
+
+$shipping_msg = '';
+if ($user_location) {
+    if ($shipping_type === 'free') {
+        $grand_delivery = 0.00;
+        $shipping_msg = 'Free';
+    } elseif ($shipping_type === 'manual') {
+        $grand_delivery = 0.00;
+        $shipping_msg = 'Will be calculated later';
+    }
+}
 
 ?>
 
@@ -244,11 +296,12 @@ $mov = (float)($stmt->fetch()['setting_value'] ?? 0);
                     <table style="min-width: 0; width: 100%;">
                     <thead>
                         <tr>
-                            <th style="width: 28%;">Product</th>
-                            <th style="width: 10%;">Qty</th>
-                            <th style="width: 14%;">Unit Price</th>
-                            <th style="width: 20%; text-align: right;">Subtotal</th>
-                            <th style="width: 20%; text-align: right;">Delivery</th>
+                            <th style="width: 25%;">Product</th>
+                            <th style="width: 8%;">Qty</th>
+                            <th style="width: 18%;">Ask Discount</th>
+                            <th style="width: 12%;">Unit Price</th>
+                            <th style="width: 14%; text-align: right;">Subtotal</th>
+                            <th style="width: 15%; text-align: right;">Delivery</th>
                             <th style="width: 8%;"></th>
                         </tr>
                     </thead>
@@ -263,6 +316,21 @@ $mov = (float)($stmt->fetch()['setting_value'] ?? 0);
                             </td>
                             <td>
                                 <input type="number" name="qtys[<?php echo $item['item_key']; ?>]" value="<?php echo $item['qty']; ?>" min="1" class="cart-qty-input" data-row="<?php echo $item['item_key']; ?>" style="width: 52px; padding: 0.3rem; text-align: center; border-radius: 6px; font-size: 0.85rem;">
+                            </td>
+                            <td>
+                                <?php
+                                $saved_disc = $_SESSION['cart_discounts'][$item['item_key']] ?? null;
+                                $disc_type = $saved_disc ? $saved_disc['type'] : 'none';
+                                $disc_val = $saved_disc ? $saved_disc['value'] : '';
+                                ?>
+                                <div style="display: flex; gap: 0.25rem;">
+                                    <select name="discount_types[<?php echo $item['item_key']; ?>]" style="padding: 0.25rem; font-size: 0.75rem; border-radius: 4px; width: 55px; border:1px solid var(--border-dark);">
+                                        <option value="none" <?php echo $disc_type === 'none' ? 'selected' : ''; ?>>None</option>
+                                        <option value="percent" <?php echo $disc_type === 'percent' ? 'selected' : ''; ?>>%</option>
+                                        <option value="amount" <?php echo $disc_type === 'amount' ? 'selected' : ''; ?>>$</option>
+                                    </select>
+                                    <input type="number" step="0.01" min="0" name="discount_values[<?php echo $item['item_key']; ?>]" value="<?php echo $disc_val; ?>" placeholder="Val" style="padding: 0.25rem; font-size: 0.75rem; border-radius: 4px; width: 45px; text-align: center; border:1px solid var(--border-dark);">
+                                </div>
                             </td>
                             <td style="color: var(--text-muted); font-weight: 500; font-size: 0.85rem;">$<?php echo number_format($item['unit_price'], 2); ?></td>
                             <td style="text-align: right;" class="subtotal-cell">$<?php echo number_format($item['subtotal'], 2); ?></td>
@@ -307,17 +375,34 @@ $mov = (float)($stmt->fetch()['setting_value'] ?? 0);
                     </div>
                     <div style="display: flex; justify-content: space-between; margin-bottom: 1.5rem; padding-bottom: 1rem; border-bottom: 1px solid var(--border-light); font-size: 0.95rem;">
                         <span style="font-weight: 800; color: var(--secondary);">Total Delivery:</span>
-                        <strong id="cart-grand-delivery" style="color: var(--accent); font-size: 1.1rem;">$<?php echo number_format($grand_delivery, 2); ?></strong>
+                        <strong id="cart-grand-delivery" style="color: var(--accent); font-size: 1.1rem;"><?php echo $shipping_msg ? e($shipping_msg) : '$' . number_format($grand_delivery, 2); ?></strong>
                     </div>
                     
+                    <div style="margin-top: 1rem; margin-bottom: 1.5rem; padding: 1rem; background: var(--bg-light); border: 1px solid var(--border-light); border-radius: 8px;">
+                        <label style="font-weight: 700; font-size: 0.85rem; color: var(--secondary); display: block; margin-bottom: 0.5rem;">Negotiate Grand Total Discount:</label>
+                        <?php
+                        $saved_grand = $_SESSION['cart_grand_discount'] ?? null;
+                        $grand_type = $saved_grand ? $saved_grand['type'] : 'none';
+                        $grand_val = $saved_grand ? $saved_grand['value'] : '';
+                        ?>
+                        <div style="display: flex; gap: 0.5rem;">
+                            <select name="grand_discount_type" style="padding: 0.4rem; font-size: 0.85rem; border-radius: 6px; flex: 1; border: 1px solid var(--border-dark);">
+                                <option value="none" <?php echo $grand_type === 'none' ? 'selected' : ''; ?>>None</option>
+                                <option value="percent" <?php echo $grand_type === 'percent' ? 'selected' : ''; ?>>Percentage (%)</option>
+                                <option value="amount" <?php echo $grand_type === 'amount' ? 'selected' : ''; ?>>Amount ($)</option>
+                            </select>
+                            <input type="number" step="0.01" min="0" name="grand_discount_value" value="<?php echo $grand_val; ?>" placeholder="Val" style="padding: 0.4rem; font-size: 0.85rem; border-radius: 6px; flex: 1.2; text-align: center; border: 1px solid var(--border-dark);">
+                        </div>
+                    </div>
+
                     <div style="display: flex; justify-content: space-between; margin-bottom: 1.5rem; font-size: 1.15rem;">
                         <span style="font-weight: 800; color: var(--secondary);">Total</span>
-                        <strong id="cart-grand-total" style="color: var(--secondary); font-size: 1.7rem; font-family: 'Plus Jakarta Sans', sans-serif;">$<?php echo number_format($total_subtotal + $grand_delivery, 2); ?></strong>
+                        <strong id="cart-grand-total" style="color: var(--secondary); font-size: 1.7rem; font-family: 'Plus Jakarta Sans', sans-serif;">$<?php echo number_format(($shipping_type === 'free' || $shipping_type === 'manual' ? $total_subtotal : $total_subtotal + $grand_delivery), 2); ?></strong>
                     </div>
                     
                     <?php if ($user_location): ?>
                         <div style="font-size: 0.7rem; color: var(--text-muted); margin-bottom: 1.25rem; text-align: center; line-height: 1.4;">
-                            <i class="fas fa-info-circle"></i> Delivery estimated for your default address: <strong><?php echo e($user_location['name']); ?></strong>.
+                            <i class="fas fa-info-circle"></i> Delivery estimated for your default address: <strong><?php echo e($user_location['name']); ?></strong> (Min order: $<?php echo number_format($state_min_order, 2); ?>, Max order: <?php echo $state_max_order < 999999 ? '$' . number_format($state_max_order, 2) : 'None'; ?>).
                         </div>
                     <?php elseif ($user_has_address): ?>
                         <div style="font-size: 0.7rem; color: var(--rose); margin-bottom: 1.25rem; text-align: center; line-height: 1.4;">
@@ -329,16 +414,26 @@ $mov = (float)($stmt->fetch()['setting_value'] ?? 0);
                         </div>
                     <?php endif; ?>
                     
-                    <?php if ($total_subtotal >= $mov): ?>
-                        <button type="button" id="proceed-to-checkout-btn" class="btn btn-green" style="width: 100%; border-radius: 10px; padding: 1rem; font-size: 1rem; border: none; display: flex; align-items: center; justify-content: center; gap: 0.5rem; cursor: pointer;">
-                            Proceed to Checkout <i class="fas fa-chevron-right" style="font-size: 0.8rem;"></i>
-                        </button>
-                    <?php else: ?>
+                    <button type="submit" class="btn btn-outline" style="width: 100%; border-radius: 10px; padding: 0.75rem; font-size: 0.95rem; margin-bottom: 0.75rem; display: flex; align-items: center; justify-content: center; gap: 0.5rem; cursor: pointer; border: 1px solid var(--border-dark);">
+                        <i class="fas fa-sync-alt"></i> Update Cart & Discounts
+                    </button>
+
+                    <?php if ($total_subtotal < $mov): ?>
                         <div style="color: var(--rose); font-weight: 700; background: rgba(244,63,94,0.06); padding: 1rem; border-radius: 8px; border: 1px solid rgba(244,63,94,0.15); font-size: 0.8rem; line-height: 1.4; text-align: center;">
                             <i class="fas fa-exclamation-triangle" style="margin-bottom: 0.4rem; display: block; font-size: 1.1rem;"></i> 
                             Wholesale minimum order value is <strong>$<?php echo number_format($mov, 2); ?></strong>.<br>
                             Add <strong>$<?php echo number_format($mov - $total_subtotal, 2); ?></strong> more to proceed.
                         </div>
+                    <?php elseif ($user_location && $total_subtotal > $state_max_order): ?>
+                        <div style="color: var(--rose); font-weight: 700; background: rgba(244,63,94,0.06); padding: 1rem; border-radius: 8px; border: 1px solid rgba(244,63,94,0.15); font-size: 0.8rem; line-height: 1.4; text-align: center;">
+                            <i class="fas fa-exclamation-triangle" style="margin-bottom: 0.4rem; display: block; font-size: 1.1rem;"></i> 
+                            Maximum order value for state <?php echo e($user_location['name']); ?> is <strong>$<?php echo number_format($state_max_order, 2); ?></strong>.<br>
+                            Please reduce order items by <strong>$<?php echo number_format($total_subtotal - $state_max_order, 2); ?></strong> to proceed.
+                        </div>
+                    <?php else: ?>
+                        <button type="button" id="proceed-to-checkout-btn" class="btn btn-green" style="width: 100%; border-radius: 10px; padding: 1rem; font-size: 1rem; border: none; display: flex; align-items: center; justify-content: center; gap: 0.5rem; cursor: pointer;">
+                            Proceed to Checkout <i class="fas fa-chevron-right" style="font-size: 0.8rem;"></i>
+                        </button>
                     <?php endif; ?>
                 </div>
                 
@@ -397,15 +492,27 @@ document.addEventListener('DOMContentLoaded', function() {
         });
 
         const base = <?php echo json_encode($base_delivery); ?>;
-        const grandDel = base + totalDel;
-        const grandTotal = totalSub + grandDel;
+        const shippingType = <?php echo json_encode($shipping_type); ?>;
+        let grandDel = base + totalDel;
+        let deliveryText = '$' + grandDel.toFixed(2);
+        let totalVal = totalSub + grandDel;
+        if (shippingType === 'free') {
+            grandDel = 0.00;
+            deliveryText = 'Free';
+            totalVal = totalSub;
+        } else if (shippingType === 'manual') {
+            grandDel = 0.00;
+            deliveryText = 'Will be calculated later';
+            totalVal = totalSub;
+        }
+
         document.getElementById('cart-items-count').textContent = count;
         document.getElementById('cart-total-weight').textContent = totalW.toFixed(2) + ' kg';
         document.getElementById('cart-weight-delivery').textContent = '$' + totalDel.toFixed(2);
-        document.getElementById('cart-grand-delivery').textContent = '$' + grandDel.toFixed(2);
+        document.getElementById('cart-grand-delivery').textContent = deliveryText;
         document.getElementById('cart-grand-subtotal').textContent = '$' + totalSub.toFixed(2);
         const gt = document.getElementById('cart-grand-total');
-        if (gt) gt.textContent = '$' + grandTotal.toFixed(2);
+        if (gt) gt.textContent = '$' + totalVal.toFixed(2);
     }
 
     const checkoutBtn = document.getElementById('proceed-to-checkout-btn');

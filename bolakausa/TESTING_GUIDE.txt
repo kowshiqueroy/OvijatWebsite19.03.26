@@ -1,0 +1,347 @@
+================================================================================
+           BOLAKAUSA WHOLESALE B2B E-COMMERCE PLATFORM - TESTING GUIDE
+================================================================================
+
+This document serves as the comprehensive testing guide for the Bolakausa B2B
+Wholesale E-Commerce application. It contains system architectures, features,
+user credentials, database reset instructions, and step-by-step test flows.
+
+--------------------------------------------------------------------------------
+1. SYSTEM OVERVIEW & ARCHITECTURE
+--------------------------------------------------------------------------------
+Bolakausa is a B2B Wholesale e-commerce platform designed for wholesale customers
+(e.g., delis, restaurants, caterers) to purchase products in bulk. The system
+incorporates complex B2B features including tiered bulk pricing, dynamic delivery
+fees and tax zones, order fulfillment lot tracking (FIFO), user verification, and
+a direct client-staff chat system with attachments.
+
+Technology Stack:
+- Core Backend: PHP 7.4+ (Pure Vanilla PDO, Session-based auth)
+- Database: MySQL/MariaDB (Innodb Engine, Foreign Key constraints)
+- Frontend: HTML5, CSS3 (Modern Glassmorphism UI layout, FontAwesome icons)
+- Routing: Front Controller (`index.php`) mapping clean request routes.
+
+Base URL:
+- Local Host: http://localhost/bolakausa/
+
+Database Setup / Config File:
+- config/database.php
+
+--------------------------------------------------------------------------------
+2. DATABASE INITIALIZATION & RESET
+--------------------------------------------------------------------------------
+Before testing, you can initialize or reset the system databases to their initial
+or realistic demo state using the following files:
+
+A. Initial Setup Portal
+   - Route: http://localhost/bolakausa/setup.php
+   - Setup PIN: 5877
+   - Description: Configures the database host, user credentials, database name,
+     applies the SQL schema (`database.sql`), and seeds a basic set of users.
+
+B. Demo Data Seeder (Highly Recommended for Testing)
+   - Route: http://localhost/bolakausa/seed.php?key=seed2024
+   - Description: Truncates all tables and seeds 1+ week of realistic demo data,
+     including 30 products, price tiers, active promotions, address matrices,
+     wallet balances, top-up logs, and order histories.
+   - CAUTION: This will delete any manual additions and reset the database.
+
+--------------------------------------------------------------------------------
+3. USER ROLES & ACCESS HIERARCHY
+--------------------------------------------------------------------------------
+The system is built on a strict role hierarchy rank. Features and pages are
+restricted based on these roles:
+
+Role Hierarchy Rank:
+7. Admin
+6. Manager
+5. Editor
+4. Viewer (Auditor)
+3. Warehouse
+2. Executive (VIP Wholesale Customer)
+1. Wholesale User (Standard Wholesale Customer)
+
+--------------------------------------------------------------------------------
+4. TEST CREDENTIALS DIRECTORY
+--------------------------------------------------------------------------------
+
+A. CREDENTIALS AFTER RUNNING THE DEMO DATA SEEDER (seed.php?key=seed2024)
+--------------------------------------------------------------------------
+For all seeded users listed below, the password is: Password123!
+
+| Username         | Email                  | Role           | Status   | Name / Description          | Location ID |
+|------------------|------------------------|----------------|----------|-----------------------------|-------------|
+| admin            | admin@bolakausa.com    | admin          | active   | Alex Rivera (System Admin)   | 1 (NY)      |
+| manager1         | manager@bolakausa.com  | manager        | active   | Sam Torres (Operations Mgr)  | 1 (NY)      |
+| editor1          | editor@bolakausa.com   | editor         | active   | Jamie Lee (Content Editor)  | 1 (NY)      |
+| warehouse1       | warehouse@bolakausa.com| warehouse      | active   | Chris Park (Fulfillment)    | 1 (NY)      |
+| viewer1          | viewer@bolakausa.com   | viewer         | active   | Morgan Hayes (Auditor)      | 1 (NY)      |
+| freshdeli_ny     | freshdeli@example.com  | wholesale_user | active   | Fresh Deli NYC LLC          | 1 (NY)      |
+| sunshine_la      | sunshine@example.com   | wholesale_user | active   | Sunshine Bistro LA          | 2 (LA)      |
+| lakeside_chicago | lakeside@example.com   | wholesale_user | active   | Lakeside Grill Chicago      | 3 (Chicago) |
+| texasbest        | texasbest@example.com  | wholesale_user | active   | Texas Best Catering         | 4 (Houston) |
+| miamifresh       | miamifresh@example.com | wholesale_user | active   | Miami Fresh Foods           | 10 (Miami)  |
+| vegasprime       | vegasprime@example.com | executive      | active   | Vegas Prime (VIP Customer)  | 6 (Phoenix) |
+| bostonelite      | bostonelite@example.com| executive      | active   | Boston Elite (VIP Customer) | 13 (Boston) |
+| newretail_atl    | newretail@example.com  | wholesale_user | pending  | Atlanta Retail (Pending)    | 11 (Atlanta)|
+| seattlecafe      | seattlecafe@example.com| wholesale_user | pending  | Seattle Cafe (Pending)      | 12 (Seattle)|
+
+B. CREDENTIALS AFTER RUNNING BASIC INITIAL SETUP (setup.php)
+------------------------------------------------------------
+If you set up using `setup.php` only, these default users are created.
+Note: Passwords here differ from the seeder.
+
+| Username  | Email                  | Password     | Role           | Status   |
+|-----------|------------------------|--------------|----------------|----------|
+| admin     | admin@bolakausa.com    | admin123     | admin          | active   |
+| manager   | manager@bolakausa.com  | manager123   | manager        | active   |
+| editor    | editor@bolakausa.com    | editor123    | editor         | active   |
+| warehouse | warehouse@bolakausa.com| warehouse123 | warehouse      | active   |
+| viewer    | viewer@bolakausa.com    | viewer123    | viewer         | active   |
+| user      | user@bolakausa.com      | user123      | wholesale_user | active   |
+| executive | executive@bolakausa.com | executive123 | executive      | active   |
+
+--------------------------------------------------------------------------------
+5. KEY FUNCTIONALITIES & BUSINESS RULES
+--------------------------------------------------------------------------------
+
+1. Tiered Bulk Pricing:
+   Product units prices drop dynamically when minimum order quantities are met.
+   Example (Roma Tomatoes Case):
+   - 1-4 cases: $18.99/ea
+   - 5-9 cases: $17.50/ea
+   - 10-19 cases: $16.75/ea
+   - 20+ cases: $15.99/ea
+
+2. Dynamic Delivery Matrix (Locations):
+   Taxes and shipping charges are derived from the user's selected address location.
+   Each location defines:
+   - Tax Percent
+   - Base Delivery Charge
+   - Per Unit Weight Charge
+   - Minimum and Maximum order amounts
+   - Shipping Types (default, free, manual)
+
+3. Diverse Payment Methods:
+   - Cash on Delivery (COD)
+   - Bank Transfer: Requires inputting a reference transaction number. The payment
+     must be verified/approved by an Admin before fulfillment begins.
+   - Pay Later (Credit Limit): Net 30 terms. Requires system settings allowance.
+   - Stripe: Interactive mock Stripe card checkout (test number: 4242 4242 4242 4242).
+   - Internal Wallet: Deducts directly from user's credit balance.
+
+4. Wallet System & Top-up Request Flow:
+   Users can top up their wallet balance using simulated Stripe or Bank Transfer.
+   Stripe instantly creates a pending request. Bank Transfer allows attaching a proof
+   file (image/pdf). Admins must approve the requests in the staff portal.
+
+5. Inventory Lot Allocation (FIFO):
+   Stock items are cataloged in designated "Inventory Lots" with expirations,
+   received dates, and shelf locations. When orders are processed, the system
+   deducts stock from lots based on FIFO (First-In, First-Out) rules.
+
+6. Direct B2B Chat System:
+   Allows clients to text staff directly. Support for attachments (e.g., invoices,
+   receipt proofs) is integrated. Staff can view active client threads.
+
+--------------------------------------------------------------------------------
+6. STEP-BY-STEP TEST FLOWS
+--------------------------------------------------------------------------------
+
+--------------------------------------------------------------------------------
+FLOW 1: DATABASE RESET & INITIALIZATION
+--------------------------------------------------------------------------------
+Goal: Ensure the database is clean and loaded with demo data for manual testing.
+Steps:
+1. Open your browser and navigate to: http://localhost/bolakausa/seed.php?key=seed2024
+2. Verify that the output lists all steps completed with green "✔" checks.
+3. Navigate to: http://localhost/bolakausa/
+4. Verify you see the main login page of Bolakausa Wholesale Foods.
+Expected Result: The database tables are truncated, refreshed, and populated.
+
+--------------------------------------------------------------------------------
+FLOW 2: ROLE-BASED ACCESS CONTROL & MIDDLEWARE BLOCKING
+--------------------------------------------------------------------------------
+Goal: Validate that staff portals and admin tools are secured from other roles.
+Steps:
+1. Log in as Viewer (Username: `viewer1`, Password: `Password123!`).
+2. Go to the dashboard. Observe you only see the Financial Overview and User list.
+3. Try to manually type URL path: http://localhost/bolakausa/admin/payments
+4. Verify you get the "Access Denied" page stating "Administrators Only".
+5. Log out and log in as standard Wholesale User (Username: `freshdeli_ny`).
+6. Try to manually type URL path: http://localhost/bolakausa/admin/dashboard
+7. Verify you get the "Access Denied" page stating "Staff Portal Only".
+Expected Result: Routes are strictly guarded according to the hierarchy rules.
+
+--------------------------------------------------------------------------------
+FLOW 3: NEW WHOLESALE USER REGISTRATION & ADMIN VERIFICATION
+--------------------------------------------------------------------------------
+Goal: Test registering a new business user, verifying their status, and approval.
+Steps:
+1. Go to http://localhost/bolakausa/register
+2. Fill out the registration form with unique details (e.g., `tester_cafe`,
+   `tester@cafe.com`, name: "Tester Cafe LLC", phone: "+1-555-8902", location: "Boston, MA").
+3. Submit the registration. You should see a success message stating the account is
+   pending approval.
+4. Try logging in as `tester_cafe`. You should be blocked or shown a pending screen.
+5. Log out, then log in as Admin (Username: `admin`, Password: `Password123!`).
+6. Navigate to the Admin Portal -> "Verify Users" (http://localhost/bolakausa/admin/users).
+7. Locate `tester_cafe` in the pending users list.
+8. Click "Approve". Verify the status changes to "active".
+9. Log out, then log in as `tester_cafe` again.
+10. Verify that you can now access the Wholesale Home Catalog and see active prices.
+Expected Result: Pending users are restricted until approved by an administrator.
+
+--------------------------------------------------------------------------------
+FLOW 4: SHOPPING CART, BULK PRICE TIERS, & LOCATION CHECKOUT
+--------------------------------------------------------------------------------
+Goal: Test bulk price updates in the cart and dynamic delivery fee calculations.
+Steps:
+1. Log in as standard Wholesale User (Username: `freshdeli_ny`, Password: `Password123!`).
+2. Navigate to Catalog. Find "Roma Tomatoes Case" (base price $18.99).
+3. Add 2 cases of Tomatoes to your cart.
+4. Go to your Cart page. Verify unit price displays $18.99 and Subtotal is $37.98.
+5. Update the quantity to 6 cases. Click "Update Cart".
+6. Verify unit price dynamically updates to the tier price ($17.50) and Subtotal is $105.00.
+7. Click "Proceed to Checkout".
+8. In Checkout, switch between different delivery addresses (e.g., "45 Broadway, NY" vs.
+   adding a new address in "Los Angeles, CA").
+9. Verify that Tax % and shipping/handling charges recalculate in real-time.
+Expected Result: Price tiers apply automatically. Checkout updates calculations.
+
+--------------------------------------------------------------------------------
+FLOW 5: WALLET DEPOSIT (BANK TRANSFER & STRIPE) & ADMIN APPROVAL FLOW
+--------------------------------------------------------------------------------
+Goal: Validate request-approval flow for internal wallets.
+Steps:
+1. Log in as standard Wholesale User (Username: `freshdeli_ny`, Password: `Password123!`).
+2. Go to your Account -> Wallet (http://localhost/bolakausa/wallet).
+3. Under "Top up Wallet", choose "Bank Transfer", enter amount $1,000, transaction
+   ID "TXN-TEST-9999", and upload a dummy test image/PDF file as proof.
+4. Submit the request. Verify it is shown in the transaction log as "pending".
+5. Log out, then log in as Admin (Username: `admin`, Password: `Password123!`).
+6. Navigate to Admin Portal -> "Payment Approvals" (http://localhost/bolakausa/admin/payments).
+7. Locate Request # for user `freshdeli_ny` with transaction ID "TXN-TEST-9999".
+8. Click the attached proof image to verify it opens correctly in a new tab.
+9. Enter admin notes (e.g., "Verified wire deposit") and click "Approve".
+10. Log out, then log back in as `freshdeli_ny`.
+11. Navigate back to the Wallet dashboard. Verify that your balance has increased
+    by $1,000 and the transaction status is updated to "approved".
+Expected Result: Deposits remain pending and do not change wallet balances until
+approved by an administrator.
+
+--------------------------------------------------------------------------------
+FLOW 6: EXECUTIVE DISCOUNT & PROMOTIONS APPLICABILITY
+--------------------------------------------------------------------------------
+Goal: Ensure discounts target correct user roles (Wholesale vs. Executive).
+Steps:
+1. Log in as standard user `freshdeli_ny`. Search for "Atlantic Salmon Fillet".
+2. Note the display price (e.g., standard price).
+3. Add it to cart and proceed to checkout. Verify that no automatic 10% global
+   discount applies in the order summary. Log out.
+4. Log in as Executive user `vegasprime` (Password: `Password123!`).
+5. Search for "Atlantic Salmon Fillet".
+6. Verify that a discount tag or reduced price is shown because of the "Salmon
+   Premium Offer" discount targeting "executive" users.
+7. Go to Checkout with a cart. Verify that a "10% Global Executive Discount"
+   automatically populates in the summary card.
+8. Enter coupon code `VIP15` (which is restricted to executive role).
+9. Verify the coupon is applied. Log out.
+10. Log in as standard user `freshdeli_ny` and attempt to apply coupon `VIP15`.
+11. Verify that the coupon is rejected or cannot be applied.
+Expected Result: Discounts and coupon targets are respected based on customer role.
+
+--------------------------------------------------------------------------------
+FLOW 7: MANAGER INVENTORY INTAKE & CAMERA/SELFIE PROOF UPLOAD
+--------------------------------------------------------------------------------
+Goal: Test adding incoming inventory batches with expiration dates and lot numbers.
+Steps:
+1. Log in as Manager (Username: `manager1`, Password: `Password123!`).
+2. Go to the Operations dashboard -> "Stock In" (http://localhost/bolakausa/manager/stock).
+3. Select product "Whole Milk 1gal x12".
+4. Enter quantity 50.
+5. Generate/enter a lot number (e.g. `LOT-MLK-999`).
+6. Enter an expiration date (e.g., 7 days in the future).
+7. Enter shelf location (e.g., `B-03`).
+8. Locate the Camera/Selfie proof area on the form. Use the webcam simulation or
+   canvas to capture/confirm a batch condition picture.
+9. Click "Record Incoming Inventory". Verify success message.
+10. Navigate to the Admin Portal -> "Inventory Insights" or check the product stock
+    quantity to confirm it increased by 50 units.
+Expected Result: Lots are logged with structural metadata and images, increasing
+overall stock.
+
+--------------------------------------------------------------------------------
+FLOW 8: ORDER PLACEMENT AND COMPLETE STATUS HISTORY (AUDIT TRAIL)
+--------------------------------------------------------------------------------
+Goal: Test order state transitions and auditing of status modifications.
+Steps:
+1. Log in as Wholesale User `freshdeli_ny`. Create a cart of at least $150 (minimum).
+2. Go to Checkout. Choose payment method "Bank Transfer". Submit the order.
+3. Note your Order ID #. Initially, status is "Pending Payment".
+4. Log out. Log in as Admin. Go to Payments (http://localhost/bolakausa/admin/payments).
+5. Locate the payment top-up linked with your Order ID, and click "Approve".
+6. Navigate to Admin -> Order Management (http://localhost/bolakausa/admin/orders).
+7. Select your Order. Verify the order status has moved to "Payment Verified".
+8. In the detail panel, update status to "Confirmed" and click save.
+9. Then update status to "Processing" and save.
+10. Click the "Status History" or "Audit" log button for the order.
+11. Verify that each status transition is logged chronologically with the timestamp
+    and the user who changed it (e.g., "Alex Rivera").
+Expected Result: All transitions are verified and logged in order_status_history.
+
+--------------------------------------------------------------------------------
+FLOW 9: WAREHOUSE FIFO PICKING & LOGISTICS
+--------------------------------------------------------------------------------
+Goal: Test lot allocation rules (FIFO) and warehouse fulfillment logistics.
+Steps:
+1. Log in as Warehouse Staff (Username: `warehouse1`, Password: `Password123!`).
+2. Navigate to the Warehouse Logistics center (http://localhost/bolakausa/warehouse).
+3. Find your order in the picking queue (status: Processing).
+4. Verify that the Picking List Generator automatically assigns items to the oldest
+   active LOT code (FIFO) with matching shelf locations.
+5. Log out. Log in as Admin. Navigate to Order Management.
+6. Open the order, update the fulfillment status to "Ready to Ship", then "Shipped",
+   and finally "Delivered".
+7. Verify that the order is cleared from the warehouse picking queue.
+Expected Result: Warehouse staff sees active picks with precise shelf locations
+and lot allocations. Shipped orders exit the active queue.
+
+--------------------------------------------------------------------------------
+FLOW 10: REAL-TIME B2B CHAT & ATTACHMENT FLOW
+--------------------------------------------------------------------------------
+Goal: Validate communication between client accounts and backend administrators.
+Steps:
+1. Log in as Wholesale User `freshdeli_ny`.
+2. Click the chat bubble or navigate to Chats (http://localhost/bolakausa/chats).
+3. Type a message "Hello, can we request Net 45 payment terms?" and press send.
+4. Log out. Log in as Admin.
+5. Go to Admin Portal -> "Customer Chats" (http://localhost/bolakausa/admin/chats).
+6. Locate the thread with client `@freshdeli_ny`. Verify that a new message indicator
+   or count is active.
+7. Click the thread, type response "Terms must be approved by executives. Please
+   upload your request letter." and press send.
+8. Verify that the message immediately appears in the thread.
+9. Log out. Log in as `freshdeli_ny`. Go to Chats. Verify that the reply is received
+   and marked as read.
+Expected Result: The messages are synchronized, order counts and read/unread statuses
+behave as expected.
+
+--------------------------------------------------------------------------------
+FLOW 11: ZOHO BOOKS DOUBLE-ENTRY ACCOUNTING & MANUAL ADJUSTING JOURNALS
+--------------------------------------------------------------------------------
+Goal: Validate Zoho Books accounting reports, ledger tracking, and posting manual journal entries.
+Steps:
+1. Log in as Admin (Username: `admin`, Password: `Password123!`).
+2. Navigate to Zoho Accounting sidebar link (http://localhost/bolakausa/admin/accounting).
+3. On the Dashboard tab, verify the overall Revenue, COGS, and Net Operating Profit.
+4. Navigate to Profit & Loss tab. Verify Gross Revenue matches Sales + Shipping.
+5. Navigate to Balance Sheet. Verify Assets = Liabilities + Equity (should say "Balanced Trial").
+6. Click "Post Journal Entry" button.
+7. Set debit to "6030 - General & Administrative Expenses" and credit to "1010 - Cash & Bank".
+8. Enter amount 150.00 and description "Monthly server hosting fees adjustment". Click Post.
+9. Navigate to Manual Adjusting Journals tab. Verify your adjustment is logged.
+10. Navigate to Account Transactions Ledger tab, select "1010 - Cash & Bank" from dropdown.
+11. Verify that your $150 credit entry is listed in the ledger and the running balance decreased.
+Expected Result: Double entry balance integrity is maintained, manual adjustments update P&L and Balance Sheet in real-time, and individual account ledgers log debit/credit changes.
+================================================================================

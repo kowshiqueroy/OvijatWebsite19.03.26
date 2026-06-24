@@ -47,7 +47,20 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 
         $conn->commit();
         log_activity($_SESSION['user_id'], "Created Truck Load #$load_id with " . count($invoice_ids) . " invoices.");
-        redirect('modules/delivery/index.php', "Truck Load #$load_id created and status updated to LOADING.", 'success');
+
+        // Check if any items in these invoices have batch tracking → go to packing screen
+        $placeholders = implode(',', array_fill(0, count($invoice_ids), '?'));
+        $has_batches = fetch_one(
+            "SELECT pb.id FROM sales_items si JOIN product_batches pb ON pb.product_id = si.product_id
+             WHERE si.draft_id IN ($placeholders) AND pb.quantity_remaining > 0 AND pb.isDelete = 0 LIMIT 1",
+            $invoice_ids
+        );
+
+        if ($has_batches) {
+            redirect("modules/delivery/packing.php?load_id=$load_id", "Truck Load #$load_id created. Please confirm lot allocations for packing.", 'info');
+        } else {
+            redirect('modules/delivery/index.php', "Truck Load #$load_id created and status updated to LOADING.", 'success');
+        }
     } catch (Exception $e) {
         $conn->rollback();
         die("Critical Error: " . $e->getMessage());

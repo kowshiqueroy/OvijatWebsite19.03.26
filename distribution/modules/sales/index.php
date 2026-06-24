@@ -11,10 +11,15 @@ $end_date = $_GET['end_date'] ?? date('Y-m-d');
 $status = $_GET['status'] ?? '';
 $delivery_status = $_GET['delivery_status'] ?? '';
 $customer_id = $_GET['customer_id'] ?? '';
+$order_type_filter = $_GET['order_type'] ?? '';
 
 // Build Query
 $where_clauses = ["s.isDelete = 0", "c.isDelete = 0"];
 $params = [];
+
+// Viewer order type restriction
+$ot_filter = get_order_type_filter('s');
+if ($ot_filter) $where_clauses[] = $ot_filter;
 
 if ($start_date) {
     $where_clauses[] = "DATE(s.created_at) >= ?";
@@ -31,6 +36,10 @@ if ($status) {
 if ($delivery_status) {
     $where_clauses[] = "s.delivery_status = ?";
     $params[] = $delivery_status;
+}
+if ($order_type_filter) {
+    $where_clauses[] = "s.order_type = ?";
+    $params[] = $order_type_filter;
 }
 if ($customer_id) {
     $where_clauses[] = "s.customer_id = ?";
@@ -72,10 +81,11 @@ foreach ($sales as $key => $s) {
 <div class="row no-print">
     <div class="col-12 d-flex justify-content-between align-items-center mb-4">
         <h3>Sales Records</h3>
-        <div class="btn-group">
-            <button type="button" class="btn btn-outline-success" onclick="copyGlobalSummary()"><i class="fab fa-whatsapp me-2"></i> Copy All for WhatsApp</button>
+        <div class="d-flex gap-2 flex-wrap">
+            <button type="button" class="btn btn-outline-success btn-sm" onclick="copyGlobalSummary(this)"><i class="fa-brands fa-whatsapp me-1"></i> WhatsApp</button>
+            <button onclick="downloadTableCSV('sales_<?php echo date('Y-m-d'); ?>.csv', '#sales-table')" class="btn btn-outline-primary btn-sm"><i class="fa-solid fa-file-csv me-1"></i> CSV</button>
             <?php if ($role != ROLE_VIEWER): ?>
-            <a href="pos.php" class="btn btn-primary"><i class="fas fa-plus me-2"></i> New Sale</a>
+            <a href="pos.php" class="btn btn-primary btn-sm"><i class="fa-solid fa-plus me-1"></i> New Sale</a>
             <?php endif; ?>
             <?php if (in_array($role, [ROLE_ADMIN, ROLE_ACCOUNTANT, ROLE_MANAGER])): ?>
             <button type="button" id="create-truck-load" class="btn btn-dark d-none"><i class="fas fa-truck me-2"></i> Create Truck Load</button>
@@ -124,6 +134,15 @@ foreach ($sales as $key => $s) {
                 </select>
             </div>
             <?php endif; ?>
+            <div class="col-md-2">
+                <label class="form-label small">Order Type</label>
+                <select name="order_type" class="form-select form-select-sm">
+                    <option value="">All Types</option>
+                    <?php foreach (['Local','Export','Custom','DMD'] as $ot): ?>
+                        <option value="<?php echo $ot; ?>" <?php echo $order_type_filter == $ot ? 'selected' : ''; ?>><?php echo $ot; ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
             <div class="col-md-1 d-flex align-items-end">
                 <button type="submit" class="btn btn-sm btn-primary w-100">Filter</button>
             </div>
@@ -135,17 +154,18 @@ foreach ($sales as $key => $s) {
 <div class="card shadow-sm">
     <div class="card-body">
         <div class="table-responsive">
-            <table class="table table-hover align-middle">
+            <table class="table table-hover align-middle export-table" id="sales-table">
                 <thead class="table-light">
                     <tr>
-                        <th style="width: 40px;"><input type="checkbox" id="select-all"></th>
+                        <th data-no-export style="width: 40px;"><input type="checkbox" id="select-all"></th>
                         <th>Draft #</th>
                         <th>Date</th>
                         <th>Customer</th>
+                        <th>Type</th>
                         <th>Amount</th>
                         <th>Status</th>
                         <th>Delivery Status</th>
-                        <th>Actions</th>
+                        <th data-no-export>Actions</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -159,6 +179,13 @@ foreach ($sales as $key => $s) {
                         <td><strong>#<?php echo $s['id']; ?></strong></td>
                         <td><?php echo date('d M Y', strtotime($s['created_at'])); ?></td>
                         <td><?php echo $s['customer_name']; ?></td>
+                        <td>
+                            <?php
+                            $ot_colors = ['Local'=>'bg-primary','Export'=>'bg-success','Custom'=>'bg-warning text-dark','DMD'=>'bg-info'];
+                            $ot = $s['order_type'] ?? 'Local';
+                            echo '<span class="badge ' . ($ot_colors[$ot] ?? 'bg-secondary') . '">' . $ot . '</span>';
+                            ?>
+                        </td>
                         <td><strong><?php echo format_currency($s['grand_total']); ?></strong></td>
                         <td>
                             <?php if ($s['status'] == 'Draft'): ?>
@@ -260,10 +287,10 @@ function copyInvoiceDetails(id) {
     text += `*Delivery:* ${sale.delivery_status.toUpperCase()}\n`;
     text += `\n_Thank you for your business!_`;
 
-    copyToClipboard(text);
+    copyText(text);
 }
 
-function copyGlobalSummary() {
+function copyGlobalSummary(btn) {
     if (salesData.length === 0) {
         alert("No records to copy.");
         return;
@@ -295,18 +322,7 @@ function copyGlobalSummary() {
     text += `*TOTAL NET REVENUE: ৳ ${totalRevenue.toLocaleString()}*\n`;
     text += `==========================`;
     
-    copyToClipboard(text);
-}
-
-function copyToClipboard(text) {
-    const tempInput = document.createElement("textarea");
-    tempInput.value = text;
-    document.body.appendChild(tempInput);
-    tempInput.select();
-    document.execCommand("copy");
-    document.body.removeChild(tempInput);
-    
-    alert("Copied to clipboard! You can now paste it in WhatsApp.");
+    copyText(text, btn);
 }
 
 document.addEventListener('DOMContentLoaded', function() {

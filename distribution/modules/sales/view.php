@@ -18,9 +18,11 @@ $items = fetch_all("SELECT i.*, p.name as product_name FROM sales_items i JOIN p
 // Fetch Truck Load Details
 $truck_load = fetch_one("SELECT tl.* FROM truck_loads tl JOIN truck_load_items tli ON tl.id = tli.truck_load_id WHERE tli.invoice_id = ? AND tl.isDelete = 0", [$id]);
 
-// QR Code URL (Verify Invoice)
-$verify_url = BASE_URL . "verify_invoice.php?id=" . $id;
-$qr_url = "https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=" . urlencode($verify_url);
+// QR Code URL — must be a full absolute URL so the QR scanner can open it
+$proto      = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+$host       = $_SERVER['HTTP_HOST'] ?? 'localhost';
+$verify_url = $proto . '://' . $host . BASE_URL . 'verify_invoice.php?id=' . $id;
+$qr_url     = 'https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=' . urlencode($verify_url);
 ?>
 
 <style>
@@ -167,7 +169,7 @@ $qr_url = "https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=" . url
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title">Administrative Tools</h5>
-                <button type="button" class="btn-close" data-bs-toggle="modal" data-bs-target="#adminModal"></button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <form action="update_admin_fields.php" method="POST">
                 <?php csrf_field(); ?>
@@ -236,9 +238,10 @@ $qr_url = "https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=" . url
                         </div>
                         <div class="header-invoice">
                             <div class="info-line">
-                                <strong>INV NO:</strong> #<?php echo str_pad($sale['id'], 6, '0', STR_PAD_LEFT); ?> | 
-                                <strong>DATE:</strong> <?php echo date('d-m-Y', strtotime($sale['created_at'])); ?> | 
-                                <strong>STATUS:</strong> <?php echo strtoupper($sale['status']); ?>
+                                <strong>INV NO:</strong> #<?php echo str_pad($sale['id'], 6, '0', STR_PAD_LEFT); ?> |
+                                <strong>DATE:</strong> <?php echo date('d-m-Y', strtotime($sale['created_at'])); ?> |
+                                <strong>STATUS:</strong> <?php echo strtoupper($sale['status']); ?> |
+                                <strong>TYPE:</strong> <?php echo strtoupper($sale['order_type'] ?? 'LOCAL'); ?>
                             </div>
                             <div class="info-line">
                                 <strong>DELIVERY STATUS:</strong> <?php echo strtoupper($sale['delivery_status']); ?> | 

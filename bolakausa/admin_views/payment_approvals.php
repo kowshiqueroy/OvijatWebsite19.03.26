@@ -50,31 +50,40 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['process_topup'])) {
                             if ($change_details_raw) {
                                 $change_details = json_decode($change_details_raw, true);
                                 if ($change_details) {
+                                    // Restore the current order stock temporarily
+                                    require_once __DIR__ . '/../includes/auth_helper.php';
+                                    restore_order_stock($pdo, $order_id);
+
                                     // Apply items
                                     if (isset($change_details['items']) && is_array($change_details['items'])) {
                                         foreach ($change_details['items'] as $item) {
                                             $item_id = (int)$item['item_id'];
                                             $qty = (int)$item['qty'];
+                                            $item_disc = (float)($item['admin_adjusted_discount'] ?? 0);
                                             if ($qty <= 0) {
                                                 $stmt_item = $pdo->prepare("UPDATE order_items SET is_deleted = 1 WHERE id = ?");
                                                 $stmt_item->execute([$item_id]);
                                             } else {
-                                                $stmt_item = $pdo->prepare("UPDATE order_items SET qty = ? WHERE id = ?");
-                                                $stmt_item->execute([$qty, $item_id]);
+                                                $stmt_item = $pdo->prepare("UPDATE order_items SET qty = ?, admin_adjusted_discount = ? WHERE id = ?");
+                                                $stmt_item->execute([$qty, $item_disc, $item_id]);
                                             }
                                         }
                                     }
                                     // Set proposed values
                                     $order_total = (float)($change_details['total_amount'] ?? $order['total_amount']);
-                                    $u_stmt = $pdo->prepare("UPDATE orders SET delivery_address = ?, shipping_amount = ?, tax_amount = ?, total_amount = ?, pending_change_details = NULL WHERE id = ?");
+                                    $u_stmt = $pdo->prepare("UPDATE orders SET delivery_address = ?, shipping_amount = ?, tax_amount = ?, total_amount = ?, admin_adjusted_discount = ?, pending_change_details = NULL WHERE id = ?");
                                     $u_stmt->execute([
                                         $change_details['delivery_address'] ?? $order['delivery_address'],
                                         (float)($change_details['shipping_amount'] ?? $order['shipping_amount']),
                                         (float)($change_details['tax_amount'] ?? $order['tax_amount']),
                                         $order_total,
+                                        (float)($change_details['admin_adjusted_discount'] ?? 0),
                                         $order_id
                                     ]);
                                     
+                                    // Re-deduct the stock
+                                    deduct_order_stock($pdo, $order_id);
+
                                     // Debit/credit the difference (shortfall) in the wallet
                                     $shortfall = $order_total - $old_total;
                                     if ($shortfall > 0) {
@@ -92,7 +101,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['process_topup'])) {
                         // Note: stock is already deducted at checkout. Wallet debit for original total is also at checkout.
                         
                         // Update order status to Payment Verified
-                        $u_stmt = $pdo->prepare("UPDATE orders SET status = 'Payment Verified' WHERE id = ?");
+                        $u_stmt = $pdo->prepare("UPDATE orders SET status = 'Payment Verified', payment_status = 'Paid', fulfillment_status = 'Pending' WHERE id = ?");
                         $u_stmt->execute([$order_id]);
                         
                         // Add Order History record
@@ -102,6 +111,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['process_topup'])) {
                         // Add Customer Notification
                         $n_stmt = $pdo->prepare("INSERT INTO notifications (user_id, title, message) VALUES (?, 'Payment Verified #$order_id', 'Your payment for Order #$order_id has been verified. The order is now being processed.')");
                         $n_stmt->execute([$request['user_id']]);
+
+                        // Send the verification invoice email
+                        require_once __DIR__ . '/../includes/mailer.php';
+                        send_invoice_email($pdo, $order_id, "Payment Approved / Order Confirmed");
                     }
                 }
             } else {
@@ -126,14 +139,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['approve_refund'])) {
     $stmt->execute([$order_id]);
     $order = $stmt->fetch();
 
-    if ($order && $order['status'] === 'Rejected' && !$order['refund_approved']) {
+    if ($order && $order['fulfillment_status'] === 'Rejected' && !$order['refund_approved']) {
         $net_refund = $order['total_amount'] - $rejection_charge;
         if ($net_refund < 0) $net_refund = 0;
 
         $pdo->beginTransaction();
         try {
             // Update order details
-            $stmt = $pdo->prepare("UPDATE orders SET rejection_charge = ?, refund_approved = 1 WHERE id = ?");
+            $stmt = $pdo->prepare("UPDATE orders SET rejection_charge = ?, refund_approved = 1, payment_status = 'Refunded' WHERE id = ?");
             $stmt->execute([$rejection_charge, $order_id]);
 
             // Credit wallet with net refund
@@ -162,7 +175,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['approve_refund'])) {
 
 // 3. Fetch Pending Payments & Refunds
 $pending_topups = $pdo->query("SELECT t.*, u.username, u.full_name FROM wallet_topups t JOIN users u ON t.user_id = u.id WHERE t.status = 'pending' ORDER BY t.created_at DESC")->fetchAll();
-$pending_refunds = $pdo->query("SELECT o.*, u.username, u.full_name FROM orders o JOIN users u ON o.user_id = u.id WHERE o.status = 'Rejected' AND o.refund_approved = 0 ORDER BY o.created_at DESC")->fetchAll();
+$pending_refunds = $pdo->query("SELECT o.*, u.username, u.full_name FROM orders o JOIN users u ON o.user_id = u.id WHERE o.fulfillment_status = 'Rejected' AND o.refund_approved = 0 ORDER BY o.created_at DESC")->fetchAll();
 ?>
 
 <div class="section-title">

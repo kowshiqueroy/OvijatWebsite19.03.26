@@ -105,28 +105,43 @@ foreach ($tiers as $t) {
                         </span>
                         <span style="font-size: 0.6rem; color: var(--text-muted); font-weight: 700;"><?php echo count($product_tiers[$p['id']]); ?> tiers</span>
                         <?php endif; ?>
-                        <span style="font-size: 0.6rem; color: var(--success); font-weight: 700; display: inline-flex; align-items: center; gap: 0.25rem;">
-                            <i class="fas fa-check-circle" style="font-size: 0.55rem;"></i> In Stock (<?php echo $p['stock_qty']; ?>)
-                        </span>
+                        <?php if ($p['stock_qty'] > 0): ?>
+                            <span style="font-size: 0.6rem; color: var(--success); font-weight: 700; display: inline-flex; align-items: center; gap: 0.25rem;">
+                                <i class="fas fa-check-circle" style="font-size: 0.55rem;"></i> In Stock (<?php echo $p['stock_qty']; ?>)
+                            </span>
+                        <?php else: ?>
+                            <span style="font-size: 0.6rem; color: var(--rose); font-weight: 700; display: inline-flex; align-items: center; gap: 0.25rem; background: rgba(244,63,94,0.08); padding: 0.15rem 0.4rem; border-radius: 4px; border: 1px solid rgba(244,63,94,0.15);">
+                                <i class="fas fa-times-circle" style="font-size: 0.55rem;"></i> Out of Stock
+                            </span>
+                        <?php endif; ?>
                         <span style="flex: 1;"></span>
                         <a href="<?php echo BASE_URL; ?>product/<?php echo $p['id']; ?>" style="display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 6px; border: 1px solid var(--border); color: var(--text-muted); text-decoration: none; font-size: 0.65rem;">
                             <i class="fas fa-info-circle"></i>
                         </a>
                     </div>
-                    <!-- Add to Cart -->
+                    <!-- Add to Cart / Disabled check -->
                     <?php if (is_logged_in()): ?>
-                    <form action="<?php echo BASE_URL; ?>cart" method="POST">
-                        <input type="hidden" name="action" value="add">
-                        <input type="hidden" name="product_id" value="<?php echo $p['id']; ?>">
-                        <div style="display: flex; gap: 0.3rem; align-items: center;">
-                            <input type="number" name="qty" value="<?php echo $p['min_order_qty']; ?>" min="<?php echo $p['min_order_qty']; ?>" style="width: 52px; padding: 0.35rem; text-align: center; border-radius: 6px; font-size: 0.75rem;">
-                            <button type="submit" class="btn btn-green" style="flex: 1; padding: 0.4rem 0.5rem; border-radius: 8px; font-size: 0.75rem; font-weight: 800; white-space: nowrap;">
-                                <i class="fas fa-cart-plus"></i> Add
-                            </button>
-                        </div>
-                    </form>
+                        <?php if ($p['stock_qty'] > 0): ?>
+                            <form action="<?php echo BASE_URL; ?>cart" method="POST">
+                                <input type="hidden" name="action" value="add">
+                                <input type="hidden" name="product_id" value="<?php echo $p['id']; ?>">
+                                <div style="display: flex; gap: 0.3rem; align-items: center;">
+                                    <input type="number" name="qty" value="<?php echo $p['min_order_qty']; ?>" min="<?php echo $p['min_order_qty']; ?>" style="width: 52px; padding: 0.35rem; text-align: center; border-radius: 6px; font-size: 0.75rem;">
+                                    <button type="submit" class="btn btn-green" style="flex: 1; padding: 0.4rem 0.5rem; border-radius: 8px; font-size: 0.75rem; font-weight: 800; white-space: nowrap;">
+                                        <i class="fas fa-cart-plus"></i> Add
+                                    </button>
+                                </div>
+                            </form>
+                        <?php else: ?>
+                            <div style="display: flex; gap: 0.3rem; align-items: center;">
+                                <input type="number" disabled value="0" style="width: 52px; padding: 0.35rem; text-align: center; border-radius: 6px; font-size: 0.75rem; background: var(--bg-light); color: var(--text-muted); border: 1px solid var(--border-light);">
+                                <button type="button" disabled class="btn btn-outline" style="flex: 1; padding: 0.4rem 0.5rem; border-radius: 8px; font-size: 0.75rem; font-weight: 800; white-space: nowrap; color: var(--text-muted); background: var(--bg-light); border: 1px solid var(--border-light); cursor: not-allowed;">
+                                    <i class="fas fa-ban"></i> Out of Stock
+                                </button>
+                            </div>
+                        <?php endif; ?>
                     <?php else: ?>
-                    <a href="/bolakausa/login" class="btn btn-blue" style="width: 100%; border-radius: 8px;"><i class="fas fa-sign-in-alt"></i> Login to Order</a>
+                        <a href="/bolakausa/login" class="btn btn-blue" style="width: 100%; border-radius: 8px;"><i class="fas fa-sign-in-alt"></i> Login to Order</a>
                     <?php endif; ?>
                 </div>
             </div>

@@ -135,6 +135,7 @@ $users = fetch_all("SELECT * FROM users WHERE isDelete = 0 ORDER BY created_at D
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-info text-white me-auto" id="vpm-dmd-preset" title="Grant full DMD access — sees all order types and all sections">📡 Set DMD Preset</button>
                 <button type="button" class="btn btn-warning" id="vpm-save-btn">💾 Save Permissions</button>
             </div>
         </div>
@@ -206,6 +207,15 @@ $users = fetch_all("SELECT * FROM users WHERE isDelete = 0 ORDER BY created_at D
                 document.getElementById('vpm-body').innerHTML =
                     '<div class="alert alert-danger">Failed to load permissions.</div>';
             });
+    });
+
+    // DMD Preset — check all toggles
+    document.getElementById('vpm-dmd-preset').addEventListener('click', function () {
+        const body = document.getElementById('vpm-body');
+        PERMS.forEach(p => {
+            const el = body.querySelector(`#vpm_${p.key}`);
+            if (el) el.checked = true;
+        });
     });
 
     // Save button

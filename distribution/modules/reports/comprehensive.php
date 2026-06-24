@@ -12,6 +12,11 @@ $customer_id = $_GET['customer_id'] ?? '';
 
 $all_customers = fetch_all("SELECT id, name, phone FROM customers WHERE isDelete = 0 ORDER BY name ASC");
 
+// Viewer order type + product visibility filters
+$order_type_sql = get_order_type_filter('s');
+$hidden_prod_ids = get_hidden_product_ids(null, 'reports');
+$hidden_prod_sql = $hidden_prod_ids ? "AND p.id NOT IN (" . implode(',', array_map('intval', $hidden_prod_ids)) . ")" : "";
+
 $data = [];
 if ($report_type == 'sales') {
     $sql = "SELECT s.*, c.name as customer_name, u.username as creator_name, 
@@ -22,7 +27,9 @@ if ($report_type == 'sales') {
             WHERE s.isDelete = 0 
             AND DATE(s.created_at) BETWEEN ? AND ?";
     $params = [$start_date, $end_date];
-    
+
+    if ($order_type_sql) $sql .= " AND $order_type_sql";
+
     if ($search_query) {
         $sql .= " AND (c.name LIKE ? OR s.id LIKE ?)";
         $params[] = "%$search_query%";
@@ -37,7 +44,7 @@ if ($report_type == 'sales') {
     
     // For each sale, fetch items
     foreach ($sales as $key => $sale) {
-        $sales[$key]['items'] = fetch_all("SELECT i.*, p.name as product_name FROM sales_items i JOIN products p ON i.product_id = p.id WHERE i.draft_id = ? AND i.isDelete = 0", [$sale['id']]);
+        $sales[$key]['items'] = fetch_all("SELECT i.*, p.name as product_name FROM sales_items i JOIN products p ON i.product_id = p.id WHERE i.draft_id = ? AND i.isDelete = 0 $hidden_prod_sql", [$sale['id']]);
     }
     $data = $sales;
 } elseif ($report_type == 'stock') {
@@ -124,10 +131,12 @@ if ($report_type == 'sales') {
     .report-header-print { display: none; }
 </style>
 
-<div class="row mb-4 no-print">
-    <div class="col-12 d-flex justify-content-between align-items-center">
-        <h3>Comprehensive Reports</h3>
-        <button onclick="window.print()" class="btn btn-dark"><i class="fas fa-print me-2"></i> Print Report</button>
+<div class="d-flex justify-content-between align-items-center mb-4 no-print">
+    <h3>Comprehensive Reports</h3>
+    <div class="d-flex gap-2">
+        <button onclick="copyComprehensiveWhatsApp(this)" class="btn btn-outline-success btn-sm"><i class="fa-brands fa-whatsapp me-1"></i>WhatsApp</button>
+        <button onclick="downloadTableCSV('report_<?php echo $report_type; ?>_<?php echo date('Y-m-d'); ?>.csv','#comp-table')" class="btn btn-outline-primary btn-sm"><i class="fa-solid fa-file-csv me-1"></i>CSV</button>
+        <button onclick="window.print()" class="btn btn-dark btn-sm"><i class="fa-solid fa-print me-1"></i>Print</button>
     </div>
 </div>
 
@@ -197,7 +206,7 @@ if ($report_type == 'sales') {
     <div class="card-body p-0">
         <div class="table-responsive">
             <?php if ($report_type == 'sales'): ?>
-            <table class="table table-bordered excel-table mb-0">
+            <table class="table table-bordered excel-table mb-0 export-table" id="comp-table">
                 <thead>
                     <tr>
                         <th style="width: 12%;">Date / Inv / By</th>
@@ -477,4 +486,13 @@ if ($report_type == 'sales') {
     </div>
 </div>
 
+<script>
+function copyComprehensiveWhatsApp(btn) {
+    const type   = '<?php echo ucfirst($report_type); ?>';
+    const period = '<?php echo $start_date; ?> to <?php echo $end_date; ?>';
+    const text   = tableToWhatsApp('*' + type + ' Report — ' + period + '*', '#comp-table');
+    if (text) copyText(text, btn);
+    else alert('No data to copy.');
+}
+</script>
 <?php require_once '../../templates/footer.php'; ?>

@@ -75,52 +75,44 @@ if ($is_mgmt) {
 <?php if ($is_mgmt): ?>
     <!-- MANAGEMENT DASHBOARD -->
     <div class="row g-3 mb-4">
-        <div class="col-md-3">
-            <div class="card border-0 shadow-sm bg-primary text-white">
-                <div class="card-body">
-                    <div class="d-flex justify-content-between align-items-center mb-2">
-                        <h6 class="text-uppercase small mb-0">Total Revenue</h6>
-                        <i class="fas fa-chart-line opacity-50"></i>
-                    </div>
-                    <h3 class="mb-1"><?php echo format_currency($revenue); ?></h3>
-                    <p class="small mb-0 opacity-75">Invoices in period</p>
+        <div class="col-6 col-md-3">
+            <div class="stat-card">
+                <div class="stat-icon" style="background:#eef2ff;color:#6366f1;">
+                    <i class="fa-solid fa-chart-line"></i>
                 </div>
+                <div class="stat-label">Total Revenue</div>
+                <div class="stat-value" style="color:#6366f1;"><?php echo format_currency($revenue); ?></div>
+                <div class="small text-muted mt-1">Invoices in period</div>
             </div>
         </div>
-        <div class="col-md-3">
-            <div class="card border-0 shadow-sm bg-success text-white">
-                <div class="card-body">
-                    <div class="d-flex justify-content-between align-items-center mb-2">
-                        <h6 class="text-uppercase small mb-0">Total Collection</h6>
-                        <i class="fas fa-hand-holding-usd opacity-50"></i>
-                    </div>
-                    <h3 class="mb-1"><?php echo format_currency($collection); ?></h3>
-                    <p class="small mb-0 opacity-75">Payments in period</p>
+        <div class="col-6 col-md-3">
+            <div class="stat-card">
+                <div class="stat-icon" style="background:#f0fdf4;color:#16a34a;">
+                    <i class="fa-solid fa-hand-holding-dollar"></i>
                 </div>
+                <div class="stat-label">Collections</div>
+                <div class="stat-value" style="color:#16a34a;"><?php echo format_currency($collection); ?></div>
+                <div class="small text-muted mt-1">Payments in period</div>
             </div>
         </div>
-        <div class="col-md-3">
-            <div class="card border-0 shadow-sm bg-info text-white">
-                <div class="card-body">
-                    <div class="d-flex justify-content-between align-items-center mb-2">
-                        <h6 class="text-uppercase small mb-0">Stock Valuation</h6>
-                        <i class="fas fa-warehouse opacity-50"></i>
-                    </div>
-                    <h3 class="mb-1"><?php echo format_currency($stock_value); ?></h3>
-                    <p class="small mb-0 opacity-75">Current market value</p>
+        <div class="col-6 col-md-3">
+            <div class="stat-card">
+                <div class="stat-icon" style="background:#eff6ff;color:#2563eb;">
+                    <i class="fa-solid fa-warehouse"></i>
                 </div>
+                <div class="stat-label">Stock Value</div>
+                <div class="stat-value" style="color:#2563eb;"><?php echo format_currency($stock_value); ?></div>
+                <div class="small text-muted mt-1">At TP rate</div>
             </div>
         </div>
-        <div class="col-md-3">
-            <div class="card border-0 shadow-sm bg-danger text-white">
-                <div class="card-body">
-                    <div class="d-flex justify-content-between align-items-center mb-2">
-                        <h6 class="text-uppercase small mb-0">Receivables</h6>
-                        <i class="fas fa-users-cog opacity-50"></i>
-                    </div>
-                    <h3 class="mb-1"><?php echo format_currency($total_owed); ?></h3>
-                    <p class="small mb-0 opacity-75">Current debt on market</p>
+        <div class="col-6 col-md-3">
+            <div class="stat-card">
+                <div class="stat-icon" style="background:#fff7ed;color:#ea580c;">
+                    <i class="fa-solid fa-users"></i>
                 </div>
+                <div class="stat-label">Receivables</div>
+                <div class="stat-value" style="color:#ea580c;"><?php echo format_currency($total_owed); ?></div>
+                <div class="small text-muted mt-1">Outstanding balance</div>
             </div>
         </div>
     </div>
@@ -128,10 +120,10 @@ if ($is_mgmt) {
     <div class="row g-4">
         <!-- Logistics Monitoring -->
         <div class="col-md-8">
-            <div class="card shadow-sm border-0 h-100">
-                <div class="card-header bg-white border-0 py-3 d-flex justify-content-between align-items-center">
-                    <h5 class="mb-0">Logistics & Active Trucks</h5>
-                    <span class="badge bg-soft-primary text-primary"><?php echo count($active_trucks); ?> Active</span>
+            <div class="card h-100">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span><i class="fa-solid fa-truck me-2 text-accent"></i>Active Trucks</span>
+                    <span class="badge" style="background:#eef2ff;color:#6366f1;"><?php echo count($active_trucks); ?> Active</span>
                 </div>
                 <div class="card-body">
                     <div class="table-responsive">
@@ -155,9 +147,8 @@ if ($is_mgmt) {
                                         <div class="small text-muted"><?php echo $truck['driver_name']; ?></div>
                                     </td>
                                     <td>
-                                        <span class="badge bg-<?php echo $truck['status'] == 'Departed' ? 'primary' : 'warning'; ?>-soft text-<?php echo $truck['status'] == 'Departed' ? 'primary' : 'warning'; ?> text-uppercase" style="font-size: 10px;">
-                                            <?php echo $truck['status']; ?>
-                                        </span>
+                                        <?php $ts = $truck['status'] == 'Departed' ? ['#ede9fe','#4c1d95'] : ['#fef3c7','#92400e']; ?>
+                                        <span class="badge" style="background:<?php echo $ts[0]; ?>;color:<?php echo $ts[1]; ?>;"><?php echo $truck['status']; ?></span>
                                     </td>
                                     <td class="text-center"><?php echo $truck['invoice_count']; ?></td>
                                     <td class="text-end fw-bold"><?php echo format_currency($truck['load_value']); ?></td>
@@ -167,32 +158,24 @@ if ($is_mgmt) {
                         </table>
                     </div>
 
-                    <h6 class="mt-4 mb-3 small fw-bold text-uppercase text-muted">Delivery Funnel (Current)</h6>
-                    <div class="row text-center g-2">
-                        <div class="col">
-                            <div class="p-2 border rounded bg-light">
-                                <div class="h4 mb-0"><?php echo $funnel['Pending']; ?></div>
-                                <div class="small text-muted">Pending</div>
+                    <p class="small fw-bold text-uppercase text-muted mt-4 mb-2">Delivery Funnel</p>
+                    <div class="row g-2">
+                        <?php
+                        $funnel_items = [
+                            'Pending'    => ['#fef3c7','#92400e'],
+                            'Loading'    => ['#e0f2fe','#0c4a6e'],
+                            'In Transit' => ['#ede9fe','#4c1d95'],
+                            'Delivered'  => ['#dcfce7','#14532d'],
+                        ];
+                        foreach ($funnel_items as $label => [$bg, $color]):
+                        ?>
+                        <div class="col-6 col-xl-3">
+                            <div class="funnel-box" style="background:<?php echo $bg; ?>;border-color:<?php echo $bg; ?>;">
+                                <div class="count" style="color:<?php echo $color; ?>"><?php echo $funnel[$label] ?? 0; ?></div>
+                                <div class="label" style="color:<?php echo $color; ?>"><?php echo $label; ?></div>
                             </div>
                         </div>
-                        <div class="col">
-                            <div class="p-2 border rounded bg-light">
-                                <div class="h4 mb-0"><?php echo $funnel['Loading']; ?></div>
-                                <div class="small text-muted">Loading</div>
-                            </div>
-                        </div>
-                        <div class="col">
-                            <div class="p-2 border rounded bg-primary text-white">
-                                <div class="h4 mb-0"><?php echo $funnel['In Transit']; ?></div>
-                                <div class="small">In Transit</div>
-                            </div>
-                        </div>
-                        <div class="col">
-                            <div class="p-2 border rounded bg-success text-white">
-                                <div class="h4 mb-0"><?php echo $funnel['Delivered']; ?></div>
-                                <div class="small">Delivered</div>
-                            </div>
-                        </div>
+                        <?php endforeach; ?>
                     </div>
                 </div>
             </div>
@@ -200,10 +183,10 @@ if ($is_mgmt) {
 
         <!-- Inventory Health -->
         <div class="col-md-4">
-            <div class="card shadow-sm border-0 mb-4">
-                <div class="card-header bg-white border-0 py-3 d-flex justify-content-between align-items-center">
-                    <h5 class="mb-0">Inventory Health</h5>
-                    <a href="modules/reports/inventory.php" class="btn btn-link btn-sm p-0"><i class="fas fa-expand"></i></a>
+            <div class="card mb-4">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span><i class="fa-solid fa-layer-group me-2 text-accent"></i>Inventory Health</span>
+                    <a href="modules/reports/stock_status.php" class="btn btn-sm btn-outline-secondary py-0"><i class="fa-solid fa-arrow-up-right-from-square"></i></a>
                 </div>
                 <div class="card-body">
                     <label class="small text-muted mb-2">Low Stock Alerts (<= 10)</label>
@@ -221,10 +204,8 @@ if ($is_mgmt) {
                 </div>
             </div>
 
-            <div class="card shadow-sm border-0">
-                <div class="card-header bg-white border-0 py-3">
-                    <h5 class="mb-0">Quick Insights</h5>
-                </div>
+            <div class="card">
+                <div class="card-header"><i class="fa-solid fa-bolt me-2 text-accent"></i>Quick Insights</div>
                 <div class="card-body">
                     <div class="d-flex justify-content-between mb-2">
                         <span class="text-muted">Active Customers</span>
@@ -244,70 +225,62 @@ if ($is_mgmt) {
     </div>
 
 <?php else: ?>
-    <!-- DASHBOARD FOR OTHER ROLES (SR, CUSTOMER) -->
+    <!-- SR / CUSTOMER ROLE DASHBOARD -->
     <div class="row g-3">
         <?php if (($_SESSION['role'] ?? '') == ROLE_SR): ?>
-        <div class="col-md-4">
-            <div class="card bg-warning text-dark shadow-sm h-100">
-                <div class="card-body">
-                    <h6 class="card-title text-uppercase small">My Pending Drafts</h6>
-                    <h2 class="mb-0"><?php echo fetch_one("SELECT COUNT(id) as total FROM sales_drafts WHERE status = 'Draft' AND created_by = ? AND isDelete = 0", [$_SESSION['user_id']])['total']; ?></h2>
+        <?php $pending_drafts = fetch_one("SELECT COUNT(id) as total FROM sales_drafts WHERE status='Draft' AND created_by=? AND isDelete=0", [$_SESSION['user_id']])['total']; ?>
+        <div class="col-sm-6 col-md-4">
+            <div class="stat-card h-100" style="border-left:4px solid #f59e0b;">
+                <div class="stat-icon" style="background:#fffbeb;color:#d97706;">
+                    <i class="fa-solid fa-file-pen"></i>
                 </div>
-                <div class="card-footer bg-transparent border-0 text-end">
-                    <a href="modules/sales/index.php" class="text-dark text-decoration-none small">Manage Drafts <i class="fas fa-arrow-right ms-1"></i></a>
-                </div>
+                <div class="stat-label">Pending Drafts</div>
+                <div class="stat-value"><?php echo $pending_drafts; ?></div>
+                <a href="modules/sales/index.php?status=Draft" class="btn btn-sm btn-warning mt-2">
+                    Manage <i class="fa-solid fa-arrow-right ms-1"></i>
+                </a>
             </div>
         </div>
-        <div class="col-md-4">
-            <div class="card bg-primary text-white shadow-sm h-100">
-                <div class="card-body">
-                    <h6 class="card-title text-uppercase small">Create New Sale</h6>
-                    <p class="small mb-2">Start a new distribution order</p>
-                    <a href="modules/sales/pos.php" class="btn btn-light btn-sm mt-2">Open POS</a>
+        <div class="col-sm-6 col-md-4">
+            <div class="stat-card h-100" style="border-left:4px solid #6366f1;">
+                <div class="stat-icon" style="background:#eef2ff;color:#6366f1;">
+                    <i class="fa-solid fa-cash-register"></i>
                 </div>
+                <div class="stat-label">New Sale</div>
+                <div class="stat-value" style="font-size:18px;margin-bottom:8px;">POS Terminal</div>
+                <a href="modules/sales/pos.php" class="btn btn-sm btn-primary">
+                    <i class="fa-solid fa-plus me-1"></i> Open POS
+                </a>
             </div>
         </div>
         <?php endif; ?>
 
         <?php if (($_SESSION['role'] ?? '') == ROLE_CUSTOMER): ?>
-        <div class="col-md-6">
-            <div class="card shadow-sm border-0">
-                <div class="card-header bg-white py-3"><strong>My Account Summary</strong></div>
+        <?php $cust = fetch_one("SELECT * FROM customers WHERE user_id = ?", [$_SESSION['user_id']]); ?>
+        <div class="col-md-6 col-lg-5">
+            <div class="card h-100">
+                <div class="card-header"><i class="fa-solid fa-circle-user me-2 text-accent"></i>My Account</div>
                 <div class="card-body">
-                    <?php
-                    $cust = fetch_one("SELECT * FROM customers WHERE user_id = ?", [$_SESSION['user_id']]);
-                    ?>
-                    <div class="d-flex justify-content-between mb-3">
-                        <span>Account Name:</span>
-                        <strong><?php echo $cust['name']; ?></strong>
+                    <div class="d-flex justify-content-between py-2 border-bottom">
+                        <span class="text-muted">Name</span>
+                        <strong><?php echo htmlspecialchars($cust['name']); ?></strong>
                     </div>
-                    <div class="d-flex justify-content-between mb-3">
-                        <span>Customer Type:</span>
+                    <div class="d-flex justify-content-between py-2 border-bottom">
+                        <span class="text-muted">Type</span>
                         <span class="badge bg-secondary"><?php echo $cust['type']; ?></span>
                     </div>
-                    <div class="d-flex justify-content-between align-items-center">
-                        <span>Current Balance:</span>
-                        <h3 class="text-primary mb-0"><?php echo format_currency($cust['balance']); ?></h3>
+                    <div class="d-flex justify-content-between align-items-center py-3">
+                        <span class="text-muted">Balance</span>
+                        <span class="fw-bold fs-5 text-accent"><?php echo format_currency($cust['balance']); ?></span>
                     </div>
-                    <hr>
-                    <a href="modules/sales/index.php" class="btn btn-outline-primary w-100">View My Invoices</a>
+                    <a href="modules/sales/index.php" class="btn btn-primary w-100">
+                        <i class="fa-solid fa-file-invoice me-2"></i>My Orders
+                    </a>
                 </div>
             </div>
         </div>
         <?php endif; ?>
     </div>
 <?php endif; ?>
-
-<style>
-    /* Modern Dashboard Styling */
-    .bg-soft-primary { background-color: rgba(13, 110, 253, 0.1); }
-    .text-primary { color: #0d6efd !important; }
-    .bg-primary-soft { background-color: rgba(13, 110, 253, 0.1); }
-    .text-primary { color: #0d6efd; }
-    .bg-warning-soft { background-color: rgba(255, 193, 7, 0.1); }
-    .text-warning { color: #ffc107; }
-    .card { transition: transform 0.2s; border-radius: 12px; }
-    .card:hover { transform: translateY(-3px); }
-</style>
 
 <?php require_once 'templates/footer.php'; ?>

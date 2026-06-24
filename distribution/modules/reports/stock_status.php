@@ -1,28 +1,27 @@
 <?php
+require_once '../../config/config.php';
 require_once '../../includes/functions.php';
-
-// Set custom page title before header
-$company_name = get_company_settings()['name'] ?? 'Company';
-$page_title = "Stock Status " . date('h:i A d-m-Y') . " " . $company_name;
-
-require_once '../../templates/header.php';
 check_login();
 check_role([ROLE_ADMIN, ROLE_MANAGER, ROLE_ACCOUNTANT, ROLE_VIEWER]);
 
-// Fetch company settings for report header
 $company = get_company_settings();
-
-// Filters
-$category_id = $_GET['category_id'] ?? '';
+$category_id  = $_GET['category_id'] ?? '';
 $search_query = $_GET['search'] ?? '';
+$export       = $_GET['export'] ?? '';
 
 $categories = fetch_all("SELECT * FROM categories WHERE isDelete = 0 ORDER BY name ASC");
 
+$categories = fetch_all("SELECT * FROM categories WHERE isDelete = 0 ORDER BY name ASC");
+
+// Exclude products hidden from current user in reports
+$hidden_prod_ids = get_hidden_product_ids(null, 'reports');
+$hidden_prod_sql = $hidden_prod_ids ? "AND p.id NOT IN (" . implode(',', array_map('intval', $hidden_prod_ids)) . ")" : "";
+
 // Construct SQL
-$sql = "SELECT p.*, c.name as category_name 
-        FROM products p 
-        JOIN categories c ON p.category_id = c.id 
-        WHERE p.isDelete = 0 AND c.isDelete = 0";
+$sql = "SELECT p.*, c.name as category_name
+        FROM products p
+        JOIN categories c ON p.category_id = c.id
+        WHERE p.isDelete = 0 AND c.isDelete = 0 $hidden_prod_sql";
 $params = [];
 
 if ($category_id) {
@@ -40,8 +39,28 @@ $sql .= " ORDER BY p.stock_qty ASC, c.name ASC, p.name ASC";
 
 $products = fetch_all($sql, $params);
 
-// Prepare data for JS WhatsApp copy
+// ── CSV export (before any HTML) ────────────────────────────────
+if ($export === 'csv') {
+    $can_see_rates = !isset($_SESSION['role']) || $_SESSION['role'] !== ROLE_VIEWER || can_see_section('rates');
+    $headers = ['#', 'Product', 'Category', 'Unit', 'Stock Qty'];
+    if ($can_see_rates) $headers = array_merge($headers, ['TP Rate', 'DP Rate', 'Retail Rate', 'TP Value']);
+    $rows = [];
+    foreach ($products as $i => $p) {
+        $row = [$i+1, $p['name'], $p['category_name'], $p['unit'] ?? 'pcs', $p['stock_qty']];
+        if ($can_see_rates) $row = array_merge($row, [
+            number_format($p['tp_rate'],2), number_format($p['dp_rate'],2),
+            number_format($p['retail_rate'],2), number_format($p['stock_qty']*$p['tp_rate'],2),
+        ]);
+        $rows[] = $row;
+    }
+    output_csv('stock_status_' . date('Y-m-d') . '.csv', $headers, $rows);
+}
+
 $stock_data = json_encode($products);
+
+// Now include header
+$page_title = "Stock Status " . date('d-m-Y') . " — " . ($company['name'] ?? '');
+require_once '../../templates/header.php';
 ?>
 
 <style>
@@ -75,12 +94,15 @@ $stock_data = json_encode($products);
             <h3>Stock Status Report</h3>
             <p class="text-muted mb-0">Current inventory levels sorted by low stock first.</p>
         </div>
-        <div class="btn-group">
-            <button onclick="copyStockForWhatsApp()" class="btn btn-outline-success">
-                <i class="fab fa-whatsapp me-2"></i> Copy for WhatsApp
+        <div class="d-flex flex-wrap gap-2">
+            <button onclick="copyStockForWhatsApp()" class="btn btn-outline-success btn-sm">
+                <i class="fa-brands fa-whatsapp me-1"></i> WhatsApp
             </button>
-            <button onclick="window.print()" class="btn btn-dark">
-                <i class="fas fa-print me-2"></i> Print Report
+            <a href="?<?php echo http_build_query(array_merge($_GET, ['export'=>'csv'])); ?>" class="btn btn-outline-primary btn-sm">
+                <i class="fa-solid fa-file-csv me-1"></i> Export CSV
+            </a>
+            <button onclick="window.print()" class="btn btn-dark btn-sm">
+                <i class="fa-solid fa-print me-1"></i> Print
             </button>
         </div>
     </div>

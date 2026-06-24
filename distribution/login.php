@@ -44,149 +44,151 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Login | <?php echo $company['name']; ?></title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
     <style>
-        :root {
-            --primary-color: #0d6efd;
-            --bg-gradient: linear-gradient(135deg, #0d6efd 0%, #002d72 100%);
-        }
-        body { 
-            background: #f4f7f6;
-            height: 100vh;
+        *{box-sizing:border-box;}
+        body {
+            background: #f1f5f9;
+            min-height: 100vh;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            margin: 0;
+            padding: 16px;
+        }
+        .login-wrap {
+            width: 100%;
+            max-width: 420px;
+        }
+        .login-brand {
+            text-align: center;
+            margin-bottom: 24px;
+        }
+        .login-brand-icon {
+            width: 56px; height: 56px;
+            background: linear-gradient(135deg,#6366f1,#8b5cf6);
+            border-radius: 16px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+            font-size: 22px;
+            margin-bottom: 12px;
+            box-shadow: 0 8px 24px rgba(99,102,241,.35);
+        }
+        .login-brand h2 {
+            font-size: 20px;
+            font-weight: 800;
+            color: #1e293b;
+            margin: 0 0 2px;
+        }
+        .login-brand p {
+            font-size: 13px;
+            color: #64748b;
             margin: 0;
         }
         .login-card {
-            background: #ffffff;
-            border-radius: 20px;
-            box-shadow: 0 15px 35px rgba(0,0,0,0.1);
-            overflow: hidden;
-            width: 100%;
-            max-width: 450px;
-            transition: transform 0.3s ease;
+            background: #fff;
+            border-radius: 16px;
+            box-shadow: 0 4px 24px rgba(0,0,0,.08);
+            padding: 32px 28px;
+            border: 1px solid #e2e8f0;
         }
-        .login-header {
-            background: var(--bg-gradient);
-            padding: 40px 20px;
-            text-align: center;
-            color: #fff;
-        }
-        .login-header img {
-            max-width: 100px;
-            height: auto;
-            margin-bottom: 15px;
-            filter: drop-shadow(0 5px 15px rgba(0,0,0,0.2));
-        }
-        .login-header h3 {
+        .form-label {
+            font-size: 11.5px;
             font-weight: 700;
-            letter-spacing: 1px;
+            text-transform: uppercase;
+            letter-spacing: .05em;
+            color: #64748b;
             margin-bottom: 5px;
         }
-        .login-header p {
-            font-size: 0.9rem;
-            opacity: 0.8;
-            margin: 0;
-        }
-        .login-body {
-            padding: 40px;
+        .input-group-text {
+            background: #f8fafc;
+            border-color: #e2e8f0;
+            color: #94a3b8;
         }
         .form-control {
-            border-radius: 10px;
-            padding: 12px 15px;
-            border: 1px solid #e1e1e1;
-            background-color: #f9f9f9;
+            border-color: #e2e8f0;
+            background: #f8fafc;
+            font-size: 14px;
+            padding: 10px 12px;
+            border-radius: 0 8px 8px 0 !important;
         }
+        .input-group .input-group-text { border-radius: 8px 0 0 8px; }
         .form-control:focus {
-            box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.15);
-            background-color: #fff;
+            background: #fff;
+            border-color: #6366f1;
+            box-shadow: 0 0 0 3px rgba(99,102,241,.12);
         }
         .btn-login {
-            border-radius: 10px;
-            padding: 12px;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            background: var(--bg-gradient);
+            background: linear-gradient(135deg,#6366f1,#8b5cf6);
             border: none;
-            margin-top: 10px;
-            transition: opacity 0.3s ease;
+            border-radius: 10px !important;
+            padding: 12px;
+            font-weight: 700;
+            font-size: 14px;
+            letter-spacing: .03em;
+            color: #fff;
+            transition: opacity .2s;
+            width: 100%;
         }
-        .btn-login:hover {
-            opacity: 0.9;
-        }
-        .input-group-text {
-            background-color: #f9f9f9;
-            border-radius: 10px 0 0 10px;
-            border-right: none;
-            color: #999;
-        }
-        .form-control {
-            border-left: none;
-        }
+        .btn-login:hover { opacity: .88; color: #fff; }
         .footer-text {
             text-align: center;
-            margin-top: 25px;
-            font-size: 0.8rem;
-            color: #888;
+            margin-top: 20px;
+            font-size: 12px;
+            color: #94a3b8;
         }
+        .alert { border-radius: 10px !important; font-size: 13px; }
     </style>
 </head>
 <body>
 
-<div class="login-card">
-    <div class="login-header">
-        <?php if ($company['logo_url']): ?>
-            <?php 
-                $logo_path = $company['logo_url'];
-                if (!filter_var($logo_path, FILTER_VALIDATE_URL) && strpos($logo_path, 'data:') !== 0) {
-                    $logo_path = BASE_URL . ltrim($logo_path, '/');
-                }
-            ?>
-            <img src="<?php echo $logo_path; ?>" alt="Logo">
+<div class="login-wrap">
+    <div class="login-brand">
+        <?php if (!empty($company['logo_url'])): ?>
+            <?php $logo_path = filter_var($company['logo_url'], FILTER_VALIDATE_URL) || str_starts_with($company['logo_url'], 'data:') ? $company['logo_url'] : BASE_URL . ltrim($company['logo_url'], '/'); ?>
+            <img src="<?php echo $logo_path; ?>" alt="Logo" style="height:52px;margin-bottom:10px;border-radius:10px;">
         <?php else: ?>
-            <div class="mb-3">
-                <i class="fas fa-truck-loading fa-3x"></i>
+            <div class="login-brand-icon">
+                <i class="fa-solid fa-boxes-stacked"></i>
             </div>
         <?php endif; ?>
-        <h3><?php echo $company['name']; ?></h3>
+        <h2><?php echo htmlspecialchars($company['name']); ?></h2>
         <p>Distribution Management System</p>
     </div>
-    
-    <div class="login-body">
+
+    <div class="login-card">
         <?php if (isset($error)): ?>
-            <div class="alert alert-danger border-0 shadow-sm small">
-                <i class="fas fa-exclamation-circle me-2"></i><?php echo $error; ?>
+            <div class="alert alert-danger">
+                <i class="fa-solid fa-circle-exclamation me-2"></i><?php echo htmlspecialchars($error); ?>
             </div>
         <?php endif; ?>
 
         <form method="POST">
             <?php csrf_field(); ?>
             <div class="mb-4">
-                <label class="form-label small fw-bold text-muted">Username</label>
+                <label class="form-label">Username</label>
                 <div class="input-group">
-                    <span class="input-group-text"><i class="fas fa-user"></i></span>
-                    <input type="text" name="username" class="form-control" placeholder="Enter your username" required autofocus>
+                    <span class="input-group-text"><i class="fa-solid fa-user"></i></span>
+                    <input type="text" name="username" class="form-control" placeholder="Enter username" required autofocus autocomplete="username">
                 </div>
             </div>
-            
             <div class="mb-4">
-                <label class="form-label small fw-bold text-muted">Password</label>
+                <label class="form-label">Password</label>
                 <div class="input-group">
-                    <span class="input-group-text"><i class="fas fa-lock"></i></span>
-                    <input type="password" name="password" class="form-control" placeholder="Enter your password" required>
+                    <span class="input-group-text"><i class="fa-solid fa-lock"></i></span>
+                    <input type="password" name="password" class="form-control" placeholder="Enter password" required autocomplete="current-password">
                 </div>
             </div>
-
-            <button type="submit" class="btn btn-primary w-100 btn-login shadow">
-                Sign In <i class="fas fa-arrow-right ms-2"></i>
+            <button type="submit" class="btn btn-login">
+                <i class="fa-solid fa-right-to-bracket me-2"></i>Sign In
             </button>
         </form>
 
         <div class="footer-text">
-            &copy; <?php echo date('Y'); ?> <?php echo $company['name']; ?> | Powered by <strong>sohojweb</strong>
+            &copy; <?php echo date('Y'); ?> <?php echo htmlspecialchars($company['name']); ?> &mdash; Powered by <strong>sohojweb</strong>
         </div>
     </div>
 </div>

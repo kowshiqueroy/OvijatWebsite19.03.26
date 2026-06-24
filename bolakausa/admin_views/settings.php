@@ -108,17 +108,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_settings'])) {
     // Reload configurations
     $settings = $pdo->query("SELECT * FROM settings ORDER BY setting_key ASC")->fetchAll();
 }
-
 // Handle Location: Add
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_location'])) {
     $name = trim($_POST['loc_name'] ?? '');
     $tax = (float)($_POST['loc_tax'] ?? 0);
     $base = (float)($_POST['loc_base'] ?? 0);
     $weight = (float)($_POST['loc_weight'] ?? 0);
+    $min_order = (float)($_POST['loc_min_order'] ?? 0);
+    $max_order = (float)($_POST['loc_max_order'] ?? 999999.99);
+    $shipping_type = $_POST['loc_shipping_type'] ?? 'default';
 
     if ($name) {
-        $stmt = $pdo->prepare("INSERT INTO locations (name, tax_percent, base_delivery_charge, per_unit_weight_charge) VALUES (?, ?, ?, ?)");
-        if ($stmt->execute([$name, $tax, $base, $weight])) {
+        $stmt = $pdo->prepare("INSERT INTO locations (name, tax_percent, base_delivery_charge, per_unit_weight_charge, min_order_amount, max_order_amount, shipping_type) VALUES (?, ?, ?, ?, ?, ?, ?)");
+        if ($stmt->execute([$name, $tax, $base, $weight, $min_order, $max_order, $shipping_type])) {
             $success = "US State delivery location '$name' added successfully.";
             log_action($pdo, $_SESSION['user_id'], 'Created Location', null, $name);
         }
@@ -134,10 +136,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_location'])) {
     $tax = (float)($_POST['loc_tax'] ?? 0);
     $base = (float)($_POST['loc_base'] ?? 0);
     $weight = (float)($_POST['loc_weight'] ?? 0);
+    $min_order = (float)($_POST['loc_min_order'] ?? 0);
+    $max_order = (float)($_POST['loc_max_order'] ?? 999999.99);
+    $shipping_type = $_POST['loc_shipping_type'] ?? 'default';
 
     if ($loc_id && $name) {
-        $stmt = $pdo->prepare("UPDATE locations SET name = ?, tax_percent = ?, base_delivery_charge = ?, per_unit_weight_charge = ? WHERE id = ?");
-        if ($stmt->execute([$name, $tax, $base, $weight, $loc_id])) {
+        $stmt = $pdo->prepare("UPDATE locations SET name = ?, tax_percent = ?, base_delivery_charge = ?, per_unit_weight_charge = ?, min_order_amount = ?, max_order_amount = ?, shipping_type = ? WHERE id = ?");
+        if ($stmt->execute([$name, $tax, $base, $weight, $min_order, $max_order, $shipping_type, $loc_id])) {
             $success = "Location '$name' updated successfully.";
             log_action($pdo, $_SESSION['user_id'], 'Updated Location', null, "ID: $loc_id, Name: $name");
         }
@@ -711,24 +716,28 @@ input:checked + .slider:before {
                             <tr>
                                 <th>US State / Location</th>
                                 <th>Tax Percent</th>
-                                <th>Base Shipping Fee</th>
-                                <th>Per KG Shipping Fee</th>
+                                <th>Limits (Min-Max)</th>
+                                <th>Shipping Type</th>
+                                <th>Base Fee</th>
+                                <th>Per KG Fee</th>
                                 <th style="text-align: right; width: 140px;">Actions</th>
                             </tr>
                         </thead>
                         <tbody>
                             <?php if (!$locations): ?>
-                                <tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 2rem;">No delivery locations found.</td></tr>
+                                <tr><td colspan="7" style="text-align: center; color: var(--text-muted); padding: 2rem;">No delivery locations found.</td></tr>
                             <?php endif; ?>
                             <?php foreach ($locations as $loc): ?>
                             <tr>
                                 <td><strong style="color: var(--secondary);"><?php echo e($loc['name']); ?></strong></td>
                                 <td><strong style="color: var(--primary);"><?php echo $loc['tax_percent']; ?>%</strong></td>
+                                <td style="font-size: 0.8rem;">$<?php echo number_format($loc['min_order_amount'], 2); ?> - $<?php echo number_format($loc['max_order_amount'], 2); ?></td>
+                                <td><span style="background:rgba(15,23,42,0.05); padding:2px 6px; border-radius:4px; font-size:0.65rem; font-weight:800; color:var(--text-muted); text-transform:uppercase;"><?php echo e($loc['shipping_type']); ?></span></td>
                                 <td>$<?php echo number_format($loc['base_delivery_charge'], 2); ?></td>
                                 <td>$<?php echo number_format($loc['per_unit_weight_charge'], 2); ?> / kg</td>
                                 <td style="text-align: right;">
                                     <div style="display: flex; gap: 0.5rem; justify-content: flex-end;">
-                                        <button onclick="triggerEditLocation(<?php echo $loc['id']; ?>, '<?php echo e($loc['name']); ?>', <?php echo $loc['tax_percent']; ?>, <?php echo $loc['base_delivery_charge']; ?>, <?php echo $loc['per_unit_weight_charge']; ?>)" class="btn btn-blue" style="padding: 0.35rem 0.75rem; font-size: 0.75rem; border-radius: 6px;">Edit</button>
+                                        <button onclick="triggerEditLocation(<?php echo $loc['id']; ?>, '<?php echo e($loc['name']); ?>', <?php echo $loc['tax_percent']; ?>, <?php echo $loc['base_delivery_charge']; ?>, <?php echo $loc['per_unit_weight_charge']; ?>, <?php echo $loc['min_order_amount']; ?>, <?php echo $loc['max_order_amount']; ?>, '<?php echo e($loc['shipping_type']); ?>')" class="btn btn-blue" style="padding: 0.35rem 0.75rem; font-size: 0.75rem; border-radius: 6px;">Edit</button>
                                         <a href="/bolakausa/admin/settings?delete_location=<?php echo $loc['id']; ?>" onclick="return confirm('Remove location state?')" class="btn btn-red" style="padding: 0.35rem 0.75rem; font-size: 0.75rem; border-radius: 6px;"><i class="fas fa-trash-alt"></i></a>
                                     </div>
                                 </td>
@@ -753,6 +762,24 @@ input:checked + .slider:before {
                                 <label>State Tax Rate (%) *</label>
                                 <input type="number" step="0.01" name="loc_tax" value="0.00" required>
                             </div>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                                <div class="form-group">
+                                    <label>Min Order Value ($) *</label>
+                                    <input type="number" step="0.01" name="loc_min_order" value="0.00" required>
+                                </div>
+                                <div class="form-group">
+                                    <label>Max Order Value ($) *</label>
+                                    <input type="number" step="0.01" name="loc_max_order" value="999999.99" required>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label>Shipping Charge Type *</label>
+                                <select name="loc_shipping_type" required style="width: 100%; border-radius: 8px; padding: 0.75rem; border: 1px solid var(--border-light); font-family: inherit; font-size: 0.9rem; outline: none; background: white;">
+                                    <option value="default">Default (By weight & base fee)</option>
+                                    <option value="free">Free Shipping</option>
+                                    <option value="manual">Manual (Set by Admin in every order)</option>
+                                </select>
+                            </div>
                             <div class="form-group">
                                 <label>Base Delivery Fee ($) *</label>
                                 <input type="number" step="0.01" name="loc_base" value="0.00" required>
@@ -771,7 +798,7 @@ input:checked + .slider:before {
                     <div class="settings-card" id="location-edit-card" style="padding: 1.75rem; display: none; border-color: var(--accent);">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem;">
                             <h3 style="font-family: 'Plus Jakarta Sans', sans-serif; font-size: 1.15rem; font-weight: 800; color: var(--secondary); margin: 0;">Edit US State Settings</h3>
-                            <button onclick="closeEditLocation()" class="btn btn-outline" style="padding: 0.25rem 0.5rem; font-size: 0.75rem; border-radius: 4px;"><i class="fas fa-times"></i></button>
+                            <button type="button" onclick="closeEditLocation()" class="btn btn-outline" style="padding: 0.25rem 0.5rem; font-size: 0.75rem; border-radius: 4px;"><i class="fas fa-times"></i></button>
                         </div>
                         <form method="POST">
                             <input type="hidden" name="edit_location" value="1">
@@ -783,6 +810,24 @@ input:checked + .slider:before {
                             <div class="form-group">
                                 <label>State Tax Rate (%) *</label>
                                 <input type="number" step="0.01" name="loc_tax" id="edit-loc-tax" required>
+                            </div>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                                <div class="form-group">
+                                    <label>Min Order Value ($) *</label>
+                                    <input type="number" step="0.01" name="loc_min_order" id="edit-loc-min-order" required>
+                                </div>
+                                <div class="form-group">
+                                    <label>Max Order Value ($) *</label>
+                                    <input type="number" step="0.01" name="loc_max_order" id="edit-loc-max-order" required>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label>Shipping Charge Type *</label>
+                                <select name="loc_shipping_type" id="edit-loc-shipping-type" required style="width: 100%; border-radius: 8px; padding: 0.75rem; border: 1px solid var(--border-light); font-family: inherit; font-size: 0.9rem; outline: none; background: white;">
+                                    <option value="default">Default (By weight & base fee)</option>
+                                    <option value="free">Free Shipping</option>
+                                    <option value="manual">Manual (Set by Admin in every order)</option>
+                                </select>
                             </div>
                             <div class="form-group">
                                 <label>Base Delivery Fee ($) *</label>
@@ -827,7 +872,7 @@ function togglePasswordVisibility(inputId) {
     }
 }
 
-function triggerEditLocation(id, name, tax, base, weight) {
+function triggerEditLocation(id, name, tax, base, weight, min_order, max_order, shipping_type) {
     document.getElementById('location-add-card').style.display = 'none';
     
     const editCard = document.getElementById('location-edit-card');
@@ -838,6 +883,9 @@ function triggerEditLocation(id, name, tax, base, weight) {
     document.getElementById('edit-loc-tax').value = tax;
     document.getElementById('edit-loc-base').value = base;
     document.getElementById('edit-loc-weight').value = weight;
+    document.getElementById('edit-loc-min-order').value = min_order;
+    document.getElementById('edit-loc-max-order').value = max_order;
+    document.getElementById('edit-loc-shipping-type').value = shipping_type;
     
     editCard.scrollIntoView({ behavior: 'smooth' });
 }
@@ -847,5 +895,6 @@ function closeEditLocation() {
     document.getElementById('location-add-card').style.display = 'block';
 }
 </script>
+
 
 <p style="margin-top: 2rem;"><a href="/bolakausa/admin" class="btn btn-blue"><i class="fas fa-arrow-left"></i> Back to Dashboard</a></p>

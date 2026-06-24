@@ -125,6 +125,67 @@ function can_access_dmd() {
 }
 
 /**
+ * Returns a SQL WHERE clause fragment for order_type filtering on sales_drafts.
+ * DMD Viewer (can_see_dmd_dashboard=1) sees all types.
+ * Standard Viewer: filtered by show_local/export/custom.
+ * Non-Viewer roles: returns empty string (no filter applied).
+ * Usage: $filter = get_order_type_filter('s');
+ *        if ($filter) $sql .= " AND $filter";
+ */
+function get_order_type_filter($table_alias = 's') {
+    $role = $_SESSION['role'] ?? '';
+    if ($role !== ROLE_VIEWER) return '';
+
+    $perms = get_view_permissions();
+    // DMD viewers see everything
+    if (!empty($perms['can_see_dmd_dashboard'])) return '';
+
+    $allowed = [];
+    if (!empty($perms['show_local']))  $allowed[] = "'Local'";
+    if (!empty($perms['show_export'])) $allowed[] = "'Export'";
+    if (!empty($perms['show_custom'])) $allowed[] = "'Custom'";
+
+    if (empty($allowed)) return "1=0";
+    return "`{$table_alias}`.`order_type` IN (" . implode(',', $allowed) . ")";
+}
+
+/**
+ * Returns an array of product IDs that are hidden from the given user.
+ * Context: 'ui' (hide from POS/edit) or 'reports' (hide from reports).
+ */
+function get_hidden_product_ids($user_id = null, $context = 'ui') {
+    if ($user_id === null) $user_id = $_SESSION['user_id'] ?? 0;
+    $col = $context === 'reports' ? 'hide_from_reports' : 'hide_from_ui';
+    $rows = fetch_all("SELECT product_id FROM product_visibility_rules WHERE user_id = ? AND {$col} = 1", [$user_id]);
+    return array_column($rows, 'product_id');
+}
+
+/**
+ * Check if a specific product is hidden for the current user.
+ */
+function is_product_hidden($product_id, $user_id = null, $context = 'ui') {
+    $hidden = get_hidden_product_ids($user_id, $context);
+    return in_array($product_id, $hidden);
+}
+
+/**
+ * Get system account ID by code (e.g., 'CASH', 'BANK', 'AR', 'AP', 'SALES').
+ */
+function get_system_account_id($code) {
+    $acc = fetch_one("SELECT id FROM accounts WHERE code = ? AND is_system = 1 AND isDelete = 0 LIMIT 1", [$code]);
+    return $acc ? (int)$acc['id'] : null;
+}
+
+/**
+ * Get the company default cash or bank account ID.
+ */
+function get_default_account_id($type = 'cash') {
+    $col = $type === 'bank' ? 'default_bank_account_id' : 'default_cash_account_id';
+    $company = fetch_one("SELECT {$col} as acc_id FROM company_settings LIMIT 1");
+    return $company ? (int)$company['acc_id'] : ($type === 'bank' ? 2 : 1);
+}
+
+/**
  * Generate a next journal entry number.
  * Format: JV-YYYY-NNNN
  */

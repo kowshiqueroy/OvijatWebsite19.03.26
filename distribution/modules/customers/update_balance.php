@@ -33,6 +33,27 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                  [$customer_id, $type, $amount, $desc]);
 
         $conn->commit();
+
+        // Auto-post journal entry
+        $ar_account   = get_customer_ar_account($customer_id);
+        $cash_account = get_default_account_id('cash');
+        if ($ar_account) {
+            if ($type === 'Credit') {
+                // Payment received: DR Cash / CR Customer AR
+                $lines = [
+                    ['account_id' => $cash_account, 'dr' => $amount, 'cr' => 0,      'note' => 'Cash receipt'],
+                    ['account_id' => $ar_account,   'dr' => 0,       'cr' => $amount, 'note' => 'Customer payment'],
+                ];
+            } else {
+                // Manual debit charge: DR Customer AR / CR Misc/Cash
+                $lines = [
+                    ['account_id' => $ar_account,   'dr' => $amount, 'cr' => 0,      'note' => 'Debit charge'],
+                    ['account_id' => $cash_account, 'dr' => 0,       'cr' => $amount, 'note' => 'Debit offset'],
+                ];
+            }
+            post_journal(date('Y-m-d'), $desc, 'Payment', 0, $lines);
+        }
+
         log_activity($_SESSION['user_id'], "Manual $type of $amount for Customer ID: $customer_id");
         redirect("modules/customers/view.php?id=$customer_id", "Balance updated successfully.");
     } catch (Exception $e) {

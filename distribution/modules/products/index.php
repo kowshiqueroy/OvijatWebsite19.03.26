@@ -108,26 +108,51 @@ $products = fetch_all("SELECT p.*, c.name as cat_name,
     </div>
 </div>
 
-<!-- Single Stock In Modal (Outside loop for stability) -->
+<!-- Stock IN Modal (with lot/batch tracking) -->
 <div class="modal fade" id="stockInModal" tabindex="-1">
-    <div class="modal-dialog modal-sm">
+    <div class="modal-dialog modal-lg">
         <form action="stock_in.php" method="POST" class="modal-content">
             <?php csrf_field(); ?>
             <div class="modal-header bg-primary text-white">
-                <h5 class="modal-title">Stock IN</h5>
+                <h5 class="modal-title"><i class="fas fa-plus-circle me-2"></i>Stock IN — <span id="modal-product-name"></span></h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
-                <p>Product: <strong id="modal-product-name"></strong></p>
                 <input type="hidden" name="product_id" id="modal-product-id">
-                <div class="mb-3">
-                    <label class="form-label">Quantity to Add</label>
-                    <input type="number" name="qty" class="form-control form-control-lg" required min="1" autofocus>
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold">Quantity <span class="text-danger">*</span></label>
+                        <input type="number" name="qty" class="form-control" required min="1" id="stockin-qty">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold">Batch / Lot No.</label>
+                        <input type="text" name="batch_no" class="form-control" placeholder="e.g. LOT-2026-001">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Storage Location</label>
+                        <input type="text" name="location" class="form-control" placeholder="e.g. Rack A-3, Godown 2">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Manufacture Date</label>
+                        <input type="date" name="manufacture_date" class="form-control">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Expiry Date</label>
+                        <input type="date" name="expiry_date" class="form-control">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Unit Cost (per unit)</label>
+                        <input type="number" step="0.01" name="unit_cost" class="form-control" placeholder="0.00">
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label">Notes</label>
+                        <input type="text" name="notes" class="form-control" placeholder="Optional note">
+                    </div>
                 </div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="submit" class="btn btn-primary">Update Stock</button>
+                <button type="submit" class="btn btn-primary"><i class="fas fa-check me-1"></i> Update Stock</button>
             </div>
         </form>
     </div>
@@ -147,7 +172,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
         
         stockInModal.addEventListener('shown.bs.modal', function () {
-            stockInModal.querySelector('input[name="qty"]').focus();
+            document.getElementById('stockin-qty').focus();
         });
     }
 });

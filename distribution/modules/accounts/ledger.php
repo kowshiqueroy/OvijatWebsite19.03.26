@@ -1,5 +1,5 @@
 <?php
-require_once '../../includes/header.php';
+require_once '../../includes/functions.php';
 check_role([ROLE_ADMIN, ROLE_ACCOUNTANT]);
 
 $company = get_company_settings();

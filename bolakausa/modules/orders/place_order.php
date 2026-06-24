@@ -100,13 +100,29 @@ foreach ($_SESSION['cart'] as $item_key => $qty) {
             'product_id' => $pid,
             'variant_id' => $variant_id,
             'qty' => $qty,
-            'price' => $price
+            'price' => $price,
+            'item_key' => $item_key
         ];
     }
 }
 
+// Validation: State Min/Max Order Limits
+$state_min_order = (float)($location['min_order_amount'] ?? 0);
+$state_max_order = (float)($location['max_order_amount'] ?? 999999.99);
+if ($subtotal < $state_min_order) {
+    die("Order placement blocked: Order subtotal ($" . number_format($subtotal, 2) . ") is below the minimum order amount ($" . number_format($state_min_order, 2) . ") for state " . htmlspecialchars($location['name']) . ".");
+}
+if ($subtotal > $state_max_order) {
+    die("Order placement blocked: Order subtotal ($" . number_format($subtotal, 2) . ") exceeds the maximum order amount ($" . number_format($state_max_order, 2) . ") for state " . htmlspecialchars($location['name']) . ".");
+}
+
 // 3. Shipping, Coupon & Tax Math
-$shipping_charge = $location['base_delivery_charge'] + ($total_weight * $location['per_unit_weight_charge']);
+$shipping_type = $location['shipping_type'] ?? 'default';
+if ($shipping_type === 'free' || $shipping_type === 'manual') {
+    $shipping_charge = 0.00;
+} else {
+    $shipping_charge = $location['base_delivery_charge'] + ($total_weight * $location['per_unit_weight_charge']);
+}
 
 // Calculate Coupon Discount on Server Side
 $discount_amount = 0;
@@ -210,15 +226,27 @@ try {
         $address_string .= " (" . $addr['location_name'] . ", Tax: " . $addr['tax_percent'] . "%)";
     }
 
+    // Extract Negotiated Grand Total Discount details
+    $req_grand_discount_type = $_SESSION['cart_grand_discount']['type'] ?? 'none';
+    $req_grand_discount_value = (float)($_SESSION['cart_grand_discount']['value'] ?? 0.00);
+
+    // Determine initial payment and fulfillment statuses
+    $initial_payment_status = ($payment_method === 'Wallet') ? 'Paid' : 'Unpaid';
+    $initial_fulfillment_status = 'Pending';
+    $initial_legacy_status = in_array($payment_method, ['Wallet', 'COD', 'Pay Later']) ? 'Payment Verified' : 'Pending Payment';
+
     // Insert Order
-    $stmt = $pdo->prepare("INSERT INTO orders (user_id, total_amount, tax_amount, shipping_amount, discount_amount, coupon_id, payment_method, payment_details, delivery_address, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending Payment')");
-    $stmt->execute([$user_id, $grand_total, $tax_amount, $shipping_charge, $discount_amount + $global_discount, $coupon_id, $payment_method, $payment_details, $address_string]);
+    $stmt = $pdo->prepare("INSERT INTO orders (user_id, total_amount, tax_amount, shipping_amount, discount_amount, coupon_id, payment_method, payment_details, delivery_address, status, payment_status, fulfillment_status, requested_discount_type, requested_discount_value) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+    $stmt->execute([$user_id, $grand_total, $tax_amount, $shipping_charge, $discount_amount + $global_discount, $coupon_id, $payment_method, $payment_details, $address_string, $initial_legacy_status, $initial_payment_status, $initial_fulfillment_status, $req_grand_discount_type, $req_grand_discount_value]);
     $order_id = $pdo->lastInsertId();
 
     // Insert Order Items
-    $stmt = $pdo->prepare("INSERT INTO order_items (order_id, product_id, variant_id, qty, price_at_purchase) VALUES (?, ?, ?, ?, ?)");
+    $stmt = $pdo->prepare("INSERT INTO order_items (order_id, product_id, variant_id, qty, price_at_purchase, requested_discount_type, requested_discount_value) VALUES (?, ?, ?, ?, ?, ?, ?)");
     foreach ($order_items_to_save as $item) {
-        $stmt->execute([$order_id, $item['product_id'], $item['variant_id'] ?: null, $item['qty'], $item['price']]);
+        $item_key = $item['item_key'];
+        $item_disc_type = $_SESSION['cart_discounts'][$item_key]['type'] ?? 'none';
+        $item_disc_val = (float)($_SESSION['cart_discounts'][$item_key]['value'] ?? 0.00);
+        $stmt->execute([$order_id, $item['product_id'], $item['variant_id'] ?: null, $item['qty'], $item['price'], $item_disc_type, $item_disc_val]);
     }
 
     // Increment Coupon used count
@@ -235,14 +263,7 @@ try {
     deduct_order_stock($pdo, $order_id);
 
     // Initial Status setting
-    if (in_array($payment_method, ['Wallet', 'COD', 'Pay Later'])) {
-        $stmt = $pdo->prepare("UPDATE orders SET status = 'Payment Verified' WHERE id = ?");
-        $stmt->execute([$order_id]);
-    } else {
-        // Stripe or Bank Transfer
-        $stmt = $pdo->prepare("UPDATE orders SET status = 'Pending Payment' WHERE id = ?");
-        $stmt->execute([$order_id]);
-
+    if (!in_array($payment_method, ['Wallet', 'COD', 'Pay Later'])) {
         $payment_amount = (float)($_POST['payment_amount'] ?? 0);
         $shortfall = max(0, $grand_total - $balance);
         if ($payment_amount < $shortfall) {
@@ -263,29 +284,20 @@ try {
     }
 
     // Log History
-    $status_for_history = in_array($payment_method, ['Wallet', 'COD', 'Pay Later']) ? 'Payment Verified' : 'Pending Payment';
     $stmt = $pdo->prepare("INSERT INTO order_status_history (order_id, status, changed_by, notes) VALUES (?, ?, ?, 'Order Placed')");
-    $stmt->execute([$order_id, $status_for_history, $user_id]);
+    $stmt->execute([$order_id, $initial_legacy_status, $user_id]);
 
     $pdo->commit();
     
     // Trigger Email Notification
     require_once 'includes/mailer.php';
-    $uStmt = $pdo->prepare("SELECT email, full_name FROM users WHERE id = ?");
-    $uStmt->execute([$user_id]);
-    $user_data = $uStmt->fetch();
-    if ($user_data) {
-        $email_body = "<h3>Order Received!</h3>
-        <p>Hello " . e($user_data['full_name']) . ",</p>
-        <p>Your order <strong>#$order_id</strong> has been successfully placed.</p>
-        <p>Total: <strong>$" . number_format($grand_total, 2) . "</strong></p>
-        <p>You can track your order status in your account dashboard.</p>";
-        send_system_email($pdo, $user_data['email'], "Order Confirmation #$order_id", $email_body);
-    }
+    send_invoice_email($pdo, $order_id, "Order Placed");
     
-    // Clear Cart & Coupon
+    // Clear Cart & Coupon & Discounts
     unset($_SESSION['cart']);
     unset($_SESSION['applied_coupon']);
+    unset($_SESSION['cart_discounts']);
+    unset($_SESSION['cart_grand_discount']);
     
     header("Location: " . BASE_URL . "orders?id=$order_id&success=1");
     exit;

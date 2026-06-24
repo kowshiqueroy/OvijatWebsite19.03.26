@@ -6,7 +6,7 @@ check_role([ROLE_ADMIN, ROLE_ACCOUNTANT]);
 
 if (isset($_GET['id'])) {
     $draft_id = $_GET['id'];
-    $draft = fetch_one("SELECT * FROM sales_drafts WHERE id = ? AND status = 'Draft'", [$draft_id]);
+    $draft = fetch_one("SELECT s.*, c.name as customer_name FROM sales_drafts s JOIN customers c ON s.customer_id = c.id WHERE s.id = ? AND s.status = 'Draft'", [$draft_id]);
 
     if (!$draft) {
         redirect('modules/sales/index.php', 'Invalid or already confirmed draft.', 'danger');
@@ -46,6 +46,23 @@ if (isset($_GET['id'])) {
         $stmt_trans->execute();
 
         $conn->commit();
+
+        // Auto-post journal: DR Customer AR / CR Sales Revenue
+        $ar_account  = get_customer_ar_account($draft['customer_id']);
+        $sal_account = get_system_account_id('SALES');
+        if ($ar_account && $sal_account) {
+            post_journal(
+                date('Y-m-d'),
+                "Sales Invoice #" . str_pad($draft_id, 6, '0', STR_PAD_LEFT) . " — " . ($draft['customer_name'] ?? 'Customer #' . $draft['customer_id']),
+                'Invoice',
+                $draft_id,
+                [
+                    ['account_id' => $ar_account,  'dr' => $draft['grand_total'], 'cr' => 0, 'note' => 'Trade Receivable'],
+                    ['account_id' => $sal_account,  'dr' => 0, 'cr' => $draft['grand_total'], 'note' => 'Sales Revenue'],
+                ]
+            );
+        }
+
         log_activity($_SESSION['user_id'], "Confirmed Sales Draft #$draft_id and updated accounts.");
         redirect('modules/sales/index.php', "Sales Draft #$draft_id confirmed and accounts updated successfully.");
     } catch (Exception $e) {

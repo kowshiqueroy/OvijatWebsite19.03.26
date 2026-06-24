@@ -65,7 +65,7 @@ $stmt_chat->execute([$user_id]);
 $unread_chats = (int)$stmt_chat->fetchColumn();
 
 // Compute outstanding orders/pay the rest count
-$stmt_pay_rest = $pdo->prepare("SELECT COUNT(*) FROM orders WHERE user_id = ? AND status IN ('Pending Payment', 'Pending Customer Approval')");
+$stmt_pay_rest = $pdo->prepare("SELECT COUNT(*) FROM orders WHERE user_id = ? AND (payment_status = 'Unpaid' OR fulfillment_status = 'Pending Customer Approval') AND fulfillment_status NOT IN ('Cancelled', 'Rejected')");
 $stmt_pay_rest->execute([$user_id]);
 $pay_rest_count = (int)$stmt_pay_rest->fetchColumn();
 ?>

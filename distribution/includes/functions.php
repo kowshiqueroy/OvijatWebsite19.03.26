@@ -92,8 +92,8 @@ function fetch_all($sql, $params = []) {
             $where = " WHERE isDelete = 0 ";
             $sql = substr_replace($sql, $where, $insert_at, 0);
         } else {
-            // WHERE exists, inject right after it
-            $sql = str_ireplace('WHERE', 'WHERE isDelete = 0 AND ', $sql);
+            // Inject only after the FIRST WHERE (not subquery WHEREs)
+            $sql = preg_replace('/\bWHERE\b/i', 'WHERE isDelete = 0 AND ', $sql, 1);
         }
     }
 
@@ -246,6 +246,52 @@ function number_to_words($number, $is_currency = true) {
  */
 function get_company_settings() {
     return fetch_one("SELECT * FROM company_settings LIMIT 1");
+}
+
+/**
+ * Stream a CSV file to the browser and exit.
+ * Call BEFORE any HTML output (before header.php).
+ * @param string $filename  Suggested download filename.
+ * @param array  $headers   Column header row.
+ * @param array  $rows      2-D array of data rows.
+ */
+function output_csv($filename, $headers, $rows) {
+    header('Content-Type: text/csv; charset=UTF-8');
+    header('Content-Disposition: attachment; filename="' . addslashes($filename) . '"');
+    header('Pragma: no-cache');
+    header('Expires: 0');
+    $out = fopen('php://output', 'w');
+    // UTF-8 BOM so Excel opens it correctly
+    fwrite($out, "\xEF\xBB\xBF");
+    fputcsv($out, $headers);
+    foreach ($rows as $row) fputcsv($out, array_values((array)$row));
+    fclose($out);
+    exit;
+}
+
+/**
+ * Format a data table as a WhatsApp-friendly plain-text string.
+ * @param string $title
+ * @param array  $headers
+ * @param array  $rows       Associative arrays; order follows $col_keys.
+ * @param array  $col_keys   Keys to extract from each row.
+ * @param string $footer
+ */
+function whatsapp_table($title, $headers, $rows, $col_keys, $footer = '') {
+    $lines = [];
+    $lines[] = "*$title*";
+    $lines[] = str_repeat('─', 32);
+    foreach ($rows as $row) {
+        $parts = [];
+        foreach ($col_keys as $i => $key) {
+            $label = $headers[$i] ?? $key;
+            $val   = is_array($row) ? ($row[$key] ?? '') : '';
+            $parts[] = "$label: $val";
+        }
+        $lines[] = implode(' | ', $parts);
+    }
+    if ($footer) { $lines[] = str_repeat('─', 32); $lines[] = $footer; }
+    return implode("\n", $lines);
 }
 
 // Load permission helpers (viewer access controls, journal utilities)

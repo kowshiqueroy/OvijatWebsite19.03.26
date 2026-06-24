@@ -29,8 +29,11 @@ function restrict_to($allowed_roles) {
 
     $role = get_user_role();
     if (!in_array($role, $allowed_roles)) {
-        http_response_code(403);
-        die("Access Denied: You do not have permission to view this page.");
+        require_once __DIR__ . '/access_denied.php';
+        render_access_denied(
+            'Access Denied',
+            'You do not have permission to view this page. Please contact your administrator if you believe this is an error.'
+        );
     }
 
     // Fetch live status from database to prevent bypassed suspensions/deletions
@@ -53,7 +56,8 @@ function restrict_to($allowed_roles) {
 
     // Also check if user is active (except for admin/manager/editor)
     if (in_array($role, ['wholesale_user', 'executive']) && $live_user['status'] !== 'active') {
-        die("Account Pending: Your account is awaiting admin approval.");
+        require_once __DIR__ . '/access_denied.php';
+        render_account_pending();
     }
 }
 
@@ -257,6 +261,14 @@ function calculate_global_discount_amount($pdo, $subtotal, $user_id = null) {
  * Deduct product and variant stock when an order is verified/paid
  */
 function deduct_order_stock($pdo, $order_id) {
+    // Check if stock is already deducted
+    $stmt = $pdo->prepare("SELECT stock_deducted FROM orders WHERE id = ?");
+    $stmt->execute([$order_id]);
+    $deducted = $stmt->fetchColumn();
+    if ($deducted == 1) {
+        return; // Already deducted
+    }
+
     // 1. Fetch order items
     $stmt = $pdo->prepare("SELECT * FROM order_items WHERE order_id = ? AND is_deleted = 0");
     $stmt->execute([$order_id]);
@@ -273,12 +285,24 @@ function deduct_order_stock($pdo, $order_id) {
             $vStmt->execute([$item['qty'], $item['variant_id']]);
         }
     }
+
+    // Mark order stock as deducted
+    $upStmt = $pdo->prepare("UPDATE orders SET stock_deducted = 1 WHERE id = ?");
+    $upStmt->execute([$order_id]);
 }
 
 /**
  * Restore product and variant stock when an order is cancelled or reverted
  */
 function restore_order_stock($pdo, $order_id) {
+    // Check if stock was actually deducted
+    $stmt = $pdo->prepare("SELECT stock_deducted FROM orders WHERE id = ?");
+    $stmt->execute([$order_id]);
+    $deducted = $stmt->fetchColumn();
+    if ($deducted == 0) {
+        return; // Already restored or never deducted
+    }
+
     // 1. Fetch order items
     $stmt = $pdo->prepare("SELECT * FROM order_items WHERE order_id = ? AND is_deleted = 0");
     $stmt->execute([$order_id]);
@@ -295,4 +319,9 @@ function restore_order_stock($pdo, $order_id) {
             $vStmt->execute([$item['qty'], $item['variant_id']]);
         }
     }
+
+    // Mark order stock as not deducted
+    $upStmt = $pdo->prepare("UPDATE orders SET stock_deducted = 0 WHERE id = ?");
+    $upStmt->execute([$order_id]);
 }
+
