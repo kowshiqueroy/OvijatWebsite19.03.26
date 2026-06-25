@@ -45,7 +45,9 @@ $MOD    = $rel;
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="csrf-token" content="<?= e(csrf_token()) ?>">
+<meta name="csrf-token"   content="<?= e(csrf_token()) ?>">
+<meta name="school-name"  content="<?= e($school_name) ?>">
+<meta name="currency"     content="<?= e(setting('currency_symbol','৳')) ?>">
 <title><?= e($page_title) ?> — <?= e($school_name) ?></title>
 
 <!-- Bootstrap 5 -->

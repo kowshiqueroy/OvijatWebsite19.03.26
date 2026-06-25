@@ -70,16 +70,35 @@ if ($exam_id && $class_id && $section_id) {
     foreach ($marksStmt->fetchAll() as $m) $marksMap[$m['student_id']][$m['subject_id']] = $m;
 
     // Build per-student results
+    // Dues checking for results
+    $resDuesAllow = (int)setting('result_card_dues_allow', '1');
+
+    // Build per-student results
     foreach ($students as $stu) {
         $sid  = $stu['student_id'];
-        $row  = ['stu' => $stu, 'marks' => [], 'total' => 0, 'full' => 0, 'failed' => 0, 'absent' => 0];
+        $hasDues = student_has_dues($sid);
+        $isBlocked = ($hasDues && $resDuesAllow === 0);
+
+        $row  = [
+            'stu' => $stu, 
+            'marks' => [], 
+            'total' => 0, 
+            'full' => 0, 
+            'failed' => 0, 
+            'absent' => 0,
+            'has_dues' => $hasDues,
+            'is_blocked' => $isBlocked
+        ];
+
         foreach ($subjects as $sub) {
             $fullM  = $sub['full_marks_written'] + $sub['full_marks_mcq'] + $sub['full_marks_practical'];
             $passM  = $sub['pass_marks_written'] + $sub['pass_marks_mcq'] + $sub['pass_marks_practical'];
             $m      = $marksMap[$sid][$sub['subject_id']] ?? null;
             $row['full'] += $fullM;
 
-            if (!$m) {
+            if ($isBlocked) {
+                $row['marks'][$sub['subject_id']] = ['val' => '***', 'pass' => false];
+            } elseif (!$m) {
                 $row['marks'][$sub['subject_id']] = ['val' => null, 'pass' => null];
             } elseif ($m['is_absent']) {
                 $row['marks'][$sub['subject_id']] = ['val' => 'AB', 'pass' => false];
@@ -92,18 +111,34 @@ if ($exam_id && $class_id && $section_id) {
                 if (!$pass) $row['failed']++;
             }
         }
-        $pct          = $row['full'] > 0 ? ($row['total'] / $row['full']) * 100 : 0;
-        $grade        = calculate_grade($pct);
-        $row['pct']   = round($pct, 1);
-        $row['grade'] = $grade;
-        $row['pass']  = $row['failed'] === 0;
+
+        if ($isBlocked) {
+            $row['total'] = 'HELD';
+            $row['pct']   = '—';
+            $row['grade'] = ['grade' => 'WITHHELD', 'gpa' => 0.00, 'label' => 'Held due to Dues'];
+            $row['pass']  = false;
+        } else {
+            $pct          = $row['full'] > 0 ? ($row['total'] / $row['full']) * 100 : 0;
+            $grade        = calculate_grade($pct);
+            $row['pct']   = round($pct, 1);
+            $row['grade'] = $grade;
+            $row['pass']  = $row['failed'] === 0;
+        }
         $results[]    = $row;
     }
 
-    // Sort by total desc for merit position
-    usort($results, fn($a, $b) => $b['total'] <=> $a['total']);
+    // Sort by total desc for merit position (put HELD at bottom)
+    usort($results, function($a, $b) {
+        if ($a['is_blocked'] && !$b['is_blocked']) return 1;
+        if (!$a['is_blocked'] && $b['is_blocked']) return -1;
+        if ($a['is_blocked'] && $b['is_blocked']) return 0;
+        return $b['total'] <=> $a['total'];
+    });
+    
     $pos = 1;
-    foreach ($results as &$r) { $r['position'] = $r['pass'] ? $pos++ : '—'; }
+    foreach ($results as &$r) { 
+        $r['position'] = ($r['pass'] && !$r['is_blocked']) ? $pos++ : '—'; 
+    }
     unset($r);
 }
 
@@ -127,22 +162,26 @@ if ($print_mode && !empty($results)) {
 <meta charset="UTF-8">
 <title>Result Sheet — <?= e($examName) ?></title>
 <style>
-  body { font-family: Arial, sans-serif; font-size: 10px; margin: 0; padding: 10px; }
+  body { font-family: Arial, sans-serif; font-size: 9px; margin: 0; padding: 10px; }
   h2, h3 { text-align: center; margin: 3px 0; }
   .sub-header { text-align: center; margin-bottom: 8px; color: #555; }
-  table { width: 100%; border-collapse: collapse; margin-top: 8px; }
-  th, td { border: 1px solid #333; padding: 3px 5px; }
-  th { background: #eee; font-weight: bold; text-align: center; font-size: 9px; }
+  table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 8.5px; }
+  th, td { border: 1px solid #333; padding: 2px 4px; }
+  th { background: #eee; font-weight: bold; text-align: center; font-size: 8.5px; }
   td { text-align: center; }
   td.name { text-align: left; }
-  .pass { background: #dcfce7; }
-  .fail { background: #fee2e2; font-weight: bold; color: #b91c1c; }
-  .ab   { background: #fef9c3; color: #92400e; }
-  .total-row { background: #1e293b; color: white; font-weight: bold; }
-  .sig { display: flex; justify-content: space-between; margin-top: 30px; }
+  .pass { background: #dcfce7 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .fail { background: #fee2e2 !important; font-weight: bold; color: #b91c1c; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .ab   { background: #fef9c3 !important; color: #92400e; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .total-row { background: #1e293b !important; color: white !important; font-weight: bold; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .sig { display: flex; justify-content: space-between; margin-top: 25px; page-break-inside: avoid; }
   .sig div { text-align: center; }
-  .sig .line { border-top: 1px solid #000; min-width: 140px; padding-top: 3px; font-size: 9px; }
-  @media print { body { padding: 5px; } @page { margin: 8mm; } .no-print { display: none; } }
+  .sig .line { border-top: 1px solid #000; min-width: 140px; padding-top: 3px; font-size: 8.5px; }
+  @media print { 
+    body { padding: 0; } 
+    @page { size: A4 landscape; margin: 6mm 8mm; } 
+    .no-print { display: none !important; } 
+  }
 </style>
 </head>
 <body>
@@ -353,19 +392,26 @@ $aPlus    = count(array_filter($results, fn($r) => $r['grade']['grade'] === 'A+'
       </thead>
       <tbody>
         <?php foreach ($results as $r): ?>
-        <tr class="<?= !$r['pass'] ? 'table-danger' : '' ?>">
+        <tr class="<?= !$r['pass'] ? 'table-danger' : '' ?> <?= $r['is_blocked'] ? 'opacity-75' : '' ?>">
           <td class="text-center fw-700"><?= $r['position'] ?></td>
           <td class="text-center fw-700 text-primary"><?= $r['stu']['roll_number'] ?></td>
-          <td class="fw-600"><?= e($r['stu']['first_name'] . ' ' . $r['stu']['last_name']) ?></td>
+          <td class="fw-600">
+            <?= e($r['stu']['first_name'] . ' ' . $r['stu']['last_name']) ?>
+            <?php if ($r['is_blocked']): ?>
+              <span class="badge bg-danger ms-1" style="font-size:0.65rem;">Dues Block</span>
+            <?php endif; ?>
+          </td>
           <?php foreach ($subjects as $sub):
             $m   = $r['marks'][$sub['subject_id']] ?? ['val' => null, 'pass' => null];
-            $bg  = $m['val'] === null ? '' : ($m['val'] === 'AB' ? 'background:#fef9c3' : ($m['pass'] ? '' : 'background:#fee2e2'));
+            $bg  = $m['val'] === null ? '' : ($m['val'] === 'AB' ? 'background:#fef9c3' : ($m['val'] === '***' ? 'background:#fee2e2' : ($m['pass'] ? '' : 'background:#fee2e2')));
           ?>
             <td class="text-center" style="<?= $bg ?>">
               <?php if ($m['val'] === null): ?>
                 <span class="text-muted">—</span>
               <?php elseif ($m['val'] === 'AB'): ?>
                 <span class="text-warning fw-700">AB</span>
+              <?php elseif ($m['val'] === '***'): ?>
+                <span class="text-danger fw-700">***</span>
               <?php elseif (!$m['pass']): ?>
                 <span class="text-danger fw-700"><?= $m['val'] ?></span>
               <?php else: ?>
@@ -374,16 +420,16 @@ $aPlus    = count(array_filter($results, fn($r) => $r['grade']['grade'] === 'A+'
             </td>
           <?php endforeach; ?>
           <td class="text-center fw-700"><?= $r['total'] ?></td>
-          <td class="text-center"><?= $r['pct'] ?>%</td>
-          <td class="text-center fw-700"><?= number_format($r['grade']['gpa'], 2) ?></td>
+          <td class="text-center"><?= $r['is_blocked'] ? '—' : $r['pct'] . '%' ?></td>
+          <td class="text-center fw-700"><?= $r['is_blocked'] ? '—' : number_format($r['grade']['gpa'], 2) ?></td>
           <td class="text-center">
-            <span class="badge bg-<?= $r['grade']['gpa'] >= 4 ? 'success' : ($r['grade']['gpa'] >= 2 ? 'warning text-dark' : 'danger') ?>">
+            <span class="badge bg-<?= $r['is_blocked'] ? 'danger' : ($r['grade']['gpa'] >= 4 ? 'success' : ($r['grade']['gpa'] >= 2 ? 'warning text-dark' : 'danger')) ?>">
               <?= $r['grade']['grade'] ?>
             </span>
           </td>
           <td class="text-center">
-            <span class="badge-status badge-<?= $r['pass'] ? 'active' : 'rejected' ?>">
-              <?= $r['pass'] ? 'Pass' : 'Fail' ?>
+            <span class="badge-status badge-<?= $r['is_blocked'] ? 'rejected' : ($r['pass'] ? 'active' : 'rejected') ?>">
+              <?= $r['is_blocked'] ? 'WITHHELD' : ($r['pass'] ? 'Pass' : 'Fail') ?>
             </span>
           </td>
         </tr>

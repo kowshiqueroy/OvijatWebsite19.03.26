@@ -88,18 +88,35 @@ function load_results(PDO $pdo, int $exam_id, int $class_id, int $section_id, in
     $marksMap = [];
     foreach ($mkStmt->fetchAll() as $m) $marksMap[$m['student_id']][$m['subject_id']] = $m;
 
+    // Dues checking
+    $resDuesAllow = (int)setting('result_card_dues_allow', '1');
+
     // Build result rows
     $results = [];
     foreach ($students as $stu) {
         $sid = $stu['student_id'];
-        $row = ['stu'=>$stu,'subjects'=>[],'total'=>0,'full'=>0,'failed'=>0,'absent'=>0];
+        $hasDues = student_has_dues($sid);
+        $isBlocked = ($hasDues && $resDuesAllow === 0);
+
+        $row = [
+            'stu'=>$stu,
+            'subjects'=>[],
+            'total'=>0,
+            'full'=>0,
+            'failed'=>0,
+            'absent'=>0,
+            'has_dues'=>$hasDues,
+            'is_blocked'=>$isBlocked
+        ];
         foreach ($subjects as $sub) {
             $subId = $sub['subject_id'];
             $full  = $sub['full_marks_written']+$sub['full_marks_mcq']+$sub['full_marks_practical'];
             $pass  = $sub['pass_marks_written']+$sub['pass_marks_mcq']+$sub['pass_marks_practical'];
             $m     = $marksMap[$sid][$subId] ?? null;
             $row['full'] += $full;
-            if (!$m) {
+            if ($isBlocked) {
+                $row['subjects'][$subId] = ['w'=>'***','mcq'=>'***','prac'=>'***','total'=>'***','full'=>$full,'pass'=>$pass,'grade'=>['grade'=>'WITHHELD','gpa'=>0,'label'=>'Blocked'],'absent'=>false,'not_entered'=>false];
+            } elseif (!$m) {
                 $row['subjects'][$subId] = ['w'=>null,'mcq'=>null,'prac'=>null,'total'=>null,'full'=>$full,'pass'=>$pass,'grade'=>null,'absent'=>false,'not_entered'=>true];
             } elseif ($m['is_absent']) {
                 $row['subjects'][$subId] = ['w'=>null,'mcq'=>null,'prac'=>null,'total'=>0,'full'=>$full,'pass'=>$pass,'grade'=>['grade'=>'AB','gpa'=>0,'label'=>'Absent'],'absent'=>true,'not_entered'=>false];
@@ -113,10 +130,17 @@ function load_results(PDO $pdo, int $exam_id, int $class_id, int $section_id, in
                 if ($tot < $pass) $row['failed']++;
             }
         }
-        $pct          = $row['full']>0?round($row['total']/$row['full']*100,1):0;
-        $row['pct']   = $pct;
-        $row['grade'] = calculate_grade($pct);
-        $row['pass']  = $row['failed']===0;
+        if ($isBlocked) {
+            $row['total'] = 'HELD';
+            $row['pct']   = '—';
+            $row['grade'] = ['grade'=>'WITHHELD','gpa'=>0,'label'=>'Held due to Dues'];
+            $row['pass']  = false;
+        } else {
+            $pct          = $row['full']>0?round($row['total']/$row['full']*100,1):0;
+            $row['pct']   = $pct;
+            $row['grade'] = calculate_grade($pct);
+            $row['pass']  = $row['failed']===0;
+        }
         $results[]    = $row;
     }
 

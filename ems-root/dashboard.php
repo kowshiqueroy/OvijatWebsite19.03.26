@@ -93,12 +93,30 @@ try {
 $chart_labels = json_encode(array_column($monthly_data, 'month'));
 $chart_values = json_encode(array_column($monthly_data, 'total'));
 
+// Fetch latest active broadcasted notice
+$noticeBanner = null;
+try {
+    $nbStmt = $pdo->query("SELECT * FROM notices WHERE is_broadcast=1 AND publish_date <= CURDATE() ORDER BY id DESC LIMIT 1");
+    $noticeBanner = $nbStmt->fetch();
+} catch (Exception $e) {}
+
 require_once EMS_ROOT . '/includes/header.php';
 ?>
 
 <h1 class="page-title">
   Dashboard <small>Overview — <?= e(setting('school_name', 'EMS')) ?></small>
 </h1>
+
+<?php if ($noticeBanner): ?>
+<div class="alert alert-info border-primary d-flex align-items-center gap-3 p-3 mb-4 shadow-sm" role="alert" style="border-left: 5px solid var(--ems-primary) !important;">
+  <i class="bi bi-megaphone-fill text-primary fs-4"></i>
+  <div>
+    <div class="fw-bold small text-primary mb-1">📢 ANNOUNCEMENT: <?= e($noticeBanner['title']) ?> (<?= fmt_date($noticeBanner['publish_date']) ?>)</div>
+    <div class="text-sm text-dark"><?= e(substr($noticeBanner['content'], 0, 200)) ?><?= strlen($noticeBanner['content']) > 200 ? '...' : '' ?></div>
+    <a href="modules/communication/notices.php" class="alert-link small mt-1 d-inline-block">Read Full Notice →</a>
+  </div>
+</div>
+<?php endif; ?>
 
 <!-- ── Stat Cards ──────────────────────────────────────────── -->
 <div class="row g-3 mb-4">

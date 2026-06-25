@@ -83,10 +83,31 @@ if ($exam_id && $class_id) {
     $subjects = $subj->fetchAll();
 }
 
+$user_id = current_user_id();
+$is_admin = has_role('super_admin', 'admin');
+if (!$is_admin && !empty($subjects)) {
+    $entry_level = setting('academic_marks_entry_level', 'all');
+    if ($entry_level === 'assigned') {
+        $allowed_stmt = $pdo->prepare("SELECT DISTINCT subject_id FROM routine_slots WHERE teacher_id = ? AND class_id = ? AND section_id = ? AND status = 1");
+        $allowed_stmt->execute([$user_id, $class_id, $section_id]);
+        $allowed_subs = $allowed_stmt->fetchAll(PDO::FETCH_COLUMN);
+        $subjects = array_filter($subjects, fn($s) => in_array($s['id'], $allowed_subs));
+    } elseif ($entry_level === 'expertise') {
+        $allowed_stmt = $pdo->prepare("SELECT subject_id FROM teacher_subjects WHERE teacher_id = ?");
+        $allowed_stmt->execute([$user_id]);
+        $allowed_subs = $allowed_stmt->fetchAll(PDO::FETCH_COLUMN);
+        $subjects = array_filter($subjects, fn($s) => in_array($s['id'], $allowed_subs));
+    }
+}
+
 // Subject config
 $subjectConfig = null;
 if ($subject_id && !empty($subjects)) {
     foreach ($subjects as $sub) { if ((int)$sub['id'] === $subject_id) { $subjectConfig = $sub; break; } }
+}
+if ($subject_id && !$subjectConfig) {
+    flash('error', 'Access Denied: You are not permitted to enter marks for this subject.');
+    $subject_id = 0;
 }
 
 // Students with existing marks

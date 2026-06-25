@@ -12,6 +12,123 @@ $pdo    = db();
 $errors = [];
 $receipt_no = null;
 
+// ── Admin: Void a payment ────────────────────────────────────────────────────
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'void_payment') {
+    csrf_check();
+    require_auth(['setup.edit']); // Only super admin / setup permission can void
+
+    $pay_id  = int_param('payment_id', 0, $_POST);
+    $reason  = trim($_POST['void_reason'] ?? '');
+    $student_id_for_redirect = int_param('student_id', 0, $_POST);
+    $session_redirect = int_param('session_id', (int)setting('current_session_id',0), $_POST);
+
+    if (!$pay_id || !$reason) {
+        flash('error', 'Payment ID and void reason are required.');
+        header('Location: collect.php?student_id='.$student_id_for_redirect.'&session_id='.$session_redirect);
+        exit;
+    }
+
+    $pmt = $pdo->prepare('SELECT fp.*, fl.amount_due, fl.amount_paid AS led_paid, fl.waiver_amount FROM fee_payments fp JOIN fee_ledgers fl ON fl.id=fp.ledger_id WHERE fp.id=? AND fp.approval_status != "void"');
+    $pmt->execute([$pay_id]);
+    $pmt = $pmt->fetch();
+
+    if (!$pmt) {
+        flash('error', 'Payment not found or already voided.');
+        header('Location: collect.php?student_id='.$student_id_for_redirect.'&session_id='.$session_redirect);
+        exit;
+    }
+
+    try {
+        $pdo->beginTransaction();
+
+        // 1. Mark payment as void
+        $pdo->prepare('UPDATE fee_payments SET approval_status="void", void_reason=?, voided_by=?, voided_at=NOW() WHERE id=?')
+            ->execute([$reason, current_user_id(), $pay_id]);
+
+        if ($pmt['approval_status'] === 'approved') {
+            // 2. Reverse ledger amount_paid
+            $newPaid = max(0, round($pmt['led_paid'] - $pmt['amount'], 2));
+            $newBalance = round($pmt['amount_due'] - $newPaid - $pmt['waiver_amount'], 2);
+            $newStatus  = $newBalance <= 0.01 ? 'paid' : ($newPaid > 0 ? 'partial' : 'unpaid');
+            $pdo->prepare('UPDATE fee_ledgers SET amount_paid=?, status=? WHERE id=?')->execute([$newPaid, $newStatus, $pmt['ledger_id']]);
+
+            // 3. Reverse account balance
+            if ($pmt['account_id']) {
+                $pdo->prepare('UPDATE accounts SET current_balance=current_balance-? WHERE id=?')->execute([$pmt['amount'], $pmt['account_id']]);
+                $pdo->prepare('INSERT INTO account_transactions (account_id,amount,transaction_type,description,reference_table,reference_id,created_by) VALUES (?,?,"withdrawal",?,\'fee_payments\',?,?)')
+                    ->execute([$pmt['account_id'], -$pmt['amount'], "VOID: Receipt {$pmt['receipt_number']} — $reason", $pay_id, current_user_id()]);
+            }
+        }
+
+        // 4. Audit log
+        $pdo->prepare('INSERT INTO payment_void_logs (entity_type,entity_id,action,old_status,new_status,amount_affected,performed_by,reason) VALUES ("payment",?,?,?,?,?,?,?)')
+            ->execute([$pay_id, $pmt['approval_status'] === 'pending' ? 'void_pending' : 'void', $pmt['approval_status'], 'void', $pmt['amount'], current_user_id(), $reason]);
+
+        $pdo->commit();
+        log_activity('void_payment', 'finance', $pay_id, "RCP:{$pmt['receipt_number']}", "Reason:$reason");
+        flash('success', "Payment {$pmt['receipt_number']} voided successfully. Ledger balance restored.");
+    } catch (Exception $e) {
+        $pdo->rollBack();
+        flash('error', 'Void failed: ' . $e->getMessage());
+    }
+    header('Location: collect.php?student_id='.$student_id_for_redirect.'&session_id='.$session_redirect);
+    exit;
+}
+
+// ── Admin: Approve or reject a pending partial payment ───────────────────────
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'review_partial') {
+    csrf_check();
+    require_auth(['setup.edit']);
+
+    $pay_id  = int_param('payment_id', 0, $_POST);
+    $verdict = $_POST['verdict'] ?? '';  // 'approve' | 'reject'
+    $reason  = trim($_POST['review_note'] ?? '');
+    $student_id_for_redirect = int_param('student_id', 0, $_POST);
+    $session_redirect = int_param('session_id', (int)setting('current_session_id',0), $_POST);
+
+    if (!$pay_id || !in_array($verdict, ['approve','reject'])) {
+        flash('error', 'Invalid review action.');
+        header('Location: collect.php?student_id='.$student_id_for_redirect.'&session_id='.$session_redirect);
+        exit;
+    }
+
+    $pmt = $pdo->prepare('SELECT fp.*, fl.amount_due, fl.amount_paid AS led_paid, fl.waiver_amount FROM fee_payments fp JOIN fee_ledgers fl ON fl.id=fp.ledger_id WHERE fp.id=? AND fp.approval_status="pending"');
+    $pmt->execute([$pay_id]);
+    $pmt = $pmt->fetch();
+
+    if (!$pmt) { flash('error', 'Pending payment not found.'); header('Location: collect.php?student_id='.$student_id_for_redirect.'&session_id='.$session_redirect); exit; }
+
+    try {
+        $pdo->beginTransaction();
+        if ($verdict === 'approve') {
+            $pdo->prepare('UPDATE fee_payments SET approval_status="approved" WHERE id=?')->execute([$pay_id]);
+            // Apply amount to ledger
+            $newPaid = round($pmt['led_paid'] + $pmt['amount'], 2);
+            $newBalance = round($pmt['amount_due'] - $newPaid - $pmt['waiver_amount'], 2);
+            $newStatus  = $newBalance <= 0.01 ? 'paid' : ($newPaid > 0 ? 'partial' : 'unpaid');
+            $pdo->prepare('UPDATE fee_ledgers SET amount_paid=?, status=? WHERE id=?')->execute([$newPaid, $newStatus, $pmt['ledger_id']]);
+            if ($pmt['account_id']) {
+                $pdo->prepare('UPDATE accounts SET current_balance=current_balance+? WHERE id=?')->execute([$pmt['amount'], $pmt['account_id']]);
+                $pdo->prepare('INSERT INTO account_transactions (account_id,amount,transaction_type,description,created_by) VALUES (?,?,"deposit",?,?)')
+                    ->execute([$pmt['account_id'], $pmt['amount'], "Approved partial payment {$pmt['receipt_number']}", current_user_id()]);
+            }
+            flash('success', "Partial payment {$pmt['receipt_number']} approved and applied to ledger.");
+        } else {
+            $pdo->prepare('UPDATE fee_payments SET approval_status="void",void_reason=?,voided_by=?,voided_at=NOW() WHERE id=?')->execute([$reason ?: 'Rejected by admin', current_user_id(), $pay_id]);
+            flash('warning', "Partial payment {$pmt['receipt_number']} rejected. Ledger not affected.");
+        }
+        $pdo->prepare('INSERT INTO payment_void_logs (entity_type,entity_id,action,old_status,new_status,amount_affected,performed_by,reason) VALUES ("payment",?,?,?,?,?,?,?)')
+            ->execute([$pay_id, $verdict==='approve'?'approve':'reject', 'pending', $verdict==='approve'?'approved':'void', $pmt['amount'], current_user_id(), $reason]);
+        $pdo->commit();
+        log_activity('review_partial_payment', 'finance', $pay_id, 'pending', $verdict);
+    } catch (Exception $e) {
+        $pdo->rollBack();
+        flash('error', 'Review failed: ' . $e->getMessage());
+    }
+    header('Location: collect.php?student_id='.$student_id_for_redirect.'&session_id='.$session_redirect);
+    exit;
+}
+
 // ── Handle multi-fee batch payment (with optional custom fees) ───────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'pay_batch') {
     csrf_check();
@@ -22,6 +139,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'pay_b
     $amounts        = $_POST['pay_amount']      ?? [];
     $method         = $_POST['payment_method']  ?? 'cash';
     $note           = trim($_POST['notes']       ?? '');
+    $account_id     = int_param('account_id', 0, $_POST);
 
     // Custom ad-hoc fees
     $custom_cats    = $_POST['custom_cat']      ?? [];
@@ -42,10 +160,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'pay_b
 
     if (!$student_id && !$hasCustom) { $errors[] = 'Nothing to collect.'; }
     if ($student_id && !$hasRegular && !$hasCustom) { $errors[] = 'No fees selected or added.'; }
+    if (!$account_id) { $errors[] = 'Please select a deposit account.'; }
+
+    // Partial payment policy check
+    $allowPartial   = setting('allow_partial_payment', 'no') === 'yes';
+    $minPct         = (int)setting('partial_min_percent', '100');
+    $needsApproval  = setting('partial_requires_approval', 'yes') === 'yes';
 
     if (empty($errors) && $hasRegular) {
+        // Fetch balances for selected ledgers
+        $inP = implode(',', array_fill(0, count($ledger_ids), '?'));
+        $lRows = $pdo->prepare("SELECT id, amount_due, amount_paid, waiver_amount FROM fee_ledgers WHERE id IN ($inP)");
+        $lRows->execute($ledger_ids);
+        $lRowMap = array_column($lRows->fetchAll(), null, 'id');
+
         foreach ($ledger_ids as $lid) {
-            if ((float)($amounts[$lid] ?? 0) <= 0) { $errors[] = "Enter a valid amount for each selected fee."; break; }
+            $amt = (float)($amounts[$lid] ?? 0);
+            if ($amt <= 0) { $errors[] = "Enter a valid amount for each selected fee."; break; }
+            $lRow = $lRowMap[$lid] ?? null;
+            if ($lRow) {
+                $balance = round($lRow['amount_due'] - $lRow['amount_paid'] - $lRow['waiver_amount'], 2);
+                $isPartial = $amt < $balance - 0.01;
+                if ($isPartial && !$allowPartial) {
+                    $errors[] = "Partial payment is disabled. You must pay the full balance for each fee.";
+                    break;
+                }
+                if ($isPartial && $minPct < 100) {
+                    $minAmt = round($balance * $minPct / 100, 2);
+                    if ($amt < $minAmt - 0.01) {
+                        $errors[] = "Minimum payment for one of the fees is " . money($minAmt) . " ({$minPct}% of balance).";
+                        break;
+                    }
+                }
+            }
         }
     }
 
@@ -55,8 +202,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'pay_b
             $receipt_no = next_receipt_number();
 
             $insPayStmt = $pdo->prepare(
-                'INSERT INTO fee_payments (ledger_id,student_id,amount,payment_date,payment_method,receipt_number,collected_by,notes)
-                 VALUES (?,?,?,CURDATE(),?,?,?,?)'
+                'INSERT INTO fee_payments (ledger_id,student_id,amount,payment_date,payment_method,receipt_number,collected_by,notes,account_id,approval_status)
+                 VALUES (?,?,?,CURDATE(),?,?,?,?,?,?)'
             );
             $updLedStmt = $pdo->prepare(
                 'UPDATE fee_ledgers SET amount_paid=amount_paid+:a,
@@ -66,14 +213,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'pay_b
             );
 
             $total = 0;
+            $hasPending = false;
 
             // ── Regular ledger fees ─────────────────────────────
             foreach ($ledger_ids as $lid) {
                 $amt = round((float)($amounts[$lid] ?? 0), 2);
                 if ($amt <= 0) continue;
-                $insPayStmt->execute([$lid, $student_id, $amt, $method, $receipt_no, current_user_id(), $note]);
-                $updLedStmt->execute([':a'=>$amt,':b'=>$amt,':c'=>$amt,':lid'=>$lid]);
-                $total += $amt;
+                // Check if this specific payment is partial
+                $lRow = $lRowMap[$lid] ?? null;
+                $isPartial = $lRow && $amt < round($lRow['amount_due'] - $lRow['amount_paid'] - $lRow['waiver_amount'], 2) - 0.01;
+                $approvalStatus = ($isPartial && $needsApproval) ? 'pending' : 'approved';
+                if ($approvalStatus === 'pending') $hasPending = true;
+
+                $insPayStmt->execute([$lid, $student_id, $amt, $method, $receipt_no, current_user_id(), $note, $account_id, $approvalStatus]);
+                if ($approvalStatus === 'approved') {
+                    $updLedStmt->execute([':a'=>$amt,':b'=>$amt,':c'=>$amt,':lid'=>$lid]);
+                    $total += $amt;
+                }
             }
 
             // ── Custom / ad-hoc fees: create ledger entry on the fly ──
@@ -86,14 +242,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'pay_b
                 $insLedStmt->execute([$student_id, $session_id_post, $cf['cat'], $cf['amt'], $cf['desc']]);
                 $newLid = (int)$pdo->lastInsertId();
                 // Immediately pay it in full
-                $insPayStmt->execute([$newLid, $student_id, $cf['amt'], $method, $receipt_no, current_user_id(), $cf['desc']]);
+                $insPayStmt->execute([$newLid, $student_id, $cf['amt'], $method, $receipt_no, current_user_id(), $cf['desc'], $account_id]);
                 $pdo->prepare('UPDATE fee_ledgers SET amount_paid=? WHERE id=?')->execute([$cf['amt'], $newLid]);
                 $total += $cf['amt'];
             }
 
+            // Update Account Balance
+            if ($account_id && $total > 0) {
+                $pdo->prepare("UPDATE accounts SET current_balance = current_balance + ? WHERE id = ?")->execute([$total, $account_id]);
+                
+                // Log Account Ledger Transaction
+                $tx = $pdo->prepare("
+                    INSERT INTO account_transactions (account_id, amount, transaction_type, description, reference_table, reference_id, created_by) 
+                    VALUES (?, ?, 'deposit', ?, 'fee_payments', ?, ?)
+                ");
+                // Reference ID is 0 or null as it's batch payment of multiple ledgers/receipts
+                $tx->execute([$account_id, $total, "Student fee collection. Receipt: $receipt_no", null, current_user_id()]);
+            }
+
             $pdo->commit();
-            log_activity('fee_collected','finance',$student_id,'',money($total).' RCP:'.$receipt_no);
-            header('Location: collect.php?student_id='.$student_id.'&session_id='.$session_id_post.'&paid='.urlencode($receipt_no));
+            log_activity('fee_collected','finance',$student_id,'',money($total).' RCP:'.$receipt_no.($hasPending?' [PARTIAL-PENDING]':''));
+            $pendingFlag = $hasPending ? '&pending=1' : '';
+            header('Location: collect.php?student_id='.$student_id.'&session_id='.$session_id_post.'&paid='.urlencode($receipt_no).$pendingFlag);
             exit;
 
         } catch (Exception $e) {
@@ -206,11 +376,12 @@ if ($student_id) {
     }
 }
 
-// Payment history for selected student (all sessions, grouped by receipt)
+// Payment history for selected student (all sessions, with void/pending details)
 $paymentHistory = [];
 if ($student_id) {
     $ph = $pdo->prepare(
-        "SELECT fp.receipt_number, fp.payment_date, fp.payment_method,
+        "SELECT fp.id AS payment_id, fp.receipt_number, fp.payment_date, fp.payment_method,
+                fp.approval_status, fp.void_reason,
                 GROUP_CONCAT(fc.category_name ORDER BY fc.category_name SEPARATOR ', ') AS fee_categories,
                 SUM(fp.amount) AS total_paid,
                 COUNT(fp.id) AS line_count
@@ -218,13 +389,14 @@ if ($student_id) {
          JOIN fee_ledgers fl    ON fl.id  = fp.ledger_id
          JOIN fee_categories fc ON fc.id  = fl.fee_category_id
          WHERE fp.student_id = :sid
-         GROUP BY fp.receipt_number, fp.payment_date, fp.payment_method
+         GROUP BY fp.id, fp.receipt_number, fp.payment_date, fp.payment_method, fp.approval_status, fp.void_reason
          ORDER BY fp.payment_date DESC, fp.id DESC
-         LIMIT 50"
+         LIMIT 100"
     );
     $ph->execute([':sid' => $student_id]);
     $paymentHistory = $ph->fetchAll();
 }
+$pendingPartial = !empty($_GET['pending']);
 
 // Student search results
 $searchResults = [];
@@ -247,6 +419,16 @@ require_once EMS_ROOT . '/includes/header.php';
 ?>
 
 <h1 class="page-title"><i class="bi bi-cash-coin me-2 text-primary"></i>Fee Collection</h1>
+
+<?php if ($pendingPartial): ?>
+<div class="alert alert-warning d-flex align-items-center gap-3">
+  <i class="bi bi-clock-history fs-4"></i>
+  <div>
+    <strong>Partial Payment Pending Approval</strong> — Receipt <strong><?= e($receipt_no) ?></strong> recorded but requires admin approval before the ledger is updated.
+    Notify admin to review at <a href="collect.php?student_id=<?= $student_id ?>&session_id=<?= $session_id ?>">payment history</a>.
+  </div>
+</div>
+<?php endif; ?>
 
 <?php if ($receipt_no): ?>
 <div class="card mb-3 border-success" style="border-width:2px!important;">
@@ -357,39 +539,68 @@ require_once EMS_ROOT . '/includes/header.php';
       <div class="collapse show" id="payHistoryPanel">
         <div class="list-group list-group-flush" style="max-height:380px;overflow-y:auto;">
           <?php foreach ($paymentHistory as $ph):
-            $isLatest = $receipt_no && $ph['receipt_number'] === $receipt_no;
+            $isLatest   = $receipt_no && $ph['receipt_number'] === $receipt_no;
+            $isVoid     = $ph['approval_status'] === 'void';
+            $isPending  = $ph['approval_status'] === 'pending';
+            $isApproved = $ph['approval_status'] === 'approved';
             $methodLabel = ['cash'=>'Cash','bank'=>'Bank','mobile_banking'=>'Mobile Banking',
                             'cheque'=>'Cheque','online'=>'Online'][$ph['payment_method']] ?? ucfirst($ph['payment_method']);
+            $rowCls = $isVoid ? 'list-group-item-secondary' : ($isPending ? 'list-group-item-warning' : ($isLatest ? 'list-group-item-success' : ''));
           ?>
-          <div class="list-group-item py-2 px-3 <?= $isLatest ? 'list-group-item-success' : '' ?>">
+          <div class="list-group-item py-2 px-3 <?= $rowCls ?>">
             <div class="d-flex align-items-start justify-content-between gap-2">
-              <div style="min-width:0;">
-                <div class="fw-700 small d-flex align-items-center gap-1">
-                  <?php if ($isLatest): ?>
-                    <span class="badge bg-success me-1" style="font-size:.65rem;">NEW</span>
+              <div style="min-width:0;flex:1;">
+                <div class="fw-700 small d-flex align-items-center gap-1 flex-wrap">
+                  <?php if ($isLatest && !$isPending && !$isVoid): ?>
+                    <span class="badge bg-success" style="font-size:.6rem;">NEW</span>
                   <?php endif; ?>
-                  <?= e(setting('currency_symbol','৳').' '.number_format($ph['total_paid'],2)) ?>
-                  <span class="text-muted fw-400" style="font-size:.75rem;">· <?= e($methodLabel) ?></span>
+                  <?php if ($isVoid): ?>
+                    <span class="badge bg-secondary" style="font-size:.6rem;">VOID</span>
+                  <?php elseif ($isPending): ?>
+                    <span class="badge bg-warning text-dark" style="font-size:.6rem;">PENDING</span>
+                  <?php endif; ?>
+                  <span class="<?= $isVoid?'text-decoration-line-through text-muted':'' ?>">
+                    <?= e(setting('currency_symbol','৳').' '.number_format($ph['total_paid'],2)) ?>
+                  </span>
+                  <span class="text-muted fw-400" style="font-size:.72rem;">· <?= e($methodLabel) ?></span>
                 </div>
-                <div class="text-muted" style="font-size:.72rem;margin-top:1px;">
-                  <?= e(fmt_date($ph['payment_date'],'d M Y')) ?>
-                  &nbsp;·&nbsp; <?= $ph['line_count'] ?> fee<?= $ph['line_count']>1?'s':'' ?>
+                <div class="text-muted" style="font-size:.7rem;margin-top:1px;">
+                  <?= e(fmt_date($ph['payment_date'],'d M Y')) ?> · <?= $ph['line_count'] ?> fee<?= $ph['line_count']>1?'s':'' ?>
                 </div>
-                <div style="font-size:.7rem;color:#6b7280;margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:160px;"
-                     title="<?= e($ph['fee_categories']) ?>">
+                <div style="font-size:.68rem;color:#6b7280;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:165px;" title="<?= e($ph['fee_categories']) ?>">
                   <?= e($ph['fee_categories']) ?>
                 </div>
-                <div style="font-size:.68rem;font-family:'Courier New',monospace;color:#94a3b8;margin-top:1px;">
+                <div style="font-size:.65rem;font-family:'Courier New',monospace;color:#94a3b8;">
                   <?= e($ph['receipt_number']) ?>
                 </div>
+                <?php if ($isVoid && $ph['void_reason']): ?>
+                  <div style="font-size:.65rem;color:#ef4444;margin-top:1px;">Void: <?= e($ph['void_reason']) ?></div>
+                <?php endif; ?>
               </div>
-              <a href="receipt.php?rcp=<?= urlencode($ph['receipt_number']) ?>"
-                 target="_blank"
-                 class="btn btn-sm <?= $isLatest ? 'btn-success' : 'btn-outline-secondary' ?> flex-shrink-0"
-                 style="font-size:.72rem;padding:.25rem .55rem;"
-                 title="Print Receipt">
-                <i class="bi bi-printer"></i>
-              </a>
+              <div class="d-flex flex-column gap-1 flex-shrink-0">
+                <?php if (!$isVoid): ?>
+                  <a href="receipt.php?rcp=<?= urlencode($ph['receipt_number']) ?>" target="_blank"
+                     class="btn btn-sm <?= $isLatest?'btn-success':'btn-outline-secondary' ?>"
+                     style="font-size:.68rem;padding:.2rem .45rem;" title="Print Receipt">
+                    <i class="bi bi-printer"></i>
+                  </a>
+                <?php endif; ?>
+                <?php if ($isPending && has_permission('setup.edit')): ?>
+                  <button class="btn btn-xs btn-success" style="font-size:.65rem;padding:.15rem .35rem;"
+                          onclick="openApproveModal(<?= $ph['payment_id'] ?>, '<?= e(addslashes($ph['receipt_number'])) ?>', <?= $ph['total_paid'] ?>)"
+                          title="Approve partial payment">✓</button>
+                  <button class="btn btn-xs btn-danger" style="font-size:.65rem;padding:.15rem .35rem;"
+                          onclick="openRejectModal(<?= $ph['payment_id'] ?>, '<?= e(addslashes($ph['receipt_number'])) ?>')"
+                          title="Reject partial payment">✗</button>
+                <?php endif; ?>
+                <?php if ($isApproved && has_permission('setup.edit')): ?>
+                  <button class="btn btn-xs btn-outline-danger" style="font-size:.65rem;padding:.15rem .35rem;"
+                          onclick="openVoidModal(<?= $ph['payment_id'] ?>, '<?= e(addslashes($ph['receipt_number'])) ?>')"
+                          title="Void this payment">
+                    <i class="bi bi-x-circle"></i>
+                  </button>
+                <?php endif; ?>
+              </div>
             </div>
           </div>
           <?php endforeach; ?>
@@ -553,11 +764,11 @@ require_once EMS_ROOT . '/includes/header.php';
       <div class="card">
         <div class="card-body py-3">
           <div class="row g-3 align-items-end">
-            <div class="col-md-3">
+            <div class="col-md-2">
               <label class="form-label small">Selected Fees</label>
               <div class="fw-700 fs-5" id="selected-count">0 items</div>
             </div>
-            <div class="col-md-3">
+            <div class="col-md-2">
               <label class="form-label small">Total to Collect</label>
               <div class="fw-700 fs-4 text-success" id="total-display"><?= e(setting('currency_symbol','৳')) ?> 0.00</div>
             </div>
@@ -572,12 +783,23 @@ require_once EMS_ROOT . '/includes/header.php';
               </select>
             </div>
             <div class="col-md-3">
+              <label class="form-label">Deposit Account <span class="text-danger">*</span></label>
+              <select name="account_id" class="form-select" required>
+                <?php 
+                $accList = db()->query("SELECT id, account_name, current_balance FROM accounts ORDER BY account_name")->fetchAll();
+                foreach ($accList as $ac): 
+                ?>
+                  <option value="<?= $ac['id'] ?>"><?= e($ac['account_name']) ?> (৳<?= number_format($ac['current_balance'], 2) ?>)</option>
+                <?php endforeach; ?>
+              </select>
+            </div>
+            <div class="col-md-2">
               <label class="form-label">Note <small class="text-muted">(optional)</small></label>
-              <input type="text" name="notes" class="form-control" placeholder="e.g. advance payment">
+              <input type="text" name="notes" class="form-control" placeholder="remarks">
             </div>
             <div class="col-12">
               <button type="submit" id="payBtn" class="btn btn-success btn-lg px-5" disabled
-                      onclick="return confirm('Confirm payment?')">
+                      onclick="if(confirm('Confirm payment?')){this.disabled=true;this.form.submit();return true;}else{return false;}">
                 <i class="bi bi-cash-coin me-2"></i>
                 <span id="payBtnText">Collect Payment</span>
               </button>
@@ -777,5 +999,122 @@ document.addEventListener('DOMContentLoaded', () => {
   <?php endif; ?>
 });
 </script>
+
+<?php if (has_permission('setup.edit')): ?>
+<!-- Void Payment Modal -->
+<div class="modal fade" id="voidModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <form method="POST">
+        <?= csrf_field() ?>
+        <input type="hidden" name="action" value="void_payment">
+        <input type="hidden" name="payment_id" id="void-pay-id">
+        <input type="hidden" name="student_id" value="<?= $student_id ?>">
+        <input type="hidden" name="session_id" value="<?= $session_id ?>">
+        <div class="modal-header bg-danger text-white py-2">
+          <h6 class="modal-title fw-600"><i class="bi bi-x-circle me-2"></i>Void Payment</h6>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="alert alert-danger py-2 small"><i class="bi bi-exclamation-triangle me-1"></i>This will reverse the ledger balance and deduct from account. This action is permanent and logged.</div>
+          <p class="text-muted small mb-3">Receipt: <strong id="void-receipt-no" class="text-dark"></strong></p>
+          <div class="mb-0">
+            <label class="form-label small fw-600">Reason for Void <span class="text-danger">*</span></label>
+            <input type="text" name="void_reason" class="form-control form-control-sm" placeholder="e.g. Double entry, Wrong student, Error" required>
+          </div>
+        </div>
+        <div class="modal-footer py-2">
+          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('Confirm void? This will reverse the ledger balance.')">Void Payment</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Approve Partial Modal -->
+<div class="modal fade" id="approveModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <form method="POST">
+        <?= csrf_field() ?>
+        <input type="hidden" name="action" value="review_partial">
+        <input type="hidden" name="verdict" value="approve">
+        <input type="hidden" name="payment_id" id="approve-pay-id">
+        <input type="hidden" name="student_id" value="<?= $student_id ?>">
+        <input type="hidden" name="session_id" value="<?= $session_id ?>">
+        <div class="modal-header bg-success text-white py-2">
+          <h6 class="modal-title fw-600"><i class="bi bi-check-circle me-2"></i>Approve Partial Payment</h6>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <p class="small text-muted mb-2">Receipt: <strong id="approve-receipt-no" class="text-dark"></strong></p>
+          <p class="small text-muted mb-3">Amount: <strong id="approve-amount" class="text-success"></strong></p>
+          <p class="text-muted small mb-0">Approving will apply this payment to the fee ledger and credit the account balance.</p>
+          <div class="mb-0 mt-3">
+            <label class="form-label small fw-600">Approval Note <small class="text-muted">(optional)</small></label>
+            <input type="text" name="review_note" class="form-control form-control-sm" placeholder="e.g. Approved by principal">
+          </div>
+        </div>
+        <div class="modal-footer py-2">
+          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-success btn-sm">Approve & Apply</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Reject Partial Modal -->
+<div class="modal fade" id="rejectModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <form method="POST">
+        <?= csrf_field() ?>
+        <input type="hidden" name="action" value="review_partial">
+        <input type="hidden" name="verdict" value="reject">
+        <input type="hidden" name="payment_id" id="reject-pay-id">
+        <input type="hidden" name="student_id" value="<?= $student_id ?>">
+        <input type="hidden" name="session_id" value="<?= $session_id ?>">
+        <div class="modal-header bg-warning py-2">
+          <h6 class="modal-title fw-600"><i class="bi bi-x-circle me-2"></i>Reject Partial Payment</h6>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <p class="small text-muted mb-3">Receipt: <strong id="reject-receipt-no" class="text-dark"></strong></p>
+          <p class="small text-warning mb-3"><i class="bi bi-info-circle me-1"></i>The ledger will NOT be updated. The payment will be marked void.</p>
+          <div class="mb-0">
+            <label class="form-label small fw-600">Rejection Reason <span class="text-danger">*</span></label>
+            <input type="text" name="review_note" class="form-control form-control-sm" placeholder="e.g. Insufficient amount, policy violation" required>
+          </div>
+        </div>
+        <div class="modal-footer py-2">
+          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-warning btn-sm">Reject Payment</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+function openVoidModal(payId, receiptNo) {
+  document.getElementById('void-pay-id').value = payId;
+  document.getElementById('void-receipt-no').textContent = receiptNo;
+  new bootstrap.Modal(document.getElementById('voidModal')).show();
+}
+function openApproveModal(payId, receiptNo, amount) {
+  document.getElementById('approve-pay-id').value = payId;
+  document.getElementById('approve-receipt-no').textContent = receiptNo;
+  document.getElementById('approve-amount').textContent = '৳ ' + amount.toFixed(2);
+  new bootstrap.Modal(document.getElementById('approveModal')).show();
+}
+function openRejectModal(payId, receiptNo) {
+  document.getElementById('reject-pay-id').value = payId;
+  document.getElementById('reject-receipt-no').textContent = receiptNo;
+  new bootstrap.Modal(document.getElementById('rejectModal')).show();
+}
+</script>
+<?php endif; ?>
 
 <?php require_once EMS_ROOT . '/includes/footer.php'; ?>

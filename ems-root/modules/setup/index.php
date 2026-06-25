@@ -26,7 +26,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $group = match(true) {
                 str_starts_with($key, 'school_') || in_array($key, ['timezone','date_format','per_page','system_version']) => 'general',
                 str_starts_with($key, 'academic_') || str_starts_with($key, 'working_') || $key === 'current_session_id' => 'academic',
-                str_starts_with($key, 'currency') || str_starts_with($key, 'receipt') => 'finance',
+                str_starts_with($key, 'currency') || str_starts_with($key, 'receipt')
+                    || in_array($key, ['allow_partial_payment','partial_min_percent','partial_requires_approval',
+                                       'admit_card_dues_allow','result_card_dues_allow','certificate_dues_allow']) => 'finance',
                 str_starts_with($key, 'sms_') => 'communication',
                 default => 'general',
             };
@@ -171,6 +173,14 @@ require_once EMS_ROOT . '/includes/header.php';
                 <?php endforeach; ?>
               </select>
             </div>
+            <div class="col-md-6">
+              <label class="form-label">Teacher Marks Entry Permission</label>
+              <select name="settings[academic_marks_entry_level]" class="form-select">
+                <option value="all" <?= $S('academic_marks_entry_level','all') === 'all' ? 'selected' : '' ?>>All Teachers can enter marks for All Subjects</option>
+                <option value="assigned" <?= $S('academic_marks_entry_level','all') === 'assigned' ? 'selected' : '' ?>>Routine-based (Only teachers assigned to the subject in class routine)</option>
+                <option value="expertise" <?= $S('academic_marks_entry_level','all') === 'expertise' ? 'selected' : '' ?>>Expert-based (Only teachers with registered subject expertise)</option>
+              </select>
+            </div>
             <div class="col-md-12">
               <label class="form-label">Working Days</label>
               <div class="d-flex flex-wrap gap-3 mt-1">
@@ -208,6 +218,63 @@ require_once EMS_ROOT . '/includes/header.php';
             <div class="col-md-4">
               <label class="form-label">Receipt Prefix</label>
               <input type="text" name="settings[receipt_prefix]" class="form-control" value="<?= e($S('receipt_prefix','RCP')) ?>" maxlength="10">
+            </div>
+          </div>
+
+          <div class="form-section-title mt-4">Partial Payment Policy</div>
+          <div class="row g-3">
+            <div class="col-md-4">
+              <label class="form-label">Allow Partial Payment
+                <small class="text-muted d-block" style="font-size:.8em;">Let accountants collect less than the due amount</small>
+              </label>
+              <select name="settings[allow_partial_payment]" class="form-select" onchange="togglePartialSettings(this.value)">
+                <option value="no"  <?= $S('allow_partial_payment','no')  === 'no'  ? 'selected' : '' ?>>No — Full amount required</option>
+                <option value="yes" <?= $S('allow_partial_payment','no')  === 'yes' ? 'selected' : '' ?>>Yes — Partial payments allowed</option>
+              </select>
+            </div>
+            <div class="col-md-4" id="partial-min-pct-wrap" <?= $S('allow_partial_payment','no') === 'no' ? 'style="display:none"' : '' ?>>
+              <label class="form-label">Minimum Payment Percentage
+                <small class="text-muted d-block" style="font-size:.8em;">Minimum % of balance that must be paid (1–100)</small>
+              </label>
+              <div class="input-group">
+                <input type="number" name="settings[partial_min_percent]" class="form-control"
+                       value="<?= e($S('partial_min_percent','100')) ?>" min="1" max="100" step="1">
+                <span class="input-group-text">%</span>
+              </div>
+            </div>
+            <div class="col-md-4" id="partial-approval-wrap" <?= $S('allow_partial_payment','no') === 'no' ? 'style="display:none"' : '' ?>>
+              <label class="form-label">Require Admin Approval for Partial
+                <small class="text-muted d-block" style="font-size:.8em;">Partial payments are held pending until admin approves</small>
+              </label>
+              <select name="settings[partial_requires_approval]" class="form-select">
+                <option value="yes" <?= $S('partial_requires_approval','yes') === 'yes' ? 'selected' : '' ?>>Yes — Hold for approval</option>
+                <option value="no"  <?= $S('partial_requires_approval','yes') === 'no'  ? 'selected' : '' ?>>No — Apply immediately</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-section-title mt-4">Dues Controls & Document Blocks</div>
+          <div class="row g-3">
+            <div class="col-md-4">
+              <label class="form-label">Admit Cards with Dues</label>
+              <select name="settings[admit_card_dues_allow]" class="form-select">
+                <option value="1" <?= $S('admit_card_dues_allow','1') === '1' ? 'selected' : '' ?>>Allow Generation</option>
+                <option value="0" <?= $S('admit_card_dues_allow','1') === '0' ? 'selected' : '' ?>>Block Generation</option>
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Result Cards with Dues</label>
+              <select name="settings[result_card_dues_allow]" class="form-select">
+                <option value="1" <?= $S('result_card_dues_allow','1') === '1' ? 'selected' : '' ?>>Allow Generation</option>
+                <option value="0" <?= $S('result_card_dues_allow','1') === '0' ? 'selected' : '' ?>>Block Generation</option>
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Certificates with Dues</label>
+              <select name="settings[certificate_dues_allow]" class="form-select">
+                <option value="1" <?= $S('certificate_dues_allow','1') === '1' ? 'selected' : '' ?>>Allow Generation</option>
+                <option value="0" <?= $S('certificate_dues_allow','1') === '0' ? 'selected' : '' ?>>Block / Prevent Issue</option>
+              </select>
             </div>
           </div>
         </div>
@@ -270,4 +337,13 @@ document.querySelector('form').addEventListener('submit', function() {
 });
 </script>
 
+<script>
+function togglePartialSettings(val) {
+  const show = val === 'yes';
+  ['partial-min-pct-wrap','partial-approval-wrap'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = show ? '' : 'none';
+  });
+}
+</script>
 <?php require_once EMS_ROOT . '/includes/footer.php'; ?>

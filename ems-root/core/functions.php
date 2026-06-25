@@ -213,3 +213,22 @@ function current_enrollment(int $studentId): ?array {
     $stmt->execute([':sid' => $studentId, ':sess' => $sid]);
     return $stmt->fetch() ?: null;
 }
+
+// Check if a student has outstanding fee dues in the current session
+function student_has_dues(int $studentId): bool {
+    try {
+        $sid = (int)setting('current_session_id', 0);
+        if (!$sid) return false;
+        $stmt = db()->prepare(
+            'SELECT SUM(amount_due - amount_paid - waiver_amount)
+             FROM fee_ledgers
+             WHERE student_id = :sid AND session_id = :sess AND status != "paid"'
+        );
+        $stmt->execute([':sid' => $studentId, ':sess' => $sid]);
+        $dues = (float)$stmt->fetchColumn();
+        return $dues > 0.05;
+    } catch (Exception $e) {
+        return false;
+    }
+}
+

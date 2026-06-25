@@ -137,9 +137,15 @@ require_once EMS_ROOT . '/includes/header.php';
     <div class="card">
       <div class="card-header py-3 px-4 d-flex align-items-center justify-content-between">
         <span class="card-title">Attendance — <?= fmt_date($date) ?></span>
-        <div class="d-flex gap-2">
-          <button type="button" class="btn btn-sm btn-outline-success" onclick="setAll('present')">All Present</button>
-          <button type="button" class="btn btn-sm btn-outline-danger" onclick="setAll('absent')">All Absent</button>
+        <div class="d-flex align-items-center gap-3">
+          <div class="form-check form-switch mb-0">
+            <input class="form-check-input" type="checkbox" role="switch" id="absenteesOnlyMode" onchange="toggleMode()">
+            <label class="form-check-label small fw-bold" for="absenteesOnlyMode">Absentees Only Mode</label>
+          </div>
+          <div class="d-flex gap-1" id="bulk-att-buttons">
+            <button type="button" class="btn btn-xs btn-outline-success" onclick="setAll('present')">All Present</button>
+            <button type="button" class="btn btn-xs btn-outline-danger" onclick="setAll('absent')">All Absent</button>
+          </div>
         </div>
       </div>
       <form method="POST">
@@ -151,7 +157,17 @@ require_once EMS_ROOT . '/includes/header.php';
         <input type="hidden" name="section_id" value="<?= $section_id ?>">
         <div class="table-responsive">
           <table class="table table-hover mb-0">
-            <thead><tr><th style="width:60px">Roll</th><th>Name</th><th>P</th><th>A</th><th>L</th><th>E</th></tr></thead>
+            <thead>
+              <tr>
+                <th style="width:60px">Roll</th>
+                <th>Name</th>
+                <th class="normal-att-header">P</th>
+                <th class="normal-att-header">A</th>
+                <th class="normal-att-header">L</th>
+                <th class="normal-att-header">E</th>
+                <th class="absent-only-header d-none" style="width:100px;">Is Absent?</th>
+              </tr>
+            </thead>
             <tbody>
               <?php foreach ($students as $stu):
                 $cur = $existing[$stu['student_id']] ?? 'present';
@@ -160,12 +176,18 @@ require_once EMS_ROOT . '/includes/header.php';
                 <td class="fw-700 text-center"><?= $stu['roll_number'] ?></td>
                 <td class="fw-600"><?= e($stu['first_name'] . ' ' . $stu['last_name']) ?></td>
                 <?php foreach (['present'=>'success','absent'=>'danger','late'=>'warning','excused'=>'info'] as $st => $color): ?>
-                <td class="text-center">
+                <td class="text-center normal-att-col">
                   <input type="radio" class="form-check-input att-radio" style="cursor:pointer;"
                          name="status[<?= $stu['student_id'] ?>]" value="<?= $st ?>"
                          <?= $cur === $st ? 'checked' : '' ?>>
                 </td>
                 <?php endforeach; ?>
+                <td class="text-center absent-only-col d-none">
+                  <input type="checkbox" class="form-check-input absent-only-chk" style="cursor:pointer;"
+                         id="absent_chk_<?= $stu['student_id'] ?>"
+                         onchange="syncRadio(<?= $stu['student_id'] ?>, this.checked)"
+                         <?= $cur === 'absent' ? 'checked' : '' ?>>
+                </td>
               </tr>
               <?php endforeach; ?>
             </tbody>
@@ -215,8 +237,32 @@ require_once EMS_ROOT . '/includes/header.php';
 </div>
 
 <script>
+function toggleMode() {
+  const isAbsentMode = document.getElementById('absenteesOnlyMode').checked;
+  
+  // Toggle headers
+  document.querySelectorAll('.normal-att-header').forEach(el => el.classList.toggle('d-none', isAbsentMode));
+  document.querySelectorAll('.absent-only-header').forEach(el => el.classList.toggle('d-none', !isAbsentMode));
+  
+  // Toggle body columns
+  document.querySelectorAll('.normal-att-col').forEach(el => el.classList.toggle('d-none', isAbsentMode));
+  document.querySelectorAll('.absent-only-col').forEach(el => el.classList.toggle('d-none', !isAbsentMode));
+  
+  // Toggle bulk buttons
+  document.getElementById('bulk-att-buttons').classList.toggle('d-none', isAbsentMode);
+}
+
+function syncRadio(studentId, isChecked) {
+  const val = isChecked ? 'absent' : 'present';
+  const radio = document.querySelector(`input[name="status[${studentId}]"][value="${val}"]`);
+  if (radio) radio.checked = true;
+}
+
 function setAll(status) {
   document.querySelectorAll(`.att-radio[value="${status}"]`).forEach(r => r.checked = true);
+  document.querySelectorAll('.absent-only-chk').forEach(chk => {
+    chk.checked = (status === 'absent');
+  });
 }
 </script>
 

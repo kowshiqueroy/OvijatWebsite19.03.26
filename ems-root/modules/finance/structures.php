@@ -43,18 +43,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && has_permission('setup.edit')) {
         $pdo->prepare('DELETE FROM fee_structures WHERE id=:id')->execute([':id' => $id]);
         flash('success', 'Fee structure removed.');
     } elseif ($action === 'generate_ledgers') {
-        // Generate monthly fee ledger entries for all active enrollments
-        $sessId = int_param('session_id', 0, $_POST);
-        $month  = int_param('month', date('n'), $_POST);
-        $year   = int_param('year', date('Y'), $_POST);
-        $dueDate = "$year-" . str_pad($month, 2, '0', STR_PAD_LEFT) . "-10";
+        // Generate fee ledger entries for all active enrollments, respecting mid-session join month
+        $sessId      = int_param('session_id', 0, $_POST);
+        $month       = int_param('month', date('n'), $_POST);
+        $year        = int_param('year', date('Y'), $_POST);
+        $student_filter = int_param('student_id', 0, $_POST); // 0 = all students
+        $dueDay      = int_param('due_day', 10, $_POST);
+        $dueDate     = "$year-" . str_pad($month, 2, '0', STR_PAD_LEFT) . "-$dueDay";
 
         if ($sessId) {
-            $enrollments = $pdo->prepare('SELECT student_id, class_id FROM student_enrollments WHERE session_id=:s AND status="active"');
-            $enrollments->execute([':s' => $sessId]);
+            // Load enrollments — include mid-session join metadata
+            $enrWhere = 'session_id=:s AND status="active"';
+            $enrParams = [':s' => $sessId];
+            if ($student_filter) { $enrWhere .= ' AND student_id=:stu'; $enrParams[':stu'] = $student_filter; }
+            $enrollments = $pdo->prepare("SELECT student_id, class_id, join_month, join_year FROM student_enrollments WHERE $enrWhere");
+            $enrollments->execute($enrParams);
             $enrollments = $enrollments->fetchAll();
 
-            $structures = $pdo->prepare("SELECT * FROM fee_structures WHERE session_id=:s AND frequency IN ('monthly','quarterly','yearly')");
+            $structures = $pdo->prepare("SELECT * FROM fee_structures WHERE session_id=:s");
             $structures->execute([':s' => $sessId]);
             $structures = $structures->fetchAll();
 
@@ -63,15 +69,78 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && has_permission('setup.edit')) {
                  VALUES (?,?,?,?,?,?,?,"unpaid")'
             );
 
-            $count = 0;
+            $count = 0; $skipped = 0;
             foreach ($enrollments as $en) {
                 foreach ($structures as $st) {
                     if ($st['class_id'] != $en['class_id']) continue;
-                    $stmt->execute([$en['student_id'],$sessId,$st['fee_category_id'],$st['amount'],$dueDate,$month,$year]);
+
+                    // For monthly fees: skip months before mid-session join
+                    if ($st['frequency'] === 'monthly' && $en['join_month'] && $en['join_year']) {
+                        $joinTs   = mktime(0,0,0,$en['join_month'],1,$en['join_year']);
+                        $monthTs  = mktime(0,0,0,$month,1,$year);
+                        if ($monthTs < $joinTs) { $skipped++; continue; }
+                    }
+
+                    // For one-time fees: only generate once (no month/year on them)
+                    if ($st['frequency'] === 'once') {
+                        $stmt->execute([$en['student_id'],$sessId,$st['fee_category_id'],$st['amount'],$dueDate,null,null]);
+                    } else {
+                        $stmt->execute([$en['student_id'],$sessId,$st['fee_category_id'],$st['amount'],$dueDate,$month,$year]);
+                    }
                     $count++;
                 }
             }
-            flash('success', "Generated $count fee ledger entries for " . date('F Y', mktime(0,0,0,$month,1,$year)) . ".");
+            $msg = "Generated $count fee ledger entries for " . date('F Y', mktime(0,0,0,$month,1,$year)) . ".";
+            if ($skipped) $msg .= " $skipped skipped (mid-session join month restriction).";
+            flash('success', $msg);
+            log_activity('generate_ledgers', 'finance', $sessId, '', "Month:$month/$year Count:$count Skipped:$skipped");
+        }
+
+    } elseif ($action === 'generate_ledgers_bulk') {
+        // Generate monthly fees for a FULL date range (all months at once)
+        $sessId     = int_param('session_id', 0, $_POST);
+        $from_month = int_param('from_month', 1, $_POST);
+        $from_year  = int_param('from_year', date('Y'), $_POST);
+        $to_month   = int_param('to_month', (int)date('n'), $_POST);
+        $to_year    = int_param('to_year', date('Y'), $_POST);
+        $dueDay     = int_param('due_day', 10, $_POST);
+
+        if ($sessId && $from_month && $to_month) {
+            $enrollments = $pdo->prepare("SELECT student_id, class_id, join_month, join_year FROM student_enrollments WHERE session_id=? AND status='active'");
+            $enrollments->execute([$sessId]);
+            $enrollments = $enrollments->fetchAll();
+
+            $structures = $pdo->prepare("SELECT * FROM fee_structures WHERE session_id=?");
+            $structures->execute([$sessId]);
+            $structures = $structures->fetchAll();
+
+            $stmt = $pdo->prepare('INSERT IGNORE INTO fee_ledgers (student_id,session_id,fee_category_id,amount_due,due_date,month,year,status) VALUES (?,?,?,?,?,?,?,"unpaid")');
+
+            $totalCount = 0;
+            $cur = mktime(0,0,0,$from_month,1,$from_year);
+            $end = mktime(0,0,0,$to_month,1,$to_year);
+
+            while ($cur <= $end) {
+                $m = (int)date('n',$cur);
+                $y = (int)date('Y',$cur);
+                $dueDate = "$y-" . str_pad($m,2,'0',STR_PAD_LEFT) . "-$dueDay";
+
+                foreach ($enrollments as $en) {
+                    foreach ($structures as $st) {
+                        if ($st['class_id'] != $en['class_id']) continue;
+                        if ($st['frequency'] !== 'monthly') continue;
+                        if ($en['join_month'] && $en['join_year']) {
+                            $joinTs = mktime(0,0,0,$en['join_month'],1,$en['join_year']);
+                            if ($cur < $joinTs) continue;
+                        }
+                        $stmt->execute([$en['student_id'],$sessId,$st['fee_category_id'],$st['amount'],$dueDate,$m,$y]);
+                        $totalCount++;
+                    }
+                }
+                $cur = strtotime('+1 month', $cur);
+            }
+            flash('success', "Bulk generated $totalCount monthly fee entries from " . date('M Y', mktime(0,0,0,$from_month,1,$from_year)) . " to " . date('M Y', mktime(0,0,0,$to_month,1,$to_year)) . ".");
+            log_activity('bulk_generate_ledgers', 'finance', $sessId, '', "From:$from_month/$from_year To:$to_month/$to_year Count:$totalCount");
         }
     }
     header('Location: structures.php');

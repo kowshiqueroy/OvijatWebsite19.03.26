@@ -41,14 +41,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $name     = trim($_POST['section_name'] ?? '');
         $shift    = $_POST['shift'] ?? 'day';
         $capacity = int_param('capacity', 40, $_POST);
+        $classTeacherId = int_param('class_teacher_id', 0, $_POST) ?: null;
+        $firstPeriodDays = isset($_POST['class_teacher_first_period_days']) && is_array($_POST['class_teacher_first_period_days']) 
+            ? implode(',', $_POST['class_teacher_first_period_days']) 
+            : null;
         if ($classId && $name) {
             if ($id) {
-                $pdo->prepare('UPDATE sections SET class_id=?,section_name=?,shift=?,capacity=? WHERE id=?')
-                    ->execute([$classId,$name,$shift,$capacity,$id]);
+                $pdo->prepare('UPDATE sections SET class_id=?,section_name=?,shift=?,capacity=?,class_teacher_id=?,class_teacher_first_period_days=? WHERE id=?')
+                    ->execute([$classId,$name,$shift,$capacity,$classTeacherId,$firstPeriodDays,$id]);
                 flash('success', 'Section updated.');
             } else {
-                $pdo->prepare('INSERT INTO sections (class_id,section_name,shift,capacity) VALUES (?,?,?,?)')
-                    ->execute([$classId,$name,$shift,$capacity]);
+                $pdo->prepare('INSERT INTO sections (class_id,section_name,shift,capacity,class_teacher_id,class_teacher_first_period_days) VALUES (?,?,?,?,?,?)')
+                    ->execute([$classId,$name,$shift,$capacity,$classTeacherId,$firstPeriodDays]);
                 flash('success', "Section '$name' added.");
             }
         }
@@ -62,13 +66,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $classes  = $pdo->query('SELECT * FROM classes WHERE status=1 ORDER BY display_order, class_numeric, class_name')->fetchAll();
-$sections = $pdo->query('SELECT s.*, c.class_name FROM sections s JOIN classes c ON c.id=s.class_id ORDER BY c.display_order, s.section_name')->fetchAll();
+$sections = $pdo->query('
+    SELECT s.*, c.class_name, CONCAT(sp.first_name, " ", sp.last_name) as teacher_name 
+    FROM sections s 
+    JOIN classes c ON c.id=s.class_id 
+    LEFT JOIN staff_profiles sp ON sp.user_id = s.class_teacher_id
+    ORDER BY c.display_order, s.section_name
+')->fetchAll();
+
+$teachers = $pdo->query("
+    SELECT sp.user_id as id, CONCAT(sp.first_name, ' ', sp.last_name) as name 
+    FROM staff_profiles sp 
+    WHERE sp.status='active' 
+    ORDER BY name
+")->fetchAll();
 
 // Group sections by class
 $sectionsByClass = [];
 foreach ($sections as $sec) $sectionsByClass[$sec['class_id']][] = $sec;
 
 require_once EMS_ROOT . '/includes/header.php';
+
 ?>
 
 <div class="d-flex align-items-center justify-content-between mb-4">
@@ -121,13 +139,19 @@ require_once EMS_ROOT . '/includes/header.php';
           <div class="text-center py-3 text-muted small">No sections yet</div>
         <?php else: ?>
         <table class="table table-sm mb-0">
-          <thead><tr><th>Section</th><th>Shift</th><th>Cap</th><th></th></tr></thead>
+          <thead><tr><th>Section</th><th>Shift</th><th>Cap</th><th>Class Teacher</th><th></th></tr></thead>
           <tbody>
           <?php foreach ($clsSections as $sec): ?>
           <tr>
             <td class="fw-600"><?= e($sec['section_name']) ?></td>
             <td class="text-capitalize"><?= e($sec['shift']) ?></td>
             <td><?= $sec['capacity'] ?></td>
+            <td>
+              <div class="fw-600 text-dark" style="font-size:0.8rem;"><?= e($sec['teacher_name'] ?? '— Unassigned —') ?></div>
+              <?php if ($sec['class_teacher_first_period_days']): ?>
+                <div class="text-muted" style="font-size: 0.65rem;" title="Days class teacher takes 1st period"><i class="bi bi-clock me-1"></i>1st Period: <?= e($sec['class_teacher_first_period_days']) ?></div>
+              <?php endif; ?>
+            </td>
             <td>
               <div class="d-flex gap-1">
                 <button class="btn btn-xs btn-outline-primary" style="padding:.1rem .4rem;font-size:.7rem;"
@@ -250,6 +274,27 @@ require_once EMS_ROOT . '/includes/header.php';
               <input type="number" name="capacity" id="sec_cap" class="form-control" value="40" min="1">
             </div>
           </div>
+          <div class="mb-3 mt-3">
+            <label class="form-label fw-600">Class Teacher</label>
+            <select name="class_teacher_id" id="sec_teacher" class="form-select">
+              <option value="0">— Select Teacher —</option>
+              <?php foreach ($teachers as $t): ?>
+                <option value="<?= $t['id'] ?>"><?= e($t['name']) ?></option>
+              <?php endforeach; ?>
+            </select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label d-block fw-600">First Period Class Teacher Days</label>
+            <div class="d-flex flex-wrap gap-2">
+              <?php foreach (['Sat','Sun','Mon','Tue','Wed','Thu','Fri'] as $day): ?>
+                <div class="form-check form-check-inline">
+                  <input class="form-check-input day-chk" type="checkbox" name="class_teacher_first_period_days[]" value="<?= $day ?>" id="day_<?= $day ?>">
+                  <label class="form-check-label small" for="day_<?= $day ?>"><?= $day ?></label>
+                </div>
+              <?php endforeach; ?>
+            </div>
+            <small class="text-muted" style="font-size:0.75rem;">If selected, this teacher is auto-recommended for the first period of this section on these weekdays.</small>
+          </div>
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
@@ -276,6 +321,19 @@ function setSectionForm(sec, preClassId, preClassName) {
   document.getElementById('sec_name').value  = sec ? sec.section_name : '';
   document.getElementById('sec_shift').value = sec ? sec.shift : 'day';
   document.getElementById('sec_cap').value   = sec ? sec.capacity : 40;
+  document.getElementById('sec_teacher').value = sec ? (sec.class_teacher_id || 0) : 0;
+  
+  // Uncheck all days
+  document.querySelectorAll('.day-chk').forEach(cb => cb.checked = false);
+  
+  // Check the days from data
+  if (sec && sec.class_teacher_first_period_days) {
+    const days = sec.class_teacher_first_period_days.split(',');
+    days.forEach(d => {
+      const cb = document.getElementById('day_' + d.trim());
+      if (cb) cb.checked = true;
+    });
+  }
 }
 </script>
 

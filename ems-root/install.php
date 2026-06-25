@@ -37,6 +37,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $step === 3) {
     if (!$db_user)  $errors[] = 'Database username is required.';
     if (!$sch_name) $errors[] = 'School name is required.';
     if (strlen($adm_pass) < 6) $errors[] = 'Admin password must be at least 6 characters.';
+    if ($adm_pass !== ($_POST['admin_password2'] ?? '')) $errors[] = 'Passwords do not match.';
 
     if (empty($errors)) {
         try {
@@ -82,6 +83,9 @@ PHP;
 }
 
 // ── Schema SQL ───────────────────────────────────────────────────────────────
+// Tables are ordered so that every referenced table exists before the FK is declared.
+// All patch columns (run_type, bonus_amount, etc.) are included in CREATE TABLE —
+// no ALTER TABLE statements are needed for a fresh install.
 function get_schema_sql(): string {
     return <<<'SQL'
 -- PHASE 1: CORE SYSTEM
@@ -180,8 +184,11 @@ CREATE TABLE IF NOT EXISTS sections (
     section_name VARCHAR(50) NOT NULL,
     shift ENUM('morning','day','evening') DEFAULT 'day',
     capacity INT DEFAULT 40,
+    class_teacher_id INT DEFAULT NULL,
+    class_teacher_first_period_days VARCHAR(255) DEFAULT NULL,
     status TINYINT(1) DEFAULT 1,
-    FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE
+    FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE,
+    FOREIGN KEY (class_teacher_id) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
 -- SPLIT --
 CREATE TABLE IF NOT EXISTS groups_stream (
@@ -235,6 +242,7 @@ CREATE TABLE IF NOT EXISTS class_subjects (
     pass_marks_written INT DEFAULT 0,
     pass_marks_mcq INT DEFAULT 0,
     pass_marks_practical INT DEFAULT 0,
+    periods_per_week INT DEFAULT 1,
     FOREIGN KEY (class_id) REFERENCES classes(id),
     FOREIGN KEY (session_id) REFERENCES academic_sessions(id),
     FOREIGN KEY (subject_id) REFERENCES subjects(id),
@@ -298,11 +306,17 @@ CREATE TABLE IF NOT EXISTS student_enrollments (
     group_id INT DEFAULT NULL,
     roll_number INT NOT NULL,
     status ENUM('active','transferred','opt_out','graduated','suspended') DEFAULT 'active',
+    join_month INT DEFAULT NULL COMMENT 'Month student joined mid-session (1-12, NULL = from session start)',
+    join_year INT DEFAULT NULL  COMMENT 'Year of mid-session join',
+    left_date DATE DEFAULT NULL COMMENT 'Date student left/transferred in this session',
+    left_reason VARCHAR(255) DEFAULT NULL,
+    status_changed_by INT DEFAULT NULL,
     enrolled_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (student_id) REFERENCES users(id),
     FOREIGN KEY (session_id) REFERENCES academic_sessions(id),
     FOREIGN KEY (class_id) REFERENCES classes(id),
     FOREIGN KEY (section_id) REFERENCES sections(id),
+    FOREIGN KEY (status_changed_by) REFERENCES users(id) ON DELETE SET NULL,
     INDEX idx_enrollment (session_id, class_id, section_id, roll_number)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
 -- SPLIT --
@@ -481,6 +495,8 @@ CREATE TABLE IF NOT EXISTS staff_profiles (
     bank_account VARCHAR(50),
     bank_name VARCHAR(100),
     tin_no VARCHAR(30),
+    max_classes_per_day INT DEFAULT 6,
+    max_classes_per_week INT DEFAULT 30,
     status ENUM('active','resigned','terminated','retired') DEFAULT 'active',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
@@ -542,6 +558,8 @@ CREATE TABLE IF NOT EXISTS payroll_runs (
     month INT NOT NULL,
     year INT NOT NULL,
     status ENUM('draft','finalized','paid') DEFAULT 'draft',
+    run_type ENUM('regular','custom') DEFAULT 'regular',
+    description VARCHAR(255) DEFAULT NULL,
     created_by INT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (session_id) REFERENCES academic_sessions(id),
@@ -554,6 +572,8 @@ CREATE TABLE IF NOT EXISTS payroll_lines (
     payroll_run_id INT NOT NULL,
     staff_id INT NOT NULL,
     base_salary DECIMAL(10,2) DEFAULT 0.00,
+    bonus_amount DECIMAL(10,2) DEFAULT 0.00,
+    bonus_desc VARCHAR(150) DEFAULT NULL,
     exam_duty_allowance DECIMAL(10,2) DEFAULT 0.00,
     extra_class_allowance DECIMAL(10,2) DEFAULT 0.00,
     other_additions DECIMAL(10,2) DEFAULT 0.00,
@@ -582,7 +602,32 @@ CREATE TABLE IF NOT EXISTS performance_logs (
     FOREIGN KEY (logged_by) REFERENCES users(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
 -- SPLIT --
--- PHASE 6: FINANCE
+-- PHASE 6: ACCOUNTS (must be created before fee_payments, incomes, expenses which FK reference it)
+CREATE TABLE IF NOT EXISTS accounts (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    account_name VARCHAR(100) NOT NULL,
+    account_type ENUM('cash', 'bank', 'mobile_banking') NOT NULL,
+    account_number VARCHAR(50) DEFAULT NULL,
+    bank_name VARCHAR(100) DEFAULT NULL,
+    current_balance DECIMAL(12,2) DEFAULT 0.00,
+    notes TEXT DEFAULT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+-- SPLIT --
+CREATE TABLE IF NOT EXISTS account_transactions (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    account_id INT NOT NULL,
+    amount DECIMAL(12,2) NOT NULL,
+    transaction_type ENUM('deposit', 'withdrawal', 'transfer', 'adjustment') NOT NULL,
+    description VARCHAR(255) NOT NULL,
+    reference_table VARCHAR(50) DEFAULT NULL,
+    reference_id INT DEFAULT NULL,
+    created_by INT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+-- SPLIT --
+-- PHASE 7: FINANCE
 CREATE TABLE IF NOT EXISTS fee_categories (
     id INT AUTO_INCREMENT PRIMARY KEY,
     category_name VARCHAR(100) NOT NULL,
@@ -637,9 +682,16 @@ CREATE TABLE IF NOT EXISTS fee_payments (
     receipt_number VARCHAR(50) UNIQUE,
     collected_by INT,
     notes TEXT,
+    account_id INT DEFAULT NULL,
+    approval_status ENUM('approved','pending','void') DEFAULT 'approved',
+    void_reason TEXT DEFAULT NULL,
+    voided_by INT DEFAULT NULL,
+    voided_at TIMESTAMP NULL DEFAULT NULL,
     FOREIGN KEY (ledger_id) REFERENCES fee_ledgers(id),
     FOREIGN KEY (student_id) REFERENCES users(id),
-    FOREIGN KEY (collected_by) REFERENCES users(id) ON DELETE SET NULL
+    FOREIGN KEY (collected_by) REFERENCES users(id) ON DELETE SET NULL,
+    FOREIGN KEY (account_id) REFERENCES accounts(id),
+    FOREIGN KEY (voided_by) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
 -- SPLIT --
 CREATE TABLE IF NOT EXISTS waivers (
@@ -648,15 +700,22 @@ CREATE TABLE IF NOT EXISTS waivers (
     ledger_id INT NOT NULL,
     requested_amount DECIMAL(10,2) NOT NULL,
     waiver_reason TEXT NOT NULL,
+    waiver_type ENUM('full','partial','session_bulk') DEFAULT 'partial',
+    effective_from_month INT DEFAULT NULL,
+    effective_from_year INT DEFAULT NULL,
     requested_by INT NOT NULL,
     request_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     reviewed_by INT DEFAULT NULL,
     review_date TIMESTAMP NULL,
-    status ENUM('pending','approved','rejected') DEFAULT 'pending',
+    status ENUM('pending','approved','rejected','void') DEFAULT 'pending',
+    voided_by INT DEFAULT NULL,
+    void_reason TEXT DEFAULT NULL,
+    voided_at TIMESTAMP NULL DEFAULT NULL,
     FOREIGN KEY (student_id) REFERENCES users(id),
     FOREIGN KEY (ledger_id) REFERENCES fee_ledgers(id),
     FOREIGN KEY (requested_by) REFERENCES users(id),
-    FOREIGN KEY (reviewed_by) REFERENCES users(id) ON DELETE SET NULL
+    FOREIGN KEY (reviewed_by) REFERENCES users(id) ON DELETE SET NULL,
+    FOREIGN KEY (voided_by) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
 -- SPLIT --
 CREATE TABLE IF NOT EXISTS income_categories (
@@ -673,10 +732,12 @@ CREATE TABLE IF NOT EXISTS incomes (
     income_date DATE NOT NULL,
     description TEXT,
     received_by INT,
+    account_id INT DEFAULT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (session_id) REFERENCES academic_sessions(id),
     FOREIGN KEY (income_category_id) REFERENCES income_categories(id),
-    FOREIGN KEY (received_by) REFERENCES users(id) ON DELETE SET NULL
+    FOREIGN KEY (received_by) REFERENCES users(id) ON DELETE SET NULL,
+    FOREIGN KEY (account_id) REFERENCES accounts(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
 -- SPLIT --
 CREATE TABLE IF NOT EXISTS expense_categories (
@@ -696,10 +757,12 @@ CREATE TABLE IF NOT EXISTS expenses (
     invoice_no VARCHAR(100),
     approved_by INT DEFAULT NULL,
     status ENUM('pending','approved','rejected') DEFAULT 'approved',
+    account_id INT DEFAULT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (session_id) REFERENCES academic_sessions(id),
     FOREIGN KEY (expense_category_id) REFERENCES expense_categories(id),
-    FOREIGN KEY (approved_by) REFERENCES users(id) ON DELETE SET NULL
+    FOREIGN KEY (approved_by) REFERENCES users(id) ON DELETE SET NULL,
+    FOREIGN KEY (account_id) REFERENCES accounts(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
 -- SPLIT --
 -- PHASE 7: INVENTORY
@@ -905,9 +968,168 @@ CREATE TABLE IF NOT EXISTS alumni (
     phone VARCHAR(20),
     email VARCHAR(100),
     photo VARCHAR(255),
-    notes TEXT,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
     FOREIGN KEY (last_class_id) REFERENCES classes(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+-- SPLIT --
+-- PHASE 11: TEACHER SUBJECT EXPERTISE
+CREATE TABLE IF NOT EXISTS teacher_subjects (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    teacher_id INT NOT NULL,
+    subject_id INT NOT NULL,
+    FOREIGN KEY (teacher_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (subject_id) REFERENCES subjects(id) ON DELETE CASCADE,
+    UNIQUE KEY unique_teacher_subject (teacher_id, subject_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+-- SPLIT --
+-- PHASE 11B: TEACHER CLASS TRACKING
+CREATE TABLE IF NOT EXISTS teacher_class_logs (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    session_id INT NOT NULL,
+    class_id INT NOT NULL,
+    section_id INT NOT NULL,
+    subject_id INT NOT NULL,
+    teacher_id INT NOT NULL,
+    slot_id INT DEFAULT NULL,
+    log_date DATE NOT NULL,
+    status ENUM('conducted','missed') DEFAULT 'conducted',
+    notes TEXT DEFAULT NULL,
+    marked_by INT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (session_id) REFERENCES academic_sessions(id),
+    FOREIGN KEY (class_id) REFERENCES classes(id),
+    FOREIGN KEY (section_id) REFERENCES sections(id),
+    FOREIGN KEY (subject_id) REFERENCES subjects(id),
+    FOREIGN KEY (teacher_id) REFERENCES users(id),
+    FOREIGN KEY (marked_by) REFERENCES users(id),
+    UNIQUE KEY unique_class_log (slot_id, log_date)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+-- SPLIT --
+-- PHASE 12: STAFF LOANS
+CREATE TABLE IF NOT EXISTS staff_loans (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    staff_id INT NOT NULL,
+    loan_amount DECIMAL(10,2) NOT NULL,
+    interest_rate DECIMAL(5,2) DEFAULT 0.00,
+    total_repayable DECIMAL(10,2) NOT NULL,
+    monthly_installment DECIMAL(10,2) NOT NULL,
+    amount_repaid DECIMAL(10,2) DEFAULT 0.00,
+    disbursed_date DATE NOT NULL,
+    status ENUM('active','paid','defaulted') DEFAULT 'active',
+    transferred_to_loan_id INT DEFAULT NULL,
+    transferred_to_user_id INT DEFAULT NULL,
+    notes TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (staff_id) REFERENCES users(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+-- SPLIT --
+-- PHASE 11C: PAYMENT VOID AUDIT LOG
+CREATE TABLE IF NOT EXISTS payment_void_logs (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    entity_type ENUM('payment','waiver') NOT NULL,
+    entity_id INT NOT NULL,
+    action ENUM('void','approve','reject','restore','partial_approve','partial_reject') NOT NULL,
+    old_status VARCHAR(50) DEFAULT NULL,
+    new_status VARCHAR(50) DEFAULT NULL,
+    amount_affected DECIMAL(10,2) DEFAULT 0.00,
+    performed_by INT NOT NULL,
+    reason TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (performed_by) REFERENCES users(id),
+    INDEX idx_pvl_entity (entity_type, entity_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+-- SPLIT --
+-- PHASE 12: CUSTOM PAYMENTS VOUCHER
+CREATE TABLE IF NOT EXISTS custom_payments (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    payee_name VARCHAR(150) NOT NULL,
+    payee_role ENUM('staff', 'management', 'vendor', 'other') DEFAULT 'other',
+    user_id INT DEFAULT NULL,
+    amount DECIMAL(10,2) NOT NULL,
+    payment_date DATE NOT NULL,
+    payment_method VARCHAR(50) NOT NULL,
+    account_id INT NOT NULL,
+    notes TEXT,
+    created_by INT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (account_id) REFERENCES accounts(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+-- SPLIT --
+-- PHASE 13: NOTICE BOARD
+CREATE TABLE IF NOT EXISTS notices (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    title VARCHAR(255) NOT NULL,
+    content TEXT NOT NULL,
+    audience ENUM('all','students','staff') DEFAULT 'all',
+    created_by INT NOT NULL,
+    publish_date DATE NOT NULL,
+    is_broadcast TINYINT(1) DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (created_by) REFERENCES users(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+-- SPLIT --
+-- PHASE 14A: ROUTINE CUSTOM DAYS
+CREATE TABLE IF NOT EXISTS section_working_days (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    session_id INT NOT NULL,
+    class_id INT NOT NULL,
+    section_id INT DEFAULT NULL,
+    working_days VARCHAR(150) DEFAULT 'Saturday,Sunday,Monday,Tuesday,Wednesday,Thursday',
+    periods_start_time TIME DEFAULT '09:00:00',
+    periods_end_time TIME DEFAULT '15:00:00',
+    notes VARCHAR(255) DEFAULT NULL,
+    updated_by INT DEFAULT NULL,
+    FOREIGN KEY (session_id) REFERENCES academic_sessions(id) ON DELETE CASCADE,
+    FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE,
+    FOREIGN KEY (section_id) REFERENCES sections(id) ON DELETE CASCADE,
+    FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE SET NULL,
+    UNIQUE KEY unique_section_days (session_id, class_id, section_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+-- SPLIT --
+-- PHASE 14B: SESSION CLONE LOG
+CREATE TABLE IF NOT EXISTS session_clone_logs (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    from_session_id INT NOT NULL,
+    to_session_id INT NOT NULL,
+    cloned_by INT NOT NULL,
+    cloned_items JSON DEFAULT NULL,
+    notes VARCHAR(255) DEFAULT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (from_session_id) REFERENCES academic_sessions(id),
+    FOREIGN KEY (to_session_id) REFERENCES academic_sessions(id),
+    FOREIGN KEY (cloned_by) REFERENCES users(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+-- SPLIT --
+-- PHASE 14C: ROLL NUMBER CHANGE LOG
+CREATE TABLE IF NOT EXISTS roll_change_logs (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    student_id INT NOT NULL,
+    session_id INT NOT NULL,
+    class_id INT NOT NULL,
+    section_id INT NOT NULL,
+    old_roll INT NOT NULL,
+    new_roll INT NOT NULL,
+    changed_by INT NOT NULL,
+    reason VARCHAR(255) DEFAULT NULL,
+    changed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (student_id) REFERENCES users(id),
+    FOREIGN KEY (session_id) REFERENCES academic_sessions(id),
+    FOREIGN KEY (changed_by) REFERENCES users(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+-- SPLIT --
+-- PHASE 14: FEEDBACK & REPORTS
+CREATE TABLE IF NOT EXISTS feedback_reports (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    reporter_role ENUM('student','staff','other') DEFAULT 'other',
+    user_id INT DEFAULT NULL,
+    feedback_type ENUM('suggestion','problem','asking','other') DEFAULT 'suggestion',
+    title VARCHAR(255) NOT NULL,
+    content TEXT NOT NULL,
+    is_anonymous TINYINT(1) DEFAULT 0,
+    status ENUM('submitted','reviewed','action_taken','archived') DEFAULT 'submitted',
+    action_taken TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
 SQL;
 }
@@ -1023,8 +1245,11 @@ function seed_data(PDO $pdo, string $sch_name, string $sch_addr, string $sch_pho
         ['sms_api_key',        '',           'communication'],
         ['sms_sender_id',      '',           'communication'],
         ['working_days',       'Sat,Sun,Mon,Tue,Wed', 'academic'],
-        ['per_page',           '25',         'general'],
-        ['system_version',     '1.0.0',      'general'],
+        ['per_page',               '25',    'general'],
+        ['system_version',         '1.0.0', 'general'],
+        ['allow_partial_payment',  'no',    'finance'],
+        ['partial_requires_approval','yes', 'finance'],
+        ['partial_min_percent',    '100',   'finance'],
     ];
     $sStmt = $pdo->prepare('INSERT IGNORE INTO system_settings (meta_key, meta_value, meta_group) VALUES (?,?,?)');
     foreach ($settings as $s) $sStmt->execute($s);
@@ -1073,6 +1298,10 @@ function seed_data(PDO $pdo, string $sch_name, string $sch_addr, string $sch_pho
     $groups = [['Science','SCI'],['Commerce','COM'],['Arts','ART'],['Business Studies','BUS']];
     $gsStmt = $pdo->prepare('INSERT IGNORE INTO groups_stream (group_name, group_code) VALUES (?,?)');
     foreach ($groups as $g) $gsStmt->execute($g);
+
+    // Default account — every install needs at least one cash account to start fee collection
+    $pdo->prepare('INSERT IGNORE INTO accounts (account_name, account_type, current_balance, notes) VALUES (?,?,?,?)')
+        ->execute(['Main Cash', 'cash', 0.00, 'Primary cash register — created by installer']);
 }
 
 $h = fn(string $s) => htmlspecialchars($s, ENT_QUOTES, 'UTF-8');

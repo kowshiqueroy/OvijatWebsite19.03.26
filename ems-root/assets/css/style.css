@@ -334,9 +334,128 @@ a:hover { color: var(--ems-primary-d); }
 .fw-600          { font-weight: 600 !important; }
 .gap-6           { gap: 1.5rem !important; }
 
-/* Print */
+/* ── Print ────────────────────────────────────────────────
+   A4-optimised: white background, minimal colour, compact.
+   Everything that prints uses these rules — tables, reports,
+   receipts, admit cards, result cards, attendance sheets.
+   The EMS.printTable() helper opens a clean new window for
+   wide tables and auto-sets landscape; this block covers
+   window.print() triggered from the live page.
+   ─────────────────────────────────────────────────────── */
 @media print {
-  #sidebar, #topbar, .btn, .breadcrumb { display: none !important; }
-  #main-content { margin-left: 0 !important; }
-  .card { box-shadow: none !important; border: 1px solid #ddd !important; }
+
+  /* ── 1. Kill all chrome ──────────────────────────────── */
+  #sidebar, #topbar, nav, .navbar,
+  .breadcrumb-wrapper, .breadcrumb,
+  .no-print, [data-export-bar], .ems-export-bar,
+  .page-title-actions,
+  .btn:not(.print-btn),
+  .form-control, select, input, textarea,
+  .collapse:not(.show), .modal, .modal-backdrop,
+  .toast, .alert.alert-dismissible > .btn-close,
+  .dropdown-menu, .nav-tabs, .nav-pills,
+  .stat-card .stat-icon,
+  .table-actions,
+  [data-bs-toggle="tooltip"], [data-bs-toggle="popover"]
+                              { display: none !important; }
+
+  /* ── 2. Reset layout to full-width white ─────────────── */
+  html, body        { background: #fff !important; color: #000 !important;
+                      font-family: 'Segoe UI', Arial, sans-serif !important;
+                      font-size: 10pt !important; line-height: 1.35 !important; }
+  #main-content     { margin-left: 0 !important; padding: 0 !important; }
+  #wrapper          { display: block !important; }
+  .container,
+  .container-fluid  { max-width: 100% !important; padding: 0 !important; }
+  .row              { margin: 0 !important; }
+  [class*="col-"]   { padding: 0 4px !important; }
+
+  /* ── 3. Cards — borderless, no shadow ──────────────── */
+  .card             { box-shadow: none !important; border: none !important;
+                      margin-bottom: 6pt !important; break-inside: avoid; }
+  .card-header      { background: transparent !important; color: #000 !important;
+                      border-bottom: 1.5pt solid #000 !important;
+                      padding: 3pt 0 !important; font-size: 10pt !important;
+                      -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .card-body        { padding: 4pt 0 !important; }
+  .card-footer      { display: none !important; }
+
+  /* ── 4. Tables — compact, black borders, light stripe ── */
+  table             { width: 100% !important; font-size: 8.5pt !important;
+                      border-collapse: collapse !important; table-layout: auto !important; }
+  th                { background: #e8e8e8 !important; color: #000 !important;
+                      border: 0.75pt solid #888 !important;
+                      padding: 3pt 5pt !important; font-size: 8pt !important;
+                      font-weight: 700 !important; text-align: left !important;
+                      -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  td                { border: 0.5pt solid #ccc !important;
+                      padding: 2.5pt 5pt !important; vertical-align: top !important; }
+  tr:nth-child(even) td { background: #f5f5f5 !important;
+                      -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .table-responsive { overflow: visible !important; max-height: none !important; }
+  thead             { display: table-header-group; }
+  tfoot             { display: table-footer-group; }
+
+  /* Dark/coloured header rows → greyscale */
+  .table-dark th, thead.table-dark th,
+  tr.table-dark td  { background: #222 !important; color: #fff !important;
+                      -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
+  /* ── 5. Badges / status chips — text-only, bordered ─── */
+  .badge, [class*="badge-status"], .badge-pill
+                    { background: #fff !important; color: #000 !important;
+                      border: 0.75pt solid #666 !important;
+                      font-size: 7.5pt !important; padding: 1pt 3pt !important;
+                      border-radius: 2pt !important; }
+
+  /* ── 6. Stat cards — compact info block ──────────────── */
+  .stat-card        { background: #fff !important; border: 1pt solid #ccc !important;
+                      box-shadow: none !important; padding: 4pt !important;
+                      color: #000 !important; }
+  .stat-value       { font-size: 13pt !important; color: #000 !important; }
+  .stat-label       { font-size: 7.5pt !important; color: #444 !important; }
+
+  /* ── 7. Alerts — strip background, show only content ─── */
+  .alert            { background: transparent !important; border: 0.75pt solid #999 !important;
+                      color: #000 !important; padding: 3pt 6pt !important;
+                      font-size: 8pt !important; }
+
+  /* ── 8. Links → black text ───────────────────────────── */
+  a                 { color: #000 !important; text-decoration: none !important; }
+
+  /* ── 9. Headings — compact ───────────────────────────── */
+  h1, .page-title   { font-size: 13pt !important; margin: 0 0 4pt !important; }
+  h2                { font-size: 11pt !important; }
+  h3, h4            { font-size: 10pt !important; }
+  h5, h6            { font-size: 9pt !important; }
+
+  /* ── 10. Progress bars — show as % text instead ──────── */
+  .progress         { height: 4pt !important; }
+  .progress-bar     { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
+  /* ── 11. Page setup — A4, 10mm margins, no orphans ───── */
+  @page             { margin: 10mm 12mm; size: A4 portrait; }
+  @page landscape   { size: A4 landscape; }
+
+  tr, .card, .stat-card { break-inside: avoid; }
+  h1,h2,h3,h4,h5,h6    { break-after: avoid; }
+
+  /* ── 12. Space savings ───────────────────────────────── */
+  .mb-3, .mb-4    { margin-bottom: 4pt !important; }
+  .mt-3, .mt-4    { margin-top: 4pt !important; }
+  .p-3, .p-4     { padding: 4pt !important; }
+  .py-3, .py-4   { padding-top: 4pt !important; padding-bottom: 4pt !important; }
+  .px-3, .px-4   { padding-left: 4pt !important; padding-right: 4pt !important; }
+  .gap-3, .gap-4 { gap: 4pt !important; }
+
+  /* ── 13. Print-only institute header (injected by JS) ── */
+  .print-school-header {
+    display: block !important;
+    text-align: center;
+    border-bottom: 2pt double #000;
+    padding-bottom: 5pt;
+    margin-bottom: 8pt;
+  }
+  .print-school-header h1 { font-size: 15pt !important; text-transform: uppercase; letter-spacing: .05em; }
+  .print-school-header p  { font-size: 8.5pt !important; color: #333 !important; margin: 0; }
 }

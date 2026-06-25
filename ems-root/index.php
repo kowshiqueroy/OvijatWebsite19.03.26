@@ -141,6 +141,9 @@ $type_label = match($school_type) {
             <input type="checkbox" class="form-check-input" id="remember">
             <label class="form-check-label" for="remember" style="font-size:.85rem;">Remember me</label>
           </div>
+          <button type="button" class="btn btn-link p-0 text-decoration-none" style="font-size:.85rem;" data-bs-toggle="modal" data-bs-target="#contactModal">
+            Contact Institute
+          </button>
         </div>
 
         <button type="submit" class="btn btn-primary w-100 py-2 fw-600">
@@ -156,6 +159,54 @@ $type_label = match($school_type) {
   </div>
 </div>
 
+<!-- Contact Institute Modal -->
+<div class="modal fade animate-fade-in" id="contactModal" tabindex="-1" aria-labelledby="contactModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content border-0 shadow-lg">
+      <div class="modal-header bg-primary text-white py-3">
+        <h5 class="modal-title fw-600" id="contactModalLabel"><i class="bi bi-telephone-fill me-2"></i>Contact Institute</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body p-4">
+        <p class="text-muted mb-4">If you have forgotten your password or need assistance with your credentials, please contact the administration office:</p>
+        <div class="d-flex flex-column gap-3">
+          <div class="d-flex align-items-center gap-3">
+            <div class="rounded-circle bg-light text-primary d-grid place-items-center" style="width:36px;height:36px;place-items:center;flex-shrink:0;">
+              <i class="bi bi-telephone-outbound"></i>
+            </div>
+            <div>
+              <div class="text-muted small">Phone Number</div>
+              <div class="fw-600"><?= e(setting('school_phone', '+880 1234 567890')) ?></div>
+            </div>
+          </div>
+          <div class="d-flex align-items-center gap-3">
+            <div class="rounded-circle bg-light text-primary d-grid place-items-center" style="width:36px;height:36px;place-items:center;flex-shrink:0;">
+              <i class="bi bi-envelope"></i>
+            </div>
+            <div>
+              <div class="text-muted small">Email Address</div>
+              <div class="fw-600"><?= e(setting('school_email', 'info@ems.edu.bd')) ?></div>
+            </div>
+          </div>
+          <div class="d-flex align-items-center gap-3">
+            <div class="rounded-circle bg-light text-primary d-grid place-items-center" style="width:36px;height:36px;place-items:center;flex-shrink:0;">
+              <i class="bi bi-geo-alt"></i>
+            </div>
+            <div>
+              <div class="text-muted small">Address</div>
+              <div class="fw-600"><?= e(setting('school_address', 'Dhaka, Bangladesh')) ?></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer bg-light py-2">
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
 function togglePwd() {
   const inp  = document.getElementById('pwd');
