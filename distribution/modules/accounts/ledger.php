@@ -70,6 +70,49 @@ if ($customer_id) {
 
     $ledger = array_merge($invoices, $txns, $returns);
     usort($ledger, fn($a,$b) => strtotime($a['created_at']) - strtotime($b['created_at']));
+
+    // Fetch products for all invoice and return entries to show inside ledger list
+    $invoice_ids = [];
+    $return_ids = [];
+    foreach ($ledger as $row) {
+        if ($row['entry_type'] === 'Invoice') {
+            $invoice_ids[] = intval($row['id']);
+        } elseif ($row['entry_type'] === 'Return') {
+            $return_ids[] = intval($row['id']);
+        }
+    }
+
+    $invoice_products = [];
+    if (!empty($invoice_ids)) {
+        $id_list = implode(',', $invoice_ids);
+        $items_raw = fetch_all("
+            SELECT si.draft_id, p.name as product_name, si.billed_qty, si.free_qty 
+            FROM sales_items si 
+            JOIN products p ON si.product_id = p.id 
+            WHERE si.draft_id IN ($id_list) AND si.isDelete = 0 AND p.isDelete = 0
+        ");
+        foreach ($items_raw as $item) {
+            $qty_desc = $item['billed_qty'];
+            if ($item['free_qty'] > 0) {
+                $qty_desc .= " + " . $item['free_qty'] . " Free";
+            }
+            $invoice_products[$item['draft_id']][] = $item['product_name'] . " (" . $qty_desc . ")";
+        }
+    }
+
+    $return_products = [];
+    if (!empty($return_ids)) {
+        $id_list = implode(',', $return_ids);
+        $items_raw = fetch_all("
+            SELECT sri.return_id, p.name as product_name, sri.quantity 
+            FROM sales_return_items sri 
+            JOIN products p ON sri.product_id = p.id 
+            WHERE sri.return_id IN ($id_list) AND sri.isDelete = 0 AND p.isDelete = 0
+        ");
+        foreach ($items_raw as $item) {
+            $return_products[$item['return_id']][] = $item['product_name'] . " (" . $item['quantity'] . ")";
+        }
+    }
 }
 
 include '../../templates/header.php';
@@ -193,7 +236,18 @@ include '../../templates/header.php';
                         <?= $row['entry_type'] ?>
                     </span>
                 </td>
-                <td class="small text-muted"><?= htmlspecialchars($row['note'] ?? '') ?></td>
+                <td class="small text-muted text-wrap" style="max-width: 300px;">
+                    <?= htmlspecialchars($row['note'] ?? '') ?>
+                    <?php if ($row['entry_type'] === 'Invoice' && isset($invoice_products[$row['id']])): ?>
+                        <div class="text-primary mt-1" style="font-size: 10px; font-weight: 500;">
+                            <i class="fas fa-box me-1"></i> <?= htmlspecialchars(implode(', ', $invoice_products[$row['id']])) ?>
+                        </div>
+                    <?php elseif ($row['entry_type'] === 'Return' && isset($return_products[$row['id']])): ?>
+                        <div class="text-success mt-1" style="font-size: 10px; font-weight: 500;">
+                            <i class="fas fa-rotate-left me-1"></i> <?= htmlspecialchars(implode(', ', $return_products[$row['id']])) ?>
+                        </div>
+                    <?php endif; ?>
+                </td>
                 <td class="text-end <?= $is_debit ? 'text-danger fw-semibold' : 'text-muted' ?>">
                     <?= $is_debit ? number_format($amt, 2) : '—' ?>
                 </td>

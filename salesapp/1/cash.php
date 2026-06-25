@@ -1,511 +1,350 @@
-<?php
+﻿<?php
+$pageTitle = 'Cash Collections';
 include 'header.php';
-?>
-<?php
-// if cash_approve_id is set, update the status to "approved"
-if (isset($_GET['cash_approve_id']) && !empty($_GET['cash_approve_id']) && is_numeric($_GET['cash_approve_id']) && $_GET['cash_approve_id'] > 0) {
-    //if user is not admin, redirect to $_SESSION['role'] == 1
-    if ($_SESSION['role'] != 1) {
-        echo "<script>alert('You are not authorized to Update.'); window.location.href='cash.php';</script>";
-        exit();
-    }
-    $cash_approve_id = $_GET['cash_approve_id'];
-    $update_query = "UPDATE cash_collections SET status='1', approved_at=NOW(),approved_by='" . $_SESSION['user_id'] . "' WHERE id='$cash_approve_id'";
-    mysqli_query($conn, $update_query);
 
-    //update the shop balance
-    $select_query = "SELECT * FROM cash_collections WHERE id='$cash_approve_id'";
-    $result = mysqli_query($conn, $select_query);
-    $row = mysqli_fetch_assoc($result);
-    $shop_id = $row['shop_id'];
-    $amount = $row['amount'];
-    $update_query = "UPDATE shops SET balance=balance+$amount WHERE id='$shop_id'";
-    mysqli_query($conn, $update_query);
-    header("Location: cash.php");
-    exit();
+$cid = (int)$_SESSION['company_id'];
+$uid = (int)$_SESSION['user_id'];
+$success = $error = '';
+
+/* ── Approve (manager only) ── */
+if (isset($_GET['approve_id'])) {
+    if (!$is_manager) { header("Location: cash.php"); exit; }
+    $aid = (int)$_GET['approve_id'];
+
+    /* Fetch amount + shop before approving */
+    $stmt = $conn->prepare("SELECT amount, shop_id, approved_at FROM cash_collections WHERE id=? AND company_id=?");
+    $stmt->bind_param("ii", $aid, $cid); $stmt->execute();
+    $cc = $stmt->get_result()->fetch_assoc(); $stmt->close();
+
+    if ($cc && $cc['approved_at'] === null) {
+        /* Approve */
+        $stmt = $conn->prepare("UPDATE cash_collections SET status=1, approved_at=NOW(), approved_by=? WHERE id=? AND company_id=?");
+        $stmt->bind_param("iii", $uid, $aid, $cid); $stmt->execute(); $stmt->close();
+        /* Adjust shop balance */
+        $stmt = $conn->prepare("UPDATE shops SET balance=balance+? WHERE id=? AND company_id=?");
+        $stmt->bind_param("dii", $cc['amount'], $cc['shop_id'], $cid); $stmt->execute(); $stmt->close();
+        header("Location: cash.php?msg=approved"); exit;
+    }
+    header("Location: cash.php?msg=already_approved"); exit;
 }
-if ($_SERVER['REQUEST_METHOD'] == 'POST') {
-   
+
+/* ── POST ── */
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if (isset($_POST['add_cash'])) {
-        $shop_id = $_POST['shop_id'];
-        $route_id = $_POST['route_id'];
-        $amount = $_POST['amount'];
-        $user_id = $_SESSION['user_id'];
-        $status = $_POST['status'];
-        $company_id = $_SESSION['company_id'];
-        $remarks = $_POST['remarks'];
-       
+        $shop_id  = (int)$_POST['shop_id'];
+        $route_id = (int)$_POST['route_id'];
+        $amount   = (float)$_POST['amount'];
+        $remarks  = trim($_POST['remarks'] ?? '');
+        $status   = 1;
 
-        $query = "INSERT INTO cash_collections (shop_id, route_id, amount, collected_by, collection_date, status, company_id, remarks) 
-        VALUES ('$shop_id', '$route_id', '$amount', '$user_id', NOW(), '$status', '$company_id', '$remarks')";
-        mysqli_query($conn, $query);
-
-    
-
-
-        header("Location: cash.php");
-        exit();
+        if (!$shop_id || !$route_id || $amount <= 0) {
+            $error = 'Route, shop and amount are required.';
+        } else {
+            $stmt = $conn->prepare(
+                "INSERT INTO cash_collections (shop_id, route_id, amount, collected_by, collection_date, status, company_id, remarks)
+                 VALUES (?,?,?,?,NOW(),?,?,?)"
+            );
+            $stmt->bind_param("iidiiis", $shop_id, $route_id, $amount, $uid, $status, $cid, $remarks);
+            $stmt->execute(); $stmt->close();
+            header("Location: cash.php?msg=created"); exit;
+        }
     }
-    if (isset($_POST['update_cash'])) {
-        $cash_id = $_GET['cash_edit_id'];
-        $amount = $_POST['amount'];
-        $shop_id = $_POST['shop_id'];
-        $route_id = $_POST['route_id'];
-        $status = $_POST['status'];
 
-        //check if approved
-        $approval_check_query = "SELECT approved_at FROM cash_collections WHERE id = '$cash_id'";
-        $approval_check_result = mysqli_query($conn, $approval_check_query);
-        $approval_check_row = mysqli_fetch_assoc($approval_check_result);
-        $approved_at = $approval_check_row['approved_at'];
-        if ($approved_at != null) {
-            echo "<script>alert('This cash collection has already been approved.'); window.location.href='cash.php';</script>";
-            exit();
+    if (isset($_POST['update_cash'])) {
+        $ccid     = (int)$_GET['edit'];
+        $shop_id  = (int)$_POST['shop_id'];
+        $route_id = (int)$_POST['route_id'];
+        $amount   = (float)$_POST['amount'];
+        $remarks  = trim($_POST['remarks'] ?? '');
+
+        /* Block edit if already approved */
+        $chk = $conn->prepare("SELECT approved_at FROM cash_collections WHERE id=? AND company_id=?");
+        $chk->bind_param("ii", $ccid, $cid); $chk->execute();
+        $rec = $chk->get_result()->fetch_assoc(); $chk->close();
+        if ($rec && $rec['approved_at'] !== null) {
+            header("Location: cash.php?msg=already_approved"); exit;
         }
 
-
-        $update_fields = " shop_id='$shop_id', route_id='$route_id', amount='$amount', status='$status'";
-        $query = "UPDATE cash_collections SET $update_fields WHERE id='$cash_id'";
-        mysqli_query($conn, $query);
-
-        header("Location: cash.php");
-        exit();
+        $stmt = $conn->prepare("UPDATE cash_collections SET shop_id=?,route_id=?,amount=?,remarks=? WHERE id=? AND company_id=?");
+        $stmt->bind_param("iidsii", $shop_id, $route_id, $amount, $remarks, $ccid, $cid);
+        $stmt->execute(); $stmt->close();
+        header("Location: cash.php?msg=updated"); exit;
     }
-    
 }
-      
 
+/* ── Load edit ── */
+$edit_data = null;
+if (isset($_GET['edit'])) {
+    $stmt = $conn->prepare("SELECT * FROM cash_collections WHERE id=? AND company_id=?");
+    $stmt->bind_param("ii", (int)$_GET['edit'], $cid); $stmt->execute();
+    $edit_data = $stmt->get_result()->fetch_assoc(); $stmt->close();
+}
+
+/* ── Routes ── */
+$routes_q = $conn->query("SELECT id, route_name FROM routes WHERE company_id=$cid AND status=1 ORDER BY route_name");
+
+/* ── Filters ── */
+$f_route   = (int)($_GET['route_id'] ?? 0);
+$f_from    = $_GET['date_from'] ?? date('Y-m-01');
+$f_to      = $_GET['date_to']   ?? date('Y-m-t');
+$f_appr    = $_GET['approved']  ?? '';
+$per_page  = max(10, min(100, (int)($_GET['per_page'] ?? 25)));
+$page      = max(1, (int)($_GET['page'] ?? 1));
+$offset    = ($page - 1) * $per_page;
+
+$where  = ["cc.company_id=$cid"];
+$params = []; $types = '';
+/* SRs see only their own */
+if (!$is_manager) { $where[] = "cc.collected_by=$uid"; }
+if ($f_route) { $where[] = 'cc.route_id=?'; $params[] = $f_route; $types .= 'i'; }
+if ($f_appr === '1') $where[] = 'cc.approved_at IS NOT NULL';
+if ($f_appr === '0') $where[] = 'cc.approved_at IS NULL';
+$where[] = 'cc.collection_date BETWEEN ? AND ?';
+$params[] = $f_from . ' 00:00:00'; $params[] = $f_to . ' 23:59:59'; $types .= 'ss';
+$w = 'WHERE ' . implode(' AND ', $where);
+
+$cnt_q = $conn->prepare("SELECT COUNT(*) AS c, COALESCE(SUM(cc.amount),0) AS total FROM cash_collections cc $w");
+$cnt_q->bind_param($types, ...$params); $cnt_q->execute();
+$summary = $cnt_q->get_result()->fetch_assoc(); $cnt_q->close();
+$total   = (int)$summary['c'];
+$grand   = (float)$summary['total'];
+$total_pages = max(1, (int)ceil($total / $per_page));
+
+$list_q = $conn->prepare(
+    "SELECT cc.*, s.shop_name, r.route_name, u.username AS collector_name
+     FROM cash_collections cc
+     JOIN shops s ON s.id=cc.shop_id
+     JOIN routes r ON r.id=cc.route_id
+     LEFT JOIN users u ON u.id=cc.collected_by
+     $w ORDER BY cc.id DESC LIMIT ? OFFSET ?"
+);
+$lp = array_merge($params, [$per_page, $offset]); $lt = $types . 'ii';
+$list_q->bind_param($lt, ...$lp); $list_q->execute(); $rows = $list_q->get_result();
+
+$msgs = ['created'=>'Cash collection recorded.','updated'=>'Cash collection updated.',
+         'approved'=>'Cash collection approved.','already_approved'=>'Already approved — cannot edit.'];
+if (isset($_GET['msg'])) $success = $msgs[$_GET['msg']] ?? '';
 ?>
-    <div class="print-header">
-           <h1><?php echo APP_NAME; ?> Report</h1>
-        <p>Generated by: <?php echo $_SESSION['user_id'] . "@".$_SESSION['username']. " | Company: " . $_SESSION['company_id']; ?> | Date: <?php echo date("Y-m-d"); ?></p>
 
+<div class="page-header">
+    <div><div class="page-title">Cash Collections</div><div class="page-subtitle">Record and approve shop cash payments</div></div>
+    <button class="btn btn-primary btn-sm" id="toggleForm">
+        <i class="fa-solid fa-plus"></i> <?= $edit_data ? 'Editing #'.$edit_data['id'] : 'New Collection' ?>
+    </button>
+</div>
+
+<?php if ($success): ?><div class="alert alert-success"><i class="fa-solid fa-check-circle"></i> <?= htmlspecialchars($success) ?></div><?php endif; ?>
+<?php if ($error):   ?><div class="alert alert-error"><i class="fa-solid fa-circle-exclamation"></i> <?= htmlspecialchars($error) ?></div><?php endif; ?>
+
+<!-- Form -->
+<div class="card" id="cashForm" <?= $edit_data ? '' : 'style="display:none"' ?>>
+    <div class="card-header">
+        <span class="card-title"><?= $edit_data ? 'Edit Collection #'.$edit_data['id'] : 'New Cash Collection' ?></span>
+        <?php if ($edit_data): ?><a href="cash.php" class="btn btn-ghost btn-sm">Cancel Edit</a><?php endif; ?>
     </div>
-
-    <div class="container">
-
-        <div class="text-center" style="text-align: center; margin: 30px 0;">
-            <h2 style="font-weight: 300; font-size: 2rem;">Cash Collection List</h2>
-            <p style="color: #666;">Create and manage cash collection.</p>
+    <form method="POST" action="cash.php<?= $edit_data ? '?edit='.$edit_data['id'] : '' ?>">
+        <?= csrf_field() ?>
+        <div class="grid-layout md-2">
+            <div class="form-group">
+                <label>Route <span style="color:var(--danger)">*</span></label>
+                <select name="route_id" id="route_id" required>
+                    <option value="">Select Route</option>
+                    <?php if ($routes_q) while ($r = $routes_q->fetch_assoc()): $sel = ($edit_data && $edit_data['route_id']==$r['id'])?'selected':''; ?>
+                        <option value="<?=$r['id']?>" <?=$sel?>><?= htmlspecialchars($r['route_name']) ?></option>
+                    <?php endwhile; ?>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Shop <span style="color:var(--danger)">*</span></label>
+                <select name="shop_id" id="shop_id" required>
+                    <?php if ($edit_data): ?>
+                        <?php $sq = $conn->prepare("SELECT id, shop_name FROM shops WHERE id=? LIMIT 1"); $sq->bind_param("i",$edit_data['shop_id']); $sq->execute(); $sv = $sq->get_result()->fetch_assoc(); $sq->close(); ?>
+                        <option value="<?=$edit_data['shop_id']?>" selected><?= htmlspecialchars($sv['shop_name'] ?? '') ?></option>
+                    <?php else: ?>
+                        <option value="">Select Shop</option>
+                    <?php endif; ?>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Amount (BDT) <span style="color:var(--danger)">*</span></label>
+                <input type="number" name="amount" step="0.01" min="0.01" required
+                       value="<?= htmlspecialchars($edit_data['amount'] ?? '') ?>">
+            </div>
+            <div class="form-group">
+                <label>Remarks</label>
+                <input type="text" name="remarks" placeholder="Optional note"
+                       value="<?= htmlspecialchars($edit_data['remarks'] ?? '') ?>">
+            </div>
         </div>
+        <div class="form-actions">
+            <?php if ($edit_data): ?>
+                <button type="submit" name="update_cash" class="btn btn-warning"><i class="fa-solid fa-pen"></i> Update</button>
+            <?php else: ?>
+                <button type="submit" name="add_cash" class="btn btn-primary"><i class="fa-solid fa-plus"></i> Record Collection</button>
+            <?php endif; ?>
+        </div>
+    </form>
+</div>
 
-        
-        
-        
+<!-- Filter -->
+<form method="GET" action="cash.php">
+    <div class="filter-bar">
+        <div class="form-group">
+            <label>Route</label>
+            <select name="route_id">
+                <option value="">All Routes</option>
+                <?php if ($routes_q) { $routes_q->data_seek(0); while ($r = $routes_q->fetch_assoc()): ?>
+                    <option value="<?=$r['id']?>" <?=$f_route==$r['id']?'selected':''?>><?= htmlspecialchars($r['route_name']) ?></option>
+                <?php endwhile; } ?>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>Approval</label>
+            <select name="approved">
+                <option value="">All</option>
+                <option value="0" <?=$f_appr==='0'?'selected':''?>>Pending</option>
+                <option value="1" <?=$f_appr==='1'?'selected':''?>>Approved</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>From</label>
+            <input type="date" name="date_from" id="date_from" value="<?= htmlspecialchars($f_from) ?>">
+        </div>
+        <div class="form-group">
+            <label>To</label>
+            <input type="date" name="date_to" id="date_to" value="<?= htmlspecialchars($f_to) ?>">
+        </div>
+        <div class="form-group" style="max-width:90px">
+            <label>Per Page</label>
+            <select id="perPageSelect" name="per_page">
+                <?php foreach ([10,25,50,100] as $n): ?><option value="<?=$n?>" <?=$per_page==$n?'selected':''?>><?=$n?></option><?php endforeach; ?>
+            </select>
+        </div>
+        <button type="submit" class="btn btn-primary btn-sm" style="align-self:flex-end"><i class="fa-solid fa-filter"></i> Filter</button>
+        <a href="cash.php" class="btn btn-ghost btn-sm" style="align-self:flex-end">Reset</a>
+    </div>
+    <div class="date-presets" style="margin-bottom:12px">
+        <span class="text-muted text-xs" style="margin-right:6px">Quick:</span>
+        <button type="button" class="date-preset-btn" data-preset="today">Today</button>
+        <button type="button" class="date-preset-btn" data-preset="week">This Week</button>
+        <button type="button" class="date-preset-btn" data-preset="month">This Month</button>
+    </div>
+</form>
 
+<!-- Summary KPIs -->
+<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
+    <div class="kpi-card" style="flex:1;min-width:140px;padding:14px 16px">
+        <div class="kpi-label">Records</div>
+        <div class="kpi-value" style="font-size:1.4rem"><?= number_format($total) ?></div>
+    </div>
+    <div class="kpi-card info" style="flex:1;min-width:140px;padding:14px 16px">
+        <div class="kpi-label">Total Amount</div>
+        <div class="kpi-value" style="font-size:1.4rem"><?= number_format($grand, 0) ?></div>
+        <div class="kpi-sub">BDT</div>
+    </div>
+</div>
 
-        
-
-        <div class="glass-panel form-section">
-            <span class="section-title">New Cash Collection Add</span>
-            <form method="POST">
-
-
-                <?php if (isset($_GET['cash_edit_id'])) {
-                    $cash_edit_id = $_GET['cash_edit_id'];
-                    $query = "SELECT * FROM cash_collections WHERE id='$cash_edit_id'";
-                    $result = mysqli_query($conn, $query);
-                    if (mysqli_num_rows($result) > 0) {
-                        $cash_data = mysqli_fetch_assoc($result);
-                    }
-                }
-                ?>
-                <div class="desktop-span-2">
-                    <div class="col-1">
-                        <label>Route Name</label>
-                        
-                        <select name="route_id" id="route_id" onchange="getShopsByRouteId(this.value)" required>
-                            <option value="">Select Route</option>
-                            <?php
-                            $query = "SELECT id, route_name FROM routes WHERE status = 1 AND company_id='{$_SESSION['company_id']}' ORDER BY id DESC";
-                            $result = mysqli_query($conn, $query);
-                            if (mysqli_num_rows($result) > 0) {
-                                while ($row = mysqli_fetch_assoc($result)) {
-                                    $selected = (isset($cash_data['route_id']) && $cash_data['route_id'] == $row['id']) ? 'selected' : '';
-                                    echo "<option value='" . $row['id'] . "' $selected>" . $row['route_name'] . "</option>";
-                                }
-                            }
-                            ?>
-                        </select>
-                    </div>
-
-
-                    <div class="col-1">
-                    
-                        
-                        <label>Shop Name</label>
-                        <select name="shop_id" id="shop_id" required>
-                            <?php if (isset($_GET['shop_id'])): ?>
-                                <option value="<?php echo $_GET['shop_id']; ?>" selected><?php echo $_GET['shop_name']; ?></option>
+<!-- Table -->
+<div class="card">
+    <div class="card-header">
+        <span class="card-title">Cash Collections</span>
+        <button onclick="window.print()" class="btn btn-ghost btn-sm btn-icon print-hide"><i class="fa-solid fa-print"></i></button>
+    </div>
+    <div class="print-header"><h1><?= APP_NAME ?> &mdash; Cash Collections</h1><p>Period: <?=$f_from?> to <?=$f_to?> | <?= date('d M Y H:i') ?></p></div>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <?php if ($is_manager): ?><th>Collector</th><?php endif; ?>
+                    <th>Route &rsaquo; Shop</th>
+                    <th>Amount</th>
+                    <th>Date</th>
+                    <th>Approval</th>
+                    <th>Remarks</th>
+                    <th class="print-hide">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php if ($rows->num_rows > 0): ?>
+                    <?php while ($row = $rows->fetch_assoc()): ?>
+                    <tr>
+                        <td class="text-muted"><?= $row['id'] ?></td>
+                        <?php if ($is_manager): ?><td class="text-sm"><?= htmlspecialchars($row['collector_name']) ?></td><?php endif; ?>
+                        <td>
+                            <span class="text-muted text-xs"><?= htmlspecialchars($row['route_name']) ?></span><br>
+                            <strong class="text-sm"><?= htmlspecialchars($row['shop_name']) ?></strong>
+                        </td>
+                        <td class="fw-700 text-green"><?= number_format($row['amount'], 0) ?></td>
+                        <td class="text-sm"><?= date('d M Y', strtotime($row['collection_date'])) ?></td>
+                        <td>
+                            <?php if ($row['approved_at']): ?>
+                                <span class="badge badge-green">Approved</span>
+                            <?php elseif ($is_manager): ?>
+                                <a href="cash.php?approve_id=<?= $row['id'] ?>"
+                                   onclick="return confirm('Approve this cash collection?')"
+                                   class="badge badge-yellow" style="cursor:pointer;text-decoration:none">
+                                   Pending &mdash; Approve?
+                                </a>
                             <?php else: ?>
-                                <option value="">Select Shop</option>
+                                <span class="badge badge-yellow">Pending</span>
                             <?php endif; ?>
-                            <?php
-                            $route_id = isset($_POST['route_id']) ? $_POST['route_id'] : '';
-                            $query = "SELECT id, shop_name FROM shops WHERE route_id='$route_id' ORDER BY id DESC";
-                            $result = mysqli_query($conn, $query);
-                            if (mysqli_num_rows($result) > 0) {
-                                while ($row = mysqli_fetch_assoc($result)) {
-                                    $selected = (isset($cash_data['shop_id']) && $cash_data['shop_id'] == $row['id']) ? 'selected' : '';
-                                    echo '<option value="' . $row['id'] . '" ' . $selected . '>' . $row['shop_name'] . '</option>';
-                                }
-                            }
-                            ?>
-                        </select>
-
-                       <script>
-    $(document).ready(function() {
-        // Initialize Select2 on the Add/Edit form elements
-        $('#route_id').select2({
-            width: '100%',
-            placeholder: "Select Route"
-        });
-        $('#shop_id').select2({
-            width: '100%',
-            placeholder: "Select Shop"
-        });
-
-        // Optional: Initialize on the Search Filter elements at the top
-        $('select[name="search_route_id"]').select2({ width: '100%' });
-        $('select[name="search_shop_id"]').select2({ width: '100%' });
-    });
-
-    function getShopsByRouteId(route_id) {
-        // Clear the current shop selection
-        $('#shop_id').empty();
-        
-        $.ajax({
-            url: 'get_shops_by_route_id.php', // I removed ?route_id= here because you are sending it in `data` below
-            type: 'GET',
-            data: {
-                route_id: route_id
-            },
-            success: function(response) {
-                // Update the select options
-                $('#shop_id').html(response);
-                
-                // IMPORTANT: Trigger the change event so Select2 updates the list
-                $('#shop_id').trigger('change');
-            },
-            error: function(xhr, status, error) {
-                console.log("Error: " + error);
-            }
-        });
-    }
-</script>
-                    </div>
-                    
-                   <div class="grid-layout desktop-4" style="grid-template-columns: 1fr 1fr;">
-                  
-                    <div><label>Amount</label>
-                    <input type="number" step="0.01" placeholder="Amount" name="amount" value="<?php echo htmlspecialchars(isset($cash_data['amount']) ? $cash_data['amount'] : ''); ?>" required>
-
-                    
-                    </div>
-                    <div><label>Status</label>
-                    <select name="status">
-                        <option value="1" <?php echo isset($shop_data['status']) && $shop_data['status'] == 1 ? 'selected' : ''; ?>>Active</option>
-                        <option value="0" <?php echo isset($shop_data['status']) && $shop_data['status'] == 0 ? 'selected' : ''; ?>>Inactive</option>
-                    </select>
-                </div>
-                    </div>
-
-
-                
-  <div class="col-1">
-                        <label>Remarks</label>
-                        
-                        <input type="text" placeholder="Remarks" name="remarks" value="<?php echo htmlspecialchars(isset($cash_data['remarks']) ? $cash_data['remarks'] : ''); ?>">
-                    </div>
-                
-
-
-                </div>
-                
-                
-                
-                <div class="form-actions">
-                    <?php if (isset($cash_edit_id)) {
-                        echo '<button type="submit" name="update_cash" class="btn btn-yellow"><i class="fa-solid fa-edit"></i> Update Cash</button>';
-                    } else {
-                        echo '<button type="submit" name="add_cash" class="btn btn-yellow"><i class="fa-solid fa-plus"></i> Add Cash</button>';
-                    }
-
-                    ?>
-                </div>
-                 
-             
-
-
-            </form>
-        </div>
-
-        <div class=" form-section" style="margin-bottom: 20px;">
-          
-            <form method="GET">
-
-
-                <?php if (isset($_GET['cash_edit_id'])) {
-                    $cash_edit_id = $_GET['cash_edit_id'];
-                    $query = "SELECT * FROM cash_collections WHERE id='$cash_edit_id'";
-                    $result = mysqli_query($conn, $query);
-                    if (mysqli_num_rows($result) > 0) {
-                        $cash_data = mysqli_fetch_assoc($result);
-                    }
-                }
-                ?>
-                <div class="desktop-span-2">
-                   
-
-
-                   
-                    
-                <div class="grid-layout desktop-4" style="grid-template-columns: 1fr 1fr;">
-                    <div><label>Date From</label>
-                    <input type="date" placeholder="Date" name="date_from" value="<?php echo isset($_GET['date_from']) ? $_GET['date_from'] : date('Y-m-d'); ?>" required>
-                    </div>
-                    <div><label>Date To</label>
-                    <input type="date" placeholder="Date" name="date_to" value="<?php echo isset($_GET['date_to']) ? $_GET['date_to'] : date('Y-m-d'); ?>" required>
-                    </div>
-                    <div><label>Route Name</label>
-                        
-                        <select name="search_route_id" >
-                            <option value="">All Route</option>
-                            <?php
-                            $query = "SELECT id, route_name FROM routes";
-                            $result = mysqli_query($conn, $query);
-                            if (mysqli_num_rows($result) > 0) {
-                                while ($row = mysqli_fetch_assoc($result)) {
-                                    $selected = (isset($_GET['search_route_id']) && $_GET['search_route_id'] == $row['id']) ? 'selected' : '';
-                                    echo "<option value='" . $row['id'] . "' $selected>" . $row['route_name'] . "</option>";
-                                }
-                            }
-                            ?>
-                        </select>
-                    </div>
-                    <div>
-                                                                    
-                        
-                        <label>Shop Name</label>
-                        <select name="search_shop_id" >
-                            <option value="">All Shop</option>
-                            <?php
-                            $query = "SELECT id, shop_name FROM shops ORDER BY id DESC";
-                            $result = mysqli_query($conn, $query);
-                            if (mysqli_num_rows($result) > 0) {
-                                while ($row = mysqli_fetch_assoc($result)) {
-                                    $selected = (isset($_GET['search_shop_id']) && $_GET['search_shop_id'] == $row['id']) ? 'selected' : '';
-                                    echo '<option value="' . $row['id'] . '" ' . $selected . '>' . $row['shop_name'] . '</option>';
-                                }
-                            }
-                            ?>
-                        </select>
-                    </div>
-            
-
-                  
-                    <div><label>ID</label>
-                    <input type="number"  placeholder="All" name="search_id" value="<?php echo htmlspecialchars(isset($_GET['search_id']) ? $_GET['search_id'] : ''); ?>">
-                    </div>
-                    <div><label>Status</label>
-                    <select name="search_status">
-                        <option value="1" <?php echo isset($_GET['search_status']) && $_GET['search_status'] == 1 ? 'selected' : ''; ?>>Active</option>
-                        <option value="0" <?php echo isset($_GET['search_status']) && $_GET['search_status'] == 0 ? 'selected' : ''; ?>>Inactive</option>
-                    </select>
-                </div>
-                    </div>
-                </div>
-                
-                
-                
-                <div class="form-actions">
-                   <button type="submit" name="search_cash" class="btn btn-green"><i class="fa-solid fa-search"></i> Search</button>
-                </div>
-                 
-             
- 
-
-            </form>
-        </div>
-
-        <div class="glass-panel printable">
-            <div style="display: flex; justify-content: space-between; margin-bottom: 15px;">
-                <span class="section-title" style="margin:0;">All Cash Collection</span>
-                   <button onclick="window.location.href='cash.php?show_all=1'" class="btn btn-dark" style="padding: 5px 15px; font-size: 0.7rem;">Show All</button>
-                   <button onclick="window.print()" class="btn btn-dark" style="padding: 5px 15px; font-size: 0.7rem;"><i class="fa-solid fa-file-pdf"></i> / <i class="fa-solid fa-print"></i></button>
-     
-            </div>
-
-          
-            
-            <div class="table-responsive" id="table">
-
-            <?php
-            $search_text='';
-              $company_id = $_SESSION['company_id'];
-                        $query = "SELECT * FROM cash_collections WHERE company_id='$company_id' AND collected_by='{$_SESSION['user_id']}' ORDER BY id DESC LIMIT 5";
-                        if (isset($_GET['show_all']) && $_GET['show_all'] == 1) {
-                            $query = "SELECT * FROM cash_collections WHERE company_id='$company_id' AND collected_by='{$_SESSION['user_id']}' ORDER BY id DESC";
-                        }
-                        $result = mysqli_query($conn, $query);
-                        
-
-                       $query = "SELECT * FROM cash_collections WHERE company_id='$company_id' AND collected_by='{$_SESSION['user_id']}' ";
-                        if (isset($_GET['search_id']) && $_GET['search_id'] !== '') {
-                            $search_id = $_GET['search_id'];
-                            $query .= " AND id='$search_id'";
-                            $search_text .= " ID: $search_id ";
-                        }
-                        else {
-
-                        if (isset($_GET['search_route_id']) && $_GET['search_route_id'] !== '') {
-                            $search_route_id = $_GET['search_route_id'];
-                            $query .= " AND route_id='$search_route_id'";
-                            $search_text .= " Route: $search_route_id";
-                      
-                            $route_query = "SELECT route_name FROM routes WHERE id='$search_route_id'";
-                            $route_result = mysqli_query($conn, $route_query);
-                            if (mysqli_num_rows($route_result) > 0) {
-                                $route_row = mysqli_fetch_assoc($route_result);
-                                $search_text .= " " . $route_row['route_name'];
-                            }
-                        }
-
-                        if (isset($_GET['search_shop_id']) && $_GET['search_shop_id'] !== '') {
-                            $search_shop_id = $_GET['search_shop_id'];
-                            $query .= " AND shop_id='$search_shop_id'";
-                            $search_text .= " Shop: $search_shop_id";
-                             $shop_query = "SELECT shop_name FROM shops WHERE id='$search_shop_id'";
-                            $shop_result = mysqli_query($conn, $shop_query);
-                            if (mysqli_num_rows($shop_result) > 0) {
-                                $shop_row = mysqli_fetch_assoc($shop_result);
-                                $search_text .= " " . $shop_row['shop_name'];
-                            }
-                        }
-
-                        if (isset($_GET['search_status']) && $_GET['search_status'] !== '') {
-                            $search_status = $_GET['search_status'];
-                            $query .= " AND status='$search_status'";
-                            $search_text .= " Status: $search_status";
-                        }
-                         if (isset($_GET['date_from']) && $_GET['date_from'] !== '' && isset($_GET['date_to']) && $_GET['date_to'] !== '') {
-                            $date_from = $_GET['date_from'] . ' 00:00:00';
-                            $date_to = $_GET['date_to']. ' 23:59:59';
-                            $query .= " AND collection_date BETWEEN '$date_from' AND '$date_to'";
-                            $search_text .= "Date Range: $date_from to $date_to";
-                        }
-                    }
-                        $query .= "  ORDER BY id DESC";
-                        $result = mysqli_query($conn, $query); 
-                        if ($search_text != '') {
-                            echo "<p class='badge bg-green' style='text-align: center; margin-bottom: 10px;' >Search Results for <b>$search_text</b></p>";
-                        }
-
-
-            ?>
-                <table class="table-simple">
-                    <thead>
-                        <tr>
-                            <th>ID</th>
-                            <th>Route Name</th>
-                            <th>Shop Name</th>
-                            <th>Amount</th>
-                           
-                            <th>Collection Date</th>
-                            <th>Status</th>
-                           
-                      
-                            
-                            <th style="text-align: right;" class="print-hide">Actions</th>
-                            <th>Approval</th>
-                            <th>Remarks</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php
-                      
-
-                        
-
-
-                        if (mysqli_num_rows($result) > 0) {
-                            while ($row = mysqli_fetch_assoc($result)) {
-                                $route_name_query = "SELECT route_name FROM routes WHERE id='{$row['route_id']}'";
-                                $route_name_result = mysqli_query($conn, $route_name_query);
-                                $route_name = mysqli_fetch_assoc($route_name_result)['route_name'];
-                                
-                                $shop_name_query = "SELECT shop_name, balance FROM shops WHERE id='{$row['shop_id']}'";
-                                $shop_name_result = mysqli_query($conn, $shop_name_query);
-                                $shop_name_result_data = mysqli_fetch_assoc($shop_name_result);
-                                $shop_name = isset($shop_name_result_data['shop_name']) ? $shop_name_result_data['shop_name'] : '';
-                                // $shop_balance = isset($shop_name_result_data['balance']) ? $shop_name_result_data['balance'] : 0;
-
-                              echo "
-<tr>
-    <td>{$row['id']}</td>
-   
-    <td>{$route_name}</td>
-     <td>{$shop_name}</td>
-    
-    <td>{$row['amount']}</td>
-
-    <td>{$row['collection_date']}</td>
-  
-    <td>" . 
-        ($row['status'] 
-            ? "<span class='badge bg-green'>Active</span>" 
-            : "<span class='badge bg-red'>Inactive</span>") . 
-    "</td>
-    <td style='text-align: right;' class='print-hide'>";
-if (isset($row['approved_at']) && !is_null($row['approved_at'])) {
-            echo "<i class='fa-solid fa-user' style='color: green; cursor: not-allowed;' title='Approved records cannot be edited.'></i>".$row['approved_by'];
-        } else {
-    echo "
-        <i class='fa-solid fa-pen' 
-           style='color: var(--warning); margin-right: 10px; cursor: pointer;' 
-           onclick=\"window.location.href='cash.php?shop_name={$shop_name}& shop_id={$row['shop_id']}&cash_edit_id={$row['id']}'\">
-        </i>";}
-
-        echo"
-    </td>
-    <td style='text-align: center;'>" . 
-        (isset($row['approved_at']) && !is_null($row['approved_at'])
-            ? "<span class='badge bg-green'>Approved</span>" 
-            : "<span class='badge bg-red'>Pending</span>");
-
-            if (!isset($row['approved_at']) || is_null($row['approved_at'])) {
-                echo " <i class='fa-solid fa-check-circle' 
-                style='color: green; margin-left: 10px; cursor: pointer;' 
-                onclick=\"if(confirm('Are you sure you want to approve this cash collection?')) { window.location.href='cash.php?cash_approve_id={$row['id']}'; }\" 
-                title='Approve Cash Collection'>
-             </i>";
-            }
-
-            echo
-    "</td>
-    <td>{$row['remarks']}</td>
-</tr>";
-                            }
-                        }
-                        ?>
-                    </tbody>
-                </table>
-            </div>
-        </div>
-
-
-                            
-
-
-        
-
-        
-
+                        </td>
+                        <td class="text-sm text-muted"><?= htmlspecialchars($row['remarks'] ?? '—') ?></td>
+                        <td class="print-hide">
+                            <?php if (!$row['approved_at']): ?>
+                            <a href="cash.php?edit=<?= $row['id'] ?>" class="btn btn-warning btn-sm btn-icon"><i class="fa-solid fa-pen"></i></a>
+                            <?php else: ?>
+                            <span class="text-muted text-xs">Locked</span>
+                            <?php endif; ?>
+                        </td>
+                    </tr>
+                    <?php endwhile; ?>
+                <?php else: ?>
+                    <tr><td colspan="<?= $is_manager ? 8 : 7 ?>" class="text-center text-muted" style="padding:30px">No cash collections found.</td></tr>
+                <?php endif; ?>
+            </tbody>
+            <tfoot>
+                <tr style="background:var(--gray-100)">
+                    <td colspan="<?= $is_manager ? 3 : 2 ?>" class="text-right fw-700">Total:</td>
+                    <td class="fw-700 text-green"><?= number_format($grand, 0) ?></td>
+                    <td colspan="4"></td>
+                </tr>
+            </tfoot>
+        </table>
     </div>
+    <?php if ($total_pages > 1): ?>
+    <div class="pagination" style="padding:16px">
+        <?php $base = "cash.php?route_id=$f_route&date_from=$f_from&date_to=$f_to&approved=$f_appr&per_page=$per_page&page="; ?>
+        <a href="<?=$base?>1"                   class="page-btn <?=$page==1?'disabled':''?>"><i class="fa-solid fa-angles-left"></i></a>
+        <a href="<?=$base.max(1,$page-1)?>"     class="page-btn <?=$page==1?'disabled':''?>"><i class="fa-solid fa-angle-left"></i></a>
+        <?php for ($p=max(1,$page-2);$p<=min($total_pages,$page+2);$p++): ?>
+            <a href="<?=$base.$p?>" class="page-btn <?=$p==$page?'active':''?>"><?=$p?></a>
+        <?php endfor; ?>
+        <a href="<?=$base.min($total_pages,$page+1)?>" class="page-btn <?=$page==$total_pages?'disabled':''?>"><i class="fa-solid fa-angle-right"></i></a>
+        <a href="<?=$base.$total_pages?>"              class="page-btn <?=$page==$total_pages?'disabled':''?>"><i class="fa-solid fa-angles-right"></i></a>
+        <span class="text-muted text-sm" style="margin-left:8px">Page <?=$page?> of <?=$total_pages?></span>
+    </div>
+    <?php endif; ?>
+</div>
 
+<script>
+document.getElementById('toggleForm').addEventListener('click', function() {
+    var f = document.getElementById('cashForm');
+    f.style.display = f.style.display === 'none' ? 'block' : 'none';
+});
+$(document).ready(function() {
+    $('#route_id').select2({ width:'100%', placeholder:'Select Route' });
+    $('#shop_id').select2({ width:'100%', placeholder:'Select Shop' });
+});
+document.getElementById('route_id').addEventListener('change', function() {
+    var rid = this.value;
+    $('#shop_id').empty().append('<option value="">Loading...</option>');
+    $.get('get_shops_by_route_id.php', { route_id: rid }, function(html) {
+        $('#shop_id').html(html).trigger('change');
+    });
+});
+</script>
 
-
-<?php
-include 'footer.php';
-?>
+<?php $list_q->close(); include 'footer.php'; ?>

@@ -1,21 +1,14 @@
 <?php
-// ERROR REPORTING (Helpful for debugging, turn off in production)
-ini_set('display_errors', 1);
-ini_set('display_startup_errors', 1);
-error_reporting(E_ALL);
+$pageTitle = 'DB Manager';
+include 'header.php';
 
-include 'header.php'; // DB connection ($pdo expected)
-// PDO configuration
-// define('DB_HOST', 'localhost');
-// define('DB_NAME', 'oeis');
-// define('DB_USER', 'root');
-// define('DB_PASS', '');
-$dsn = "mysql:host=" . DB_HOST . ";dbname=" . DB_NAME;
+/* Build a PDO connection using the same credentials from config.php */
+$dsn = "mysql:host=" . DB_HOST . ";dbname=" . DB_NAME . ";charset=utf8mb4";
 try {
     $pdo = new PDO($dsn, DB_USER, DB_PASS);
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 } catch (PDOException $e) {
-    die("PDO connection failed: " . $e->getMessage());
+    die('<div class="alert alert-error">PDO connection failed: ' . htmlspecialchars($e->getMessage()) . '</div>');
 }
 // -------------------------------------------------------------------------
 // 0. AJAX API (For Query Builder & Exports)
@@ -441,6 +434,7 @@ try {
         <!-- SQL EDITOR -->
         <div class="query-box">
             <form method="POST" id="sqlForm">
+                <?= csrf_field() ?>
                 <label style="font-weight: bold; display: block;">SQL Query Editor:</label>
                 <textarea name="sql_query" id="sqlInput" class="sql-editor" placeholder="Generated SQL will appear here..."><?php echo htmlspecialchars($currentQuery); ?></textarea>
                 

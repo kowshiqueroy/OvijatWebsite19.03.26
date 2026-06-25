@@ -7,9 +7,10 @@ check_role([ROLE_ADMIN, ROLE_MANAGER, ROLE_ACCOUNTANT, ROLE_VIEWER]);
 $company = get_company_settings();
 $category_id  = $_GET['category_id'] ?? '';
 $search_query = $_GET['search'] ?? '';
+$stock_level  = $_GET['stock_level'] ?? '';
+$hide_zero     = $_GET['hide_zero'] ?? '';
+$sort_by       = $_GET['sort_by'] ?? 'low_stock';
 $export       = $_GET['export'] ?? '';
-
-$categories = fetch_all("SELECT * FROM categories WHERE isDelete = 0 ORDER BY name ASC");
 
 $categories = fetch_all("SELECT * FROM categories WHERE isDelete = 0 ORDER BY name ASC");
 
@@ -34,8 +35,27 @@ if ($search_query) {
     $params[] = "%$search_query%";
 }
 
-// Low Stock First
-$sql .= " ORDER BY p.stock_qty ASC, c.name ASC, p.name ASC";
+if ($hide_zero == '1') {
+    $sql .= " AND p.stock_qty > 0";
+}
+
+if ($stock_level === 'low') {
+    $sql .= " AND p.stock_qty <= 10 AND p.stock_qty > 0";
+} elseif ($stock_level === 'high') {
+    $sql .= " AND p.stock_qty > 10";
+} elseif ($stock_level === 'out') {
+    $sql .= " AND p.stock_qty <= 0";
+}
+
+// Sorting logic
+if ($sort_by === 'high_stock') {
+    $sql .= " ORDER BY p.stock_qty DESC, c.name ASC, p.name ASC";
+} elseif ($sort_by === 'name') {
+    $sql .= " ORDER BY p.name ASC";
+} else {
+    // Default: low stock first
+    $sql .= " ORDER BY p.stock_qty ASC, c.name ASC, p.name ASC";
+}
 
 $products = fetch_all($sql, $params);
 
@@ -111,8 +131,8 @@ require_once '../../templates/header.php';
 <!-- Filter Section -->
 <div class="card shadow-sm mb-4 no-print">
     <div class="card-body">
-        <form method="GET" class="row g-3">
-            <div class="col-md-3">
+        <form method="GET" class="row g-3 align-items-end">
+            <div class="col-md-2">
                 <label class="form-label small fw-bold">Category</label>
                 <select name="category_id" class="form-select form-select-sm">
                     <option value="">-- All Categories --</option>
@@ -123,14 +143,37 @@ require_once '../../templates/header.php';
                     <?php endforeach; ?>
                 </select>
             </div>
-            <div class="col-md-4">
+            <div class="col-md-2">
                 <label class="form-label small fw-bold">Search Product</label>
                 <input type="text" name="search" class="form-control form-control-sm" placeholder="Product name..." value="<?php echo $search_query; ?>">
             </div>
-            <div class="col-md-2 d-flex align-items-end">
+            <div class="col-md-2">
+                <label class="form-label small fw-bold">Stock Level</label>
+                <select name="stock_level" class="form-select form-select-sm">
+                    <option value="">-- All Levels --</option>
+                    <option value="low" <?php echo $stock_level === 'low' ? 'selected' : ''; ?>>Low Stock (&le; 10)</option>
+                    <option value="high" <?php echo $stock_level === 'high' ? 'selected' : ''; ?>>High Stock (&gt; 10)</option>
+                    <option value="out" <?php echo $stock_level === 'out' ? 'selected' : ''; ?>>Out of Stock (&le; 0)</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small fw-bold">Sort By</label>
+                <select name="sort_by" class="form-select form-select-sm">
+                    <option value="low_stock" <?php echo $sort_by === 'low_stock' ? 'selected' : ''; ?>>Low Stock First</option>
+                    <option value="high_stock" <?php echo $sort_by === 'high_stock' ? 'selected' : ''; ?>>High Stock First</option>
+                    <option value="name" <?php echo $sort_by === 'name' ? 'selected' : ''; ?>>Alphabetical</option>
+                </select>
+            </div>
+            <div class="col-md-2 mb-2">
+                <div class="form-check form-switch small">
+                    <input class="form-check-input" type="checkbox" name="hide_zero" id="hideZeroCheck" value="1" <?php echo $hide_zero == '1' ? 'checked' : ''; ?>>
+                    <label class="form-check-label fw-bold" for="hideZeroCheck">Hide Zero Stock</label>
+                </div>
+            </div>
+            <div class="col-md-1">
                 <button type="submit" class="btn btn-primary btn-sm w-100">Filter</button>
             </div>
-            <div class="col-md-2 d-flex align-items-end">
+            <div class="col-md-1">
                 <a href="stock_status.php" class="btn btn-outline-secondary btn-sm w-100">Reset</a>
             </div>
         </form>

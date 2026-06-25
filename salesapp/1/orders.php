@@ -1,612 +1,349 @@
-<?php
+﻿<?php
+$pageTitle = 'Orders';
 include 'header.php';
-?>
-<?php
+
+$cid = (int)$_SESSION['company_id'];
+$uid = (int)$_SESSION['user_id'];
+
+/* ── Approve ── */
 if (isset($_GET['approve_id'])) {
-     
-        $approve_id = $_GET['approve_id'];
-        $approval_query = "UPDATE orders SET order_status='1', approved_at=NOW(), approved_by='{$_SESSION['user_id']}' WHERE id='$approve_id'";
-        if (mysqli_query($conn, $approval_query) === TRUE) {
-            echo "<script>alert('Order approved successfully.'); window.location.href='orders.php';</script>";
-            exit();
-        } else {
-            echo "<script>alert('An error occurred while approving the order. Please try again.'); window.location.href='orders.php';</script>";
-            exit();
-        }
-    }
-if ($_SERVER['REQUEST_METHOD'] == 'POST') {
-    
-   
+    $aid  = (int)$_GET['approve_id'];
+    $stmt = $conn->prepare("UPDATE orders SET order_status=1, approved_at=NOW(), approved_by=? WHERE id=? AND company_id=?");
+    $stmt->bind_param("iii", $uid, $aid, $cid);
+    $stmt->execute(); $stmt->close();
+    header("Location: orders.php?msg=approved"); exit;
+}
+
+/* ── POST ── */
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if (isset($_POST['add_order'])) {
-        $shop_id = $_POST['shop_id'];
-        $route_id = $_POST['route_id'];
-        $order_date = $_POST['order_date'];
+        $shop_id       = (int)$_POST['shop_id'];
+        $route_id      = (int)$_POST['route_id'];
+        $order_date    = $_POST['order_date'];
         $delivery_date = $_POST['delivery_date'];
-        $order_status = $_POST['order_status'];
-        $user_id = $_SESSION['user_id'];
-        $status = $_POST['status'];
-        $company_id = $_SESSION['company_id'];
-        $remarks = $_POST['remarks'];
-        $latitude = $_POST['latitude'];
-        $longitude = $_POST['longitude'];
-       
+        $order_status  = (int)$_POST['order_status'];
+        $status        = 1;
+        $remarks       = trim($_POST['remarks'] ?? '');
 
-        $query = "INSERT INTO orders (shop_id, route_id, order_date, delivery_date, order_status, created_by, created_at, status, company_id, remarks, latitude, longitude) 
-        VALUES ('$shop_id', '$route_id', '$order_date', '$delivery_date', '$order_status', '$user_id', NOW(), '$status', '$company_id', '$remarks', '$latitude', '$longitude')";
-        if (mysqli_query($conn, $query) === TRUE) {
-             //get the id
-        $order_id = $conn->insert_id;
-        header("Location: order_item.php?order_id=$order_id");
-        exit();
-            exit();
-        } else {
-            echo "<script>alert('An error occurred. Please try again.'); window.location.href='orders.php';</script>";
-            exit();
-        }
-
-        // $update_balance_query = "UPDATE shops SET balance = balance + $amount WHERE id = $shop_id";
-        // mysqli_query($conn, $update_balance_query);
-
-      
+        $stmt = $conn->prepare(
+            "INSERT INTO orders (shop_id, route_id, order_date, delivery_date, order_status, created_by, status, company_id, remarks)
+             VALUES (?,?,?,?,?,?,?,?,?)"
+        );
+        $stmt->bind_param("iissiiiis", $shop_id, $route_id, $order_date, $delivery_date, $order_status, $uid, $status, $cid, $remarks);
+        $stmt->execute();
+        $order_id = (int)$conn->insert_id;
+        $stmt->close();
+        header("Location: order_item.php?order_id=$order_id"); exit;
     }
+
     if (isset($_POST['update_order'])) {
-        $order_id = $_GET['order_edit_id'];
-        $order_date = $_POST['order_date'];
-        $delivery_date = $_POST['delivery_date'];
-        $order_status = $_POST['order_status'];
-        $shop_id = $_POST['shop_id'];
-        $route_id = $_POST['route_id'];
-        $status = $_POST['status'];
-
-        //check if approved
-        $approval_check_query = "SELECT order_status FROM orders WHERE id = '$order_id'";
-        $approval_check_result = mysqli_query($conn, $approval_check_query);
-        $approval_check_row = mysqli_fetch_assoc($approval_check_result);
-        $order_status = $approval_check_row['order_status'];
-        if ($order_status == 1) {
-            echo "<script>alert('This order  has already been approved.'); window.location.href='orders.php';</script>";
-            exit();
+        $oid = (int)$_GET['edit'];
+        /* Block edit if already approved */
+        $chk = $conn->prepare("SELECT order_status FROM orders WHERE id=? AND company_id=?");
+        $chk->bind_param("ii", $oid, $cid); $chk->execute();
+        $cur = $chk->get_result()->fetch_assoc(); $chk->close();
+        if ($cur && $cur['order_status'] == 1 && !$is_manager) {
+            header("Location: orders.php?msg=already_approved"); exit;
         }
+        $shop_id       = (int)$_POST['shop_id'];
+        $route_id      = (int)$_POST['route_id'];
+        $order_date    = $_POST['order_date'];
+        $delivery_date = $_POST['delivery_date'];
+        $remarks       = trim($_POST['remarks'] ?? '');
 
-        // $previous_amount_query = "SELECT amount FROM orders WHERE id = '$order_id'";
-        // $previous_amount_result = mysqli_query($conn, $previous_amount_query);
-        // $previous_amount_row = mysqli_fetch_assoc($previous_amount_result);
-        // $previous_amount = $previous_amount_row['amount'];
-
-        // $update_balance_query = "UPDATE shops SET balance = balance - '$previous_amount' + '$amount' WHERE id = $shop_id";
-        // mysqli_query($conn, $update_balance_query);
-
-        $update_fields = " shop_id='$shop_id', route_id='$route_id', order_date='$order_date', delivery_date='$delivery_date', order_status='$order_status', status='$status'";
-        $query = "UPDATE orders SET $update_fields WHERE id='$order_id'";
-        mysqli_query($conn, $query);
-
-        header("Location: orders.php");
-        exit();
+        $stmt = $conn->prepare(
+            "UPDATE orders SET shop_id=?,route_id=?,order_date=?,delivery_date=?,remarks=?,updated_by=?,updated_at=NOW()
+             WHERE id=? AND company_id=?"
+        );
+        $stmt->bind_param("iisssiii", $shop_id, $route_id, $order_date, $delivery_date, $remarks, $uid, $oid, $cid);
+        $stmt->execute(); $stmt->close();
+        header("Location: orders.php?msg=updated"); exit;
     }
-    
 }
-      
- 
+
+/* ── Load edit data ── */
+$edit_data = null;
+if (isset($_GET['edit'])) {
+    $eid  = (int)$_GET['edit'];
+    $stmt = $conn->prepare("SELECT * FROM orders WHERE id=? AND company_id=?");
+    $stmt->bind_param("ii", $eid, $cid); $stmt->execute();
+    $edit_data = $stmt->get_result()->fetch_assoc(); $stmt->close();
+}
+
+/* ── Routes for form ── */
+$routes_q = $conn->query("SELECT id, route_name FROM routes WHERE status=1 AND company_id=$cid ORDER BY route_name");
+
+/* ── Filters + pagination ── */
+$f_route    = (int)($_GET['route_id'] ?? 0);
+$f_shop     = (int)($_GET['shop_id'] ?? 0);
+$f_status_o = $_GET['order_status'] ?? '';
+$f_from     = $_GET['date_from'] ?? date('Y-m-01');
+$f_to       = $_GET['date_to']   ?? date('Y-m-t');
+$per_page   = max(10, min(100, (int)($_GET['per_page'] ?? 25)));
+$page       = max(1, (int)($_GET['page'] ?? 1));
+$offset     = ($page - 1) * $per_page;
+
+$where  = ["o.company_id=$cid"];
+$params = []; $types = '';
+if ($f_route)    { $where[] = 'o.route_id=?';    $params[] = $f_route;    $types .= 'i'; }
+if ($f_shop)     { $where[] = 'o.shop_id=?';     $params[] = $f_shop;     $types .= 'i'; }
+if ($f_status_o !== '') { $where[] = 'o.order_status=?'; $params[] = (int)$f_status_o; $types .= 'i'; }
+$where[] = 'o.order_date BETWEEN ? AND ?'; $params[] = $f_from; $params[] = $f_to; $types .= 'ss';
+/* SRs only see their own orders */
+if (!$is_manager) { $where[] = 'o.created_by=?'; $params[] = $uid; $types .= 'i'; }
+$w = 'WHERE ' . implode(' AND ', $where);
+
+$count_q = $conn->prepare("SELECT COUNT(*) AS c FROM orders o $w");
+if ($types) $count_q->bind_param($types, ...$params);
+$count_q->execute(); $total = (int)$count_q->get_result()->fetch_assoc()['c']; $count_q->close();
+$total_pages = max(1, (int)ceil($total / $per_page));
+
+$list_q = $conn->prepare(
+    "SELECT o.id, o.order_date, o.delivery_date, o.order_status, o.status, o.remarks, o.approved_at,
+            s.shop_name, r.route_name, u.username AS created_by_name,
+            COALESCE(SUM(oi.quantity*oi.price),0) AS total
+     FROM orders o
+     JOIN shops s ON s.id=o.shop_id
+     JOIN routes r ON r.id=o.route_id
+     LEFT JOIN users u ON u.id=o.created_by
+     LEFT JOIN order_items oi ON oi.order_id=o.id
+     $w GROUP BY o.id ORDER BY o.created_at DESC LIMIT ? OFFSET ?"
+);
+$list_params = array_merge($params, [$per_page, $offset]);
+$list_types  = $types . 'ii';
+$list_q->bind_param($list_types, ...$list_params);
+$list_q->execute(); $orders_res = $list_q->get_result();
+
+/* Messages */
+$msgs = ['approved'=>'Order approved.','updated'=>'Order updated.','already_approved'=>'Order is already approved.'];
+$success = $msgs[$_GET['msg'] ?? ''] ?? '';
 ?>
+
+<div class="page-header">
+    <div><div class="page-title">Orders</div><div class="page-subtitle">Create and manage sales orders</div></div>
+    <button class="btn btn-primary btn-sm" id="toggleForm">
+        <i class="fa-solid fa-plus"></i> <?= $edit_data ? 'Editing Order #'.$edit_data['id'] : 'New Order' ?>
+    </button>
+</div>
+
+<?php if ($success): ?><div class="alert alert-success"><i class="fa-solid fa-check-circle"></i> <?= htmlspecialchars($success) ?></div><?php endif; ?>
+
+<!-- Order Form -->
+<div class="card" id="orderForm" <?= $edit_data ? '' : 'style="display:none"' ?>>
+    <div class="card-header">
+        <span class="card-title"><?= $edit_data ? 'Edit Order #'.$edit_data['id'] : 'New Order' ?></span>
+        <?php if ($edit_data): ?><a href="orders.php" class="btn btn-ghost btn-sm">Cancel Edit</a><?php endif; ?>
+    </div>
+    <form method="POST" action="orders.php<?= $edit_data ? '?edit='.$edit_data['id'] : '' ?>">
+        <?= csrf_field() ?>
+        <div class="grid-layout md-2">
+            <div class="form-group">
+                <label>Route <span style="color:var(--danger)">*</span></label>
+                <select name="route_id" id="route_id" required>
+                    <option value="">Select Route</option>
+                    <?php if ($routes_q) while ($r = $routes_q->fetch_assoc()): $sel = ($edit_data && $edit_data['route_id']==$r['id'])?'selected':''; ?>
+                        <option value="<?=$r['id']?>" <?=$sel?>><?= htmlspecialchars($r['route_name']) ?></option>
+                    <?php endwhile; ?>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Shop <span style="color:var(--danger)">*</span></label>
+                <select name="shop_id" id="shop_id" required>
+                    <?php if ($edit_data): ?>
+                        <?php $sq = $conn->prepare("SELECT id, shop_name FROM shops WHERE id=? LIMIT 1"); $sq->bind_param("i",$edit_data['shop_id']); $sq->execute(); $sv = $sq->get_result()->fetch_assoc(); $sq->close(); ?>
+                        <option value="<?= $edit_data['shop_id'] ?>" selected><?= htmlspecialchars($sv['shop_name'] ?? '') ?></option>
+                    <?php else: ?>
+                        <option value="">Select Shop</option>
+                    <?php endif; ?>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Order Date <span style="color:var(--danger)">*</span></label>
+                <input type="date" name="order_date" value="<?= htmlspecialchars($edit_data['order_date'] ?? date('Y-m-d')) ?>" required>
+            </div>
+            <div class="form-group">
+                <label>Delivery Date <span style="color:var(--danger)">*</span></label>
+                <input type="date" name="delivery_date" value="<?= htmlspecialchars($edit_data['delivery_date'] ?? date('Y-m-d', strtotime('+1 day'))) ?>" required>
+            </div>
+            <?php if ($is_manager || !$edit_data): ?>
+            <div class="form-group">
+                <label>Order Status</label>
+                <select name="order_status">
+                    <option value="0" <?= (!$edit_data || $edit_data['order_status']==0)?'selected':'' ?>>Draft</option>
+                    <option value="1" <?= ($edit_data && $edit_data['order_status']==1)?'selected':'' ?>>Confirmed</option>
+                </select>
+            </div>
+            <?php endif; ?>
+            <div class="form-group">
+                <label>Remarks</label>
+                <input type="text" name="remarks" placeholder="Optional notes" value="<?= htmlspecialchars($edit_data['remarks'] ?? '') ?>">
+            </div>
+        </div>
+        <div class="form-actions">
+            <?php if ($edit_data): ?>
+                <button type="submit" name="update_order" class="btn btn-warning"><i class="fa-solid fa-pen"></i> Update Order</button>
+            <?php else: ?>
+                <button type="submit" name="add_order" class="btn btn-primary"><i class="fa-solid fa-plus"></i> Create Order &amp; Add Items</button>
+            <?php endif; ?>
+        </div>
+    </form>
+</div>
+
+<!-- Filters -->
+<form method="GET" action="orders.php" id="filterForm">
+    <div class="filter-bar">
+        <div class="form-group">
+            <label>Route</label>
+            <select name="route_id">
+                <option value="">All Routes</option>
+                <?php if ($routes_q) { $routes_q->data_seek(0); while ($r = $routes_q->fetch_assoc()): ?>
+                    <option value="<?=$r['id']?>" <?=$f_route==$r['id']?'selected':''?>><?= htmlspecialchars($r['route_name']) ?></option>
+                <?php endwhile; } ?>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>Status</label>
+            <select name="order_status">
+                <option value="">All</option>
+                <option value="0" <?=$f_status_o==='0'?'selected':''?>>Draft</option>
+                <option value="1" <?=$f_status_o==='1'?'selected':''?>>Confirmed</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>From</label>
+            <input type="date" name="date_from" id="date_from" value="<?= htmlspecialchars($f_from) ?>">
+        </div>
+        <div class="form-group">
+            <label>To</label>
+            <input type="date" name="date_to" id="date_to" value="<?= htmlspecialchars($f_to) ?>">
+        </div>
+        <div class="form-group" style="max-width:90px">
+            <label>Per Page</label>
+            <select id="perPageSelect" name="per_page">
+                <?php foreach ([10,25,50,100] as $n): ?><option value="<?=$n?>" <?=$per_page==$n?'selected':''?>><?=$n?></option><?php endforeach; ?>
+            </select>
+        </div>
+        <button type="submit" class="btn btn-primary btn-sm" style="align-self:flex-end"><i class="fa-solid fa-filter"></i> Filter</button>
+        <a href="orders.php" class="btn btn-ghost btn-sm" style="align-self:flex-end">Reset</a>
+    </div>
+    <div class="date-presets" style="margin-bottom:12px">
+        <span class="text-muted text-xs" style="margin-right:6px">Quick:</span>
+        <button type="button" class="date-preset-btn" data-preset="today">Today</button>
+        <button type="button" class="date-preset-btn" data-preset="week">This Week</button>
+        <button type="button" class="date-preset-btn" data-preset="month">This Month</button>
+        <button type="button" class="date-preset-btn" data-preset="last_month">Last Month</button>
+    </div>
+</form>
+
+<!-- Orders Table -->
+<div class="card">
+    <div class="card-header">
+        <span class="card-title">Orders</span>
+        <div style="display:flex;gap:8px;align-items:center">
+            <span class="badge badge-blue"><?= $total ?> total</span>
+            <button onclick="window.print()" class="btn btn-ghost btn-sm btn-icon print-hide"><i class="fa-solid fa-print"></i></button>
+        </div>
+    </div>
+
+    <!-- Print header -->
     <div class="print-header">
-           <h1><?php echo APP_NAME; ?> Report</h1>
-        <p>Generated by: <?php echo $_SESSION['user_id'] . "@".$_SESSION['username']. " | C: " .
-         $_SESSION['company_id']." ";?>| Date: <?php echo date("Y-m-d"); ?></p>
-
+        <h1><?= APP_NAME ?> &mdash; Order Report</h1>
+        <p>Generated: <?= date('d M Y H:i') ?> | By: <?= htmlspecialchars($_SESSION['username']) ?></p>
     </div>
 
-
-    <div class="container">
-
-        <div class="text-center" style="text-align: center; margin: 30px 0;">
-            <h2 style="font-weight: 300; font-size: 2rem;">Order  List</h2>
-            <p style="color: #666;">Create and manage order.</p>
-        </div>
-
-        
-        
-        
-
-
-        
-
-        <div class="glass-panel form-section">
-            <span class="section-title">New Order  Add</span>
-            <form method="POST">
-
-
-                <?php if (isset($_GET['order_edit_id'])) {
-                    $order_edit_id = $_GET['order_edit_id'];
-                    $query = "SELECT * FROM orders WHERE id='$order_edit_id'";
-                    $result = mysqli_query($conn, $query);
-                    if (mysqli_num_rows($result) > 0) {
-                        $order_data = mysqli_fetch_assoc($result);
-                    }
-                }
-                ?>
-                <div class="desktop-span-2">
-                    <div class="col-1">
-                        <label>Route Name</label>
-                        
-                        <select name="route_id" id="route_id" onchange="getShopsByRouteId(this.value)" required>
-                            <option value="">Select Route</option>
-                            <?php
-                            $query = "SELECT id, route_name FROM routes WHERE status = 1 AND company_id='{$_SESSION['company_id']}' ORDER BY id DESC";
-                            $result = mysqli_query($conn, $query);
-                            if (mysqli_num_rows($result) > 0) {
-                                while ($row = mysqli_fetch_assoc($result)) {
-                                    $selected = (isset($order_data['route_id']) && $order_data['route_id'] == $row['id']) ? 'selected' : '';
-                                    echo "<option value='" . $row['id'] . "' $selected>" . $row['route_name'] . "</option>";
-                                }
-                            }
-                            ?>
-                        </select>
-                    </div>
-
-
-                    <div class="col-1">
-                    
-                        
-                        <label>Shop Name</label>
-                        <select name="shop_id" id="shop_id" required>
-                            <?php if (isset($_GET['shop_id'])): ?>
-                                <option value="<?php echo $_GET['shop_id']; ?>" selected><?php echo $_GET['shop_name']; ?></option>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Route &rsaquo; Shop</th>
+                    <?php if ($is_manager): ?><th>SR</th><?php endif; ?>
+                    <th>Order Date</th>
+                    <th>Delivery</th>
+                    <th>Total</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php if ($orders_res->num_rows > 0): ?>
+                    <?php while ($ord = $orders_res->fetch_assoc()): ?>
+                    <tr>
+                        <td class="text-muted"><?= $ord['id'] ?></td>
+                        <td>
+                            <span class="text-muted text-xs"><?= htmlspecialchars($ord['route_name']) ?></span><br>
+                            <strong class="text-sm"><?= htmlspecialchars($ord['shop_name']) ?></strong>
+                            <?php if ($ord['remarks']): ?><div class="text-muted text-xs"><?= htmlspecialchars($ord['remarks']) ?></div><?php endif; ?>
+                        </td>
+                        <?php if ($is_manager): ?><td class="text-sm"><?= htmlspecialchars($ord['created_by_name']) ?></td><?php endif; ?>
+                        <td class="text-sm"><?= $ord['order_date'] ?></td>
+                        <td class="text-sm"><?= $ord['delivery_date'] ?></td>
+                        <td class="fw-600"><?= number_format($ord['total'], 0) ?></td>
+                        <td>
+                            <?php if ($ord['order_status'] == 1): ?>
+                                <span class="badge badge-green">Confirmed</span>
                             <?php else: ?>
-                                <option value="">Select Shop</option>
+                                <?php if ($is_manager): ?>
+                                    <a href="orders.php?approve_id=<?= $ord['id'] ?>" class="badge badge-yellow" style="cursor:pointer;text-decoration:none"
+                                       onclick="return confirm('Approve this order?')">Draft &mdash; Approve?</a>
+                                <?php else: ?>
+                                    <span class="badge badge-yellow">Draft</span>
+                                <?php endif; ?>
                             <?php endif; ?>
-                            <?php
-                            $route_id = isset($_POST['route_id']) ? $_POST['route_id'] : '';
-                            $query = "SELECT id, shop_name FROM shops WHERE route_id='$route_id' ORDER BY id DESC";
-                            $result = mysqli_query($conn, $query);
-                            if (mysqli_num_rows($result) > 0) {
-                                while ($row = mysqli_fetch_assoc($result)) {
-                                    $selected = (isset($order_data['shop_id']) && $order_data['shop_id'] == $row['id']) ? 'selected' : '';
-                                    echo '<option value="' . $row['id'] . '" ' . $selected . '>' . $row['shop_name'] . '</option>';
-                                }
-                            }
-                            ?>
-                        </select>
+                        </td>
+                        <td>
+                            <a href="order_item.php?order_id=<?= $ord['id'] ?>" class="btn btn-info btn-sm btn-icon" title="Items"><i class="fa-solid fa-list"></i></a>
+                            <?php if ($ord['order_status'] == 0 || $is_manager): ?>
+                            <a href="orders.php?edit=<?= $ord['id'] ?>" class="btn btn-warning btn-sm btn-icon" title="Edit"><i class="fa-solid fa-pen"></i></a>
+                            <?php endif; ?>
+                        </td>
+                    </tr>
+                    <?php endwhile; ?>
+                <?php else: ?>
+                    <tr><td colspan="<?= $is_manager ? 8 : 7 ?>" class="text-center text-muted" style="padding:30px">No orders found for the selected filters.</td></tr>
+                <?php endif; ?>
+            </tbody>
+        </table>
+    </div>
 
-                       <script>
-    $(document).ready(function() {
-        // Initialize Select2 on the Add/Edit form elements
-        $('#route_id').select2({
-            width: '100%',
-            placeholder: "Select Route"
-        });
-        $('#shop_id').select2({
-            width: '100%',
-            placeholder: "Select Shop"
-        });
+    <!-- Pagination -->
+    <?php if ($total_pages > 1): ?>
+    <div class="pagination" style="padding:16px">
+        <?php $base = "orders.php?route_id=$f_route&order_status=$f_status_o&date_from=$f_from&date_to=$f_to&per_page=$per_page&page="; ?>
+        <a href="<?=$base?>1"                   class="page-btn <?=$page==1?'disabled':''?>"><i class="fa-solid fa-angles-left"></i></a>
+        <a href="<?=$base.max(1,$page-1)?>"     class="page-btn <?=$page==1?'disabled':''?>"><i class="fa-solid fa-angle-left"></i></a>
+        <?php for ($p=max(1,$page-2);$p<=min($total_pages,$page+2);$p++): ?>
+            <a href="<?=$base.$p?>" class="page-btn <?=$p==$page?'active':''?>"><?=$p?></a>
+        <?php endfor; ?>
+        <a href="<?=$base.min($total_pages,$page+1)?>" class="page-btn <?=$page==$total_pages?'disabled':''?>"><i class="fa-solid fa-angle-right"></i></a>
+        <a href="<?=$base.$total_pages?>"              class="page-btn <?=$page==$total_pages?'disabled':''?>"><i class="fa-solid fa-angles-right"></i></a>
+        <span class="text-muted text-sm" style="margin-left:8px">Page <?=$page?> of <?=$total_pages?></span>
+    </div>
+    <?php endif; ?>
+</div>
 
-        // Optional: Initialize on the Search Filter elements at the top
-        $('select[name="search_route_id"]').select2({ width: '100%' });
-        $('select[name="search_shop_id"]').select2({ width: '100%' });
+<script>
+document.getElementById('toggleForm').addEventListener('click', function () {
+    var form = document.getElementById('orderForm');
+    form.style.display = form.style.display === 'none' ? 'block' : 'none';
+});
+
+$(document).ready(function () {
+    $('#route_id').select2({ width: '100%', placeholder: 'Select Route' });
+    $('#shop_id').select2({ width: '100%', placeholder: 'Select Shop' });
+});
+
+function getShopsByRouteId(route_id) {
+    $('#shop_id').empty().append('<option value="">Loading...</option>');
+    $.get('get_shops_by_route_id.php', { route_id: route_id }, function (html) {
+        $('#shop_id').html(html).trigger('change');
     });
-
-    function getShopsByRouteId(route_id) {
-        // Clear the current shop selection
-        $('#shop_id').empty();
-        
-        $.ajax({
-            url: 'get_shops_by_route_id.php', // I removed ?route_id= here because you are sending it in `data` below
-            type: 'GET',
-            data: {
-                route_id: route_id
-            },
-            success: function(response) {
-                // Update the select options
-                $('#shop_id').html(response);
-                
-                // IMPORTANT: Trigger the change event so Select2 updates the list
-                $('#shop_id').trigger('change');
-            },
-            error: function(xhr, status, error) {
-                console.log("Error: " + error);
-            }
-        });
-    }
-</script>
-                    </div>
-                    
-                   <div class="grid-layout desktop-4" style="grid-template-columns: 1fr 1fr;">
-                  
-                    <div>
-                    <label>Order Date</label>
-                    <input type="date" class="form-control" id="order_date" name="order_date" value="<?php echo htmlspecialchars(isset($order_data['order_date']) ? $order_data['order_date'] : date('Y-m-d')); ?>" required>
-                    </div>
-                    <div>
-                    <label>Delivery Date</label>
-                    <input type="date" class="form-control" id="delivery_date" name="delivery_date" value="<?php echo htmlspecialchars(isset($order_data['delivery_date']) ? $order_data['delivery_date'] : date('Y-m-d', strtotime('+1 days'))); ?>" required>
-                    </div>
-                    
-                    <div><label>Order Status</label>
-                    <select name="order_status">
-                        <option value="0" <?php echo isset($shop_data['status']) && $shop_data['status'] == 0 ? 'selected' : ''; ?>>Draft</option>
-                        <option value="1" <?php echo isset($shop_data['status']) && $shop_data['status'] == 1 ? 'selected' : ''; ?>>Confirmed</option>
-
-                    </select>
-                </div>
-                    <div><label>Status</label>
-                    <select name="status">
-                        <option value="1" <?php echo isset($shop_data['status']) && $shop_data['status'] == 1 ? 'selected' : ''; ?>>Active</option>
-                        <option value="0" <?php echo isset($shop_data['status']) && $shop_data['status'] == 0 ? 'selected' : ''; ?>>Inactive</option>
-                    </select>
-                </div>
-                    </div>
-
-
-                
-  <div class="col-1">
-                        <label>Remarks</label>
-                        
-                        <input type="text" placeholder="Remarks" name="remarks" value="<?php echo htmlspecialchars(isset($order_data['remarks']) ? $order_data['remarks'] : ''); ?>">
-                    </div>
-
-                    <input type="hidden" id="latitude" name="latitude" >
-                    <input type="hidden" id="longitude" name="longitude" >
-                    <script>
-                        function getLocation() {
-                            if (navigator.geolocation) {
-                                navigator.geolocation.getCurrentPosition(function(position) {
-                                function showError(error) {
-                                    alert('Error getting location: ' + error.message);
-                                }
-                                    document.getElementById("latitude").value = position.coords.latitude;
-                                    document.getElementById("longitude").value = position.coords.longitude;
-                                });
-                            }
-                        }
-                        getLocation();
-                    </script>
-                
-
-
-                </div>
-                
-                
-                
-                <div class="form-actions">
-                    <?php if (isset($order_edit_id)) {
-                        echo '<button type="submit" name="update_order" class="btn btn-yellow"><i class="fa-solid fa-edit"></i> Update order</button>';
-                    } else {
-                        echo '<button type="submit" name="add_order" class="btn btn-yellow"><i class="fa-solid fa-plus"></i> Add order</button>';
-                    }
-
-                    ?>
-                </div>
-                 
-             
-
-
-            </form>
-        </div>
-
-        <div class=" form-section" style="margin-bottom: 20px;">
-          
-            <form method="GET">
-
-
-                <?php if (isset($_GET['order_edit_id'])) {
-                    $order_edit_id = $_GET['order_edit_id'];
-                    $query = "SELECT * FROM orders WHERE id='$order_edit_id'";
-                    $result = mysqli_query($conn, $query);
-                    if (mysqli_num_rows($result) > 0) {
-                        $order_data = mysqli_fetch_assoc($result);
-                    }
-                }
-                ?>
-                <div class="desktop-span-2">
-                   
-
-
-                   
-                    
-                <div class="grid-layout desktop-4" style="grid-template-columns: 1fr 1fr;">
-                    <div><label>Date From</label>
-                    <input type="date" placeholder="Date" name="date_from" value="<?php echo isset($_GET['date_from']) ? $_GET['date_from'] : date('Y-m-d'); ?>" required>
-                    </div>
-                    <div><label>Date To</label>
-                    <input type="date" placeholder="Date" name="date_to" value="<?php echo isset($_GET['date_to']) ? $_GET['date_to'] : date('Y-m-d'); ?>" required>
-                    </div>
-                    <div><label>Route Name</label>
-                        
-                        <select name="search_route_id" >
-                            <option value="">All Route</option>
-                            <?php
-                            $query = "SELECT id, route_name FROM routes WHERE status = 1 ORDER BY id DESC";
-                            $result = mysqli_query($conn, $query);
-                            if (mysqli_num_rows($result) > 0) {
-                                while ($row = mysqli_fetch_assoc($result)) {
-                                    $selected = (isset($_GET['search_route_id']) && $_GET['search_route_id'] == $row['id']) ? 'selected' : '';
-                                    echo "<option value='" . $row['id'] . "' $selected>" . $row['route_name'] . "</option>";
-                                }
-                            }
-                            ?>
-                        </select>
-                    </div>
-                    <div>
-                                                                    
-                        
-                        <label>Shop Name</label>
-                        <select name="search_shop_id" >
-                            <option value="">All Shop</option>
-                            <?php
-                            $query = "SELECT id, shop_name FROM shops WHERE status = 1 ORDER BY id DESC";
-                            $result = mysqli_query($conn, $query);
-                            if (mysqli_num_rows($result) > 0) {
-                                while ($row = mysqli_fetch_assoc($result)) {
-                                    $selected = (isset($_GET['search_shop_id']) && $_GET['search_shop_id'] == $row['id']) ? 'selected' : '';
-                                    echo '<option value="' . $row['id'] . '" ' . $selected . '>' . $row['shop_name'] . '</option>';
-                                }
-                            }
-                            ?>
-                        </select>
-                    </div>
-            
-
-                  
-                    <div><label>ID</label>
-                    <input type="number"  placeholder="All" name="search_id" value="<?php echo htmlspecialchars(isset($_GET['search_id']) ? $_GET['search_id'] : ''); ?>">
-                    </div>
-                    <div><label>Status</label>
-                    <select name="search_status">
-                         <option value="">All</option>
-                        <option value="1" <?php echo isset($_GET['search_status']) && $_GET['search_status'] == 1 ? 'selected' : ''; ?>>Active</option>
-                        <option value="0" <?php echo isset($_GET['search_status']) && $_GET['search_status'] == 0 ? 'selected' : ''; ?>>Inactive</option>
-                        <option value="3" <?php echo isset($_GET['search_status']) && $_GET['search_status'] == 3 ? 'selected' : ''; ?>>Draft</option>
-                        <option value="4" <?php echo isset($_GET['search_status']) && $_GET['search_status'] == 4 ? 'selected' : ''; ?>>Confirmed</option>
-
-                    </select>
-                </div>
-                    </div>
-                </div>
-                
-                
-                
-                <div class="form-actions">
-                   <button type="submit" name="search_order" class="btn btn-green"><i class="fa-solid fa-search"></i> Search</button>
-                </div>
-                 
-             
- 
-
-            </form>
-        </div>
-
-        <div class="glass-panel printable">
-            <div style="display: flex; justify-content: space-between; margin-bottom: 15px; m">
-                <span class="section-title" style="margin:0;">All Order </span>
-                   <button onclick="window.location.href='orders.php?show_all=1'" class="btn btn-dark" style="padding: 5px 15px; font-size: 0.7rem;">Show All</button>
-                   <button onclick="window.print()" class="btn btn-dark" style="padding: 5px 15px; font-size: 0.7rem;"><i class="fa-solid fa-file-pdf"></i> / <i class="fa-solid fa-print"></i></button>
-     
-            </div>
-
-          
-            
-            <div class="table-responsive" id="table">
-
-            <?php
-            $search_text='';
-              $company_id = $_SESSION['company_id'];
-
-                        if (!isset($_GET['search_id']) && !isset($_GET['search_route_id']) && !isset($_GET['search_shop_id']) && !isset($_GET['search_status']) && !isset($_GET['date_from']) && !isset($_GET['date_to'])) {
-                        $query = "SELECT * FROM orders WHERE company_id='$company_id' AND (created_by='{$_SESSION['user_id']}' OR (created_by!='{$_SESSION['user_id']}' AND order_status=1)) ORDER BY id DESC LIMIT 5";
-                        if (isset($_GET['show_all']) && $_GET['show_all'] == 1) {
-                            $query = "SELECT * FROM orders WHERE company_id='$company_id' AND (created_by='{$_SESSION['user_id']}' OR (created_by!='{$_SESSION['user_id']}' AND order_status=1)) ORDER BY id DESC";
-                        }
-                        $result = mysqli_query($conn, $query);
-                        
-                    } else {
-
-
-                       $query = "SELECT * FROM orders WHERE company_id='$company_id'  ";
-                        if (isset($_GET['search_id']) && $_GET['search_id'] !== '') {
-                            $search_id = $_GET['search_id'];
-                            $query .= " AND id='$search_id'";
-                            $search_text .= " ID: $search_id ";
-                        }
-                        else {
-
-                        if (isset($_GET['search_route_id']) && $_GET['search_route_id'] !== '') {
-                            $search_route_id = $_GET['search_route_id'];
-                            $query .= " AND route_id='$search_route_id'";
-                            $search_text .= " Route: $search_route_id";
-                      
-                            $route_query = "SELECT route_name FROM routes WHERE id='$search_route_id'";
-                            $route_result = mysqli_query($conn, $route_query);
-                            if (mysqli_num_rows($route_result) > 0) {
-                                $route_row = mysqli_fetch_assoc($route_result);
-                                $search_text .= " " . $route_row['route_name'];
-                            }
-                        }
-
-                        if (isset($_GET['search_shop_id']) && $_GET['search_shop_id'] !== '') {
-                            $search_shop_id = $_GET['search_shop_id'];
-                            $query .= " AND shop_id='$search_shop_id'";
-                            $search_text .= " Shop: $search_shop_id";
-                             $shop_query = "SELECT shop_name FROM shops WHERE id='$search_shop_id'";
-                            $shop_result = mysqli_query($conn, $shop_query);
-                            if (mysqli_num_rows($shop_result) > 0) {
-                                $shop_row = mysqli_fetch_assoc($shop_result);
-                                $search_text .= " " . $shop_row['shop_name'];
-                            }
-                        }
-
-                        if (isset($_GET['search_status']) && $_GET['search_status'] !== '') {
-                            $search_status = $_GET['search_status'];
-                            if ($search_status == 3) {
-                                $query .= " AND order_status='0'";
-                            } else if ($search_status == 4) {
-                                $query .= " AND order_status='1'";
-                            } else {
-                                $query .= " AND status='$search_status'";
-                            }
-                            $search_text .= " Status: $search_status";
-                        }
-                         if (isset($_GET['date_from']) && $_GET['date_from'] !== '' && isset($_GET['date_to']) && $_GET['date_to'] !== '') {
-                            $date_from = $_GET['date_from'] . ' 00:00:00';
-                            $date_to = $_GET['date_to']. ' 23:59:59';
-                            $query .= " AND order_date BETWEEN '$date_from' AND '$date_to'";
-                            $search_text .= " Date Range: $date_from to $date_to";
-                        }
-                    }
-                        $query .= " AND (created_by='{$_SESSION['user_id']}' OR (created_by!='{$_SESSION['user_id']}' AND order_status=1))  ORDER BY id DESC";
-                        $result = mysqli_query($conn, $query); 
-                        if ($search_text != '') {
-                            echo "<p class='badge bg-green' style='text-align: center; margin-bottom: 10px;' >Search Results for <b>$search_text</b></p>";
-                        }
-                    }
-
-            ?>
-                <table class="table-simple">
-                    <thead>
-                        <tr>
-                            <th>ID</th>
-                            <th>Route Name</th>
-                            <th>Shop Name</th>
-                            <th>Dates</th>
-                         
-                           
-                            <th class="print-hide">Status</th>
-                           
-                      
-                            
-                            <th style="text-align: right;" class="print-hide">Actions</th>
-                            <th>Approval</th>
-                            <th>Remarks</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php
-
-                        $ids='';
-                      
-
-                        
-
-
-                        if (mysqli_num_rows($result) > 0) {
-                            while ($row = mysqli_fetch_assoc($result)) {
-                                $ids .= $row['id'] . ",";
-                                $route_name_query = "SELECT route_name FROM routes WHERE id='{$row['route_id']}'";
-                                $route_name_result = mysqli_query($conn, $route_name_query);
-                                $route_name = mysqli_fetch_assoc($route_name_result)['route_name'];
-                                
-                                $shop_name_query = "SELECT shop_name, balance FROM shops WHERE id='{$row['shop_id']}'";
-                                $shop_name_result = mysqli_query($conn, $shop_name_query);
-                                $shop_name_result_data = mysqli_fetch_assoc($shop_name_result);
-                                $shop_name = isset($shop_name_result_data['shop_name']) ? $shop_name_result_data['shop_name'] : '';
-                                // $shop_balance = isset($shop_name_result_data['balance']) ? $shop_name_result_data['balance'] : 0;
-
-                                //get username
-                                $created_by_query = "SELECT username FROM users WHERE id='{$row['created_by']}'";
-                                $created_by_result = mysqli_query($conn, $created_by_query);
-                                $created_by = mysqli_fetch_assoc($created_by_result)['username'];
-
-                              echo "
-<tr>
-    <td >{$row['id']}
-    <i class='fa-solid fa-box' 
-           style='color: green; margin-right: 10px; cursor: pointer;' 
-           onclick=\"window.location.href='order_item.php?order_id={$row['id']}'\">
-        </i>
-    
-    </td>
-   
-    <td>{$route_name}</td>
-     <td>{$shop_name}</td>
-    
-    <td>{$row['order_date']} {$row['delivery_date']}</td>
-
-
-  
-    <td class='print-hide' style='text-align: center;'>" . 
-        ($row['status'] 
-            ? "<span class='badge bg-green'>Active</span>" 
-            : "<span class='badge bg-red'>Inactive</span>") . " <br>".
-        ($row['order_status'] 
-            ? "<span class='badge bg-green'>Confirmed</span>" 
-            : "<span class='badge bg-yellow'>Draft</span>") . " ".
-
-    "</td>
-    <td style='text-align: right;' class='print-hide' >";
-if (isset($row['order_status']) && !is_null($row['order_status']) && $row['order_status'] == 1 ) {
-            echo "<i class='fa-solid fa-user' style='color: green; cursor: not-allowed;' title='Confirmed records cannot be edited.'></i>";
-        } else {
-    echo "
-        <i class='fa-solid fa-pen' 
-           style='color: var(--warning); margin-right: 10px; cursor: pointer;' 
-           onclick=\"window.location.href='orders.php?shop_name={$shop_name}& shop_id={$row['shop_id']}&order_edit_id={$row['id']}'\">
-        </i>";}
-
-        echo"
-    </td>
-    <td >" . 
-        (isset($row['approved_at']) && !is_null($row['approved_at'])
-            ? "<span class='badge bg-green'>Approved</span>" 
-            : "<span class='badge bg-red'
-            
-             onclick=\"if(confirm('Are you sure you want to approve this Order?')) { window.location.href='orders.php?approve_id={$row['id']}'; }\" 
-                title='Approve Order'
-            
-            
-            
-            >Pending</span>") . 
-    "</td>
-    <td>{$row['remarks']}   <i class='fa-solid fa-print' style='color: var(--warning); margin-right: 10px; cursor: pointer;' onclick=\"window.location.href='invoices.php?order_ids={$row['id']}'\"></i></td>
-</tr>";
-
-$order_item_query = "
-    SELECT oi.quantity, oi.price, i.item_name
-    FROM order_items oi
-    JOIN items i ON oi.item_id = i.id
-    WHERE oi.order_id = '{$row['id']}'
-";
-$order_item_result = mysqli_query($conn, $order_item_query);
-
-if (mysqli_num_rows($order_item_result) > 0) {
-    $inv_total = 0.00;
-    echo "<tr>
-                <td colspan='4'>";
-    while ($order_item_row = mysqli_fetch_assoc($order_item_result)) {
-        $item_name = $order_item_row['item_name'];
-        $quantity = $order_item_row['quantity'];
-        $price = $order_item_row['price'];
-        $total = $price * $quantity;
-        $inv_total += $total;
-
-        echo "<strong>{$item_name}</strong>  {$quantity} × " . number_format($price, 2) . " = " . number_format($total, 2). "<br>";
-    }
-                echo "<br> Total: <strong>" . number_format($inv_total, 2) . "</strong>/=  by [user:{$row['created_by']} @  $created_by]</td>
-              </tr>";
 }
 
+document.getElementById('route_id').addEventListener('change', function () {
+    getShopsByRouteId(this.value);
+});
+</script>
 
-
-                            }
-                        }
-                        ?>
-                    </tbody>
-                </table>
-            </div>
-        </div>
-
-        <div style="text-align: center; margin-top: 10px;">
-<button onclick="window.location.href='invoices.php?order_ids=<?php echo rtrim($ids, ','); ?>'" class="btn btn-dark" style="padding: 5px 15px; font-size: 0.7rem; margin-top: 10px;"><i class="fa-solid fa-file-pdf"></i> Generate Report for Listed Orders</button>
-                    </div>
-                            
-
-
-        
-
-        
-
-    </div>
-
-
-
-<?php
-include 'footer.php';
-?>
+<?php $list_q->close(); include 'footer.php'; ?>

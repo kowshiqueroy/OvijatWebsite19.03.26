@@ -1,18 +1,32 @@
 <?php
-include '../config.php';
+/**
+ * AJAX: returns <option> tags for shops belonging to a route.
+ * Used by orders.php and cash.php Select2 dropdowns.
+ */
+require_once '../config.php';
+if (!isset($_SESSION['user_id'])) { http_response_code(403); exit; }
 
-if (isset($_GET['route_id'])) {
-    $route_id = $_GET['route_id'];
+$route_id = (int)($_GET['route_id'] ?? 0);
+$cid      = (int)$_SESSION['company_id'];
 
-    $query = "SELECT id, shop_name FROM shops WHERE route_id='$route_id' AND status=1 ORDER BY id DESC";
-    $result = mysqli_query($conn, $query);
-
-    if (mysqli_num_rows($result) > 0) {
-        while ($row = mysqli_fetch_assoc($result)) {
-            echo '<option value="' . $row['id'] . '">' . $row['shop_name'] . '</option>';
-        }
-    } else {
-        echo '<option value="">No shops found</option>';
-    }
+if (!$route_id) {
+    echo '<option value="">Select Shop</option>';
+    exit;
 }
-?>
+
+$stmt = $conn->prepare(
+    "SELECT id, shop_name FROM shops WHERE route_id=? AND company_id=? AND status=1 ORDER BY shop_name ASC"
+);
+$stmt->bind_param("ii", $route_id, $cid);
+$stmt->execute();
+$res = $stmt->get_result();
+$stmt->close();
+
+echo '<option value="">Select Shop</option>';
+if ($res->num_rows > 0) {
+    while ($row = $res->fetch_assoc()) {
+        echo '<option value="' . $row['id'] . '">' . htmlspecialchars($row['shop_name']) . '</option>';
+    }
+} else {
+    echo '<option value="" disabled>No shops in this route</option>';
+}

@@ -1,277 +1,174 @@
 <?php
+$pageTitle = 'Detailed Net Sales';
 include 'header.php';
+
+/* ── Filters ── */
+$f_from   = $_GET['date_from']  ?? date('Y-m-01');
+$f_to     = $_GET['date_to']    ?? date('Y-m-t');
+$f_cid    = (int)($_GET['company_id'] ?? 0);
+$f_sr     = (int)($_GET['sr_id']      ?? 0);
+$f_route  = (int)($_GET['route_id']   ?? 0);
+$f_shop   = (int)($_GET['shop_id']    ?? 0);
+$f_item   = (int)($_GET['item_id']    ?? 0);
+$f_group  = $_GET['group_by']   ?? 'none';
+$generate = isset($_GET['run']);
+
+/* ── Dropdowns ── */
+$comp_q  = $conn->query("SELECT id, name FROM companies ORDER BY name");
+$routes_q= $conn->query("SELECT id, route_name FROM routes WHERE status=1 ORDER BY route_name");
+$shops_q = $conn->query("SELECT id, shop_name FROM shops WHERE status=1 ORDER BY shop_name LIMIT 300");
+$items_q = $conn->query("SELECT id, item_name FROM items WHERE status=1 ORDER BY item_name");
+$srs_q   = $conn->query("SELECT id, username FROM users WHERE role IN (2,3) AND status=1 ORDER BY username");
 ?>
 
-<div class="container">
-    <div class="form-section glass-panel" style="margin-bottom: 20px;">
-        <h2 style="margin-top:0;"><i class="fa-solid fa-layer-group"></i> Advanced Grouped Report</h2>
-        <p style="color: #666; font-size: 0.9rem; margin-bottom: 15px;">Filter your data and choose how you want to group the results visually.</p>
-        
-        <form method="GET">
-            <div class="grid-layout desktop-4">
-                <div><label>Date From</label><input type="date" name="date_from" value="<?php echo $_GET['date_from'] ?? date('Y-m-d'); ?>"></div>
-                <div><label>Date To</label><input type="date" name="date_to" value="<?php echo $_GET['date_to'] ?? date('Y-m-d'); ?>"></div>
-
-                <div>
-                    <label>Company</label>
-                    <select name="company_id">
-                        <option value="">-- All Companies --</option>
-                        <?php
-                        $q = mysqli_query($conn, "SELECT id, name FROM companies ORDER BY name ASC");
-                        if ($q) while ($row = mysqli_fetch_assoc($q)) {
-                            $sel = ($_GET['company_id'] ?? '') == $row['id'] ? 'selected' : '';
-                            echo "<option value='{$row['id']}' $sel>{$row['name']}</option>";
-                        }
-                        ?>
-                    </select>
-                </div>
-
-                <div>
-                    <label>User (Sales Rep)</label>
-                    <select name="user_id">
-                        <option value="">-- All Users --</option>
-                        <?php
-                        $q = mysqli_query($conn, "SELECT id, username FROM users WHERE status=1");
-                        if ($q) while ($row = mysqli_fetch_assoc($q)) {
-                            $sel = ($_GET['user_id'] ?? '') == $row['id'] ? 'selected' : '';
-                            echo "<option value='{$row['id']}' $sel>{$row['username']}</option>";
-                        }
-                        ?>
-                    </select>
-                </div>
-
-                <div>
-                    <label>Route</label>
-                    <select name="route_id">
-                        <option value="">-- All Routes --</option>
-                        <?php
-                        $q = mysqli_query($conn, "SELECT id, route_name FROM routes WHERE status=1");
-                        if ($q) while ($row = mysqli_fetch_assoc($q)) {
-                            $sel = ($_GET['route_id'] ?? '') == $row['id'] ? 'selected' : '';
-                            echo "<option value='{$row['id']}' $sel>{$row['route_name']}</option>";
-                        }
-                        ?>
-                    </select>
-                </div>
-
-                <div>
-                    <label>Shop</label>
-                    <select name="shop_id">
-                        <option value="">-- All Shops --</option>
-                        <?php
-                        $q = mysqli_query($conn, "SELECT id, shop_name FROM shops WHERE status=1");
-                        if ($q) while ($row = mysqli_fetch_assoc($q)) {
-                            $sel = ($_GET['shop_id'] ?? '') == $row['id'] ? 'selected' : '';
-                            echo "<option value='{$row['id']}' $sel>{$row['shop_name']}</option>";
-                        }
-                        ?>
-                    </select>
-                </div>
-
-                <div style="grid-column: span 2; background: #eef2f5; padding: 10px; border-radius: 8px;">
-                    <label style="color: var(--primary); font-weight: bold;"><i class="fa-solid fa-object-group"></i> Group Results By:</label>
-                    <select name="group_by" style="border-color: var(--primary);">
-                        <option value="none" <?php echo ($_GET['group_by'] ?? '') == 'none' ? 'selected' : ''; ?>>No Grouping (List All Orders)</option>
-                        <option value="date" <?php echo ($_GET['group_by'] ?? '') == 'date' ? 'selected' : ''; ?>>Order Date</option>
-                        <option value="route" <?php echo ($_GET['group_by'] ?? '') == 'route' ? 'selected' : ''; ?>>Route</option>
-                        <option value="shop" <?php echo ($_GET['group_by'] ?? '') == 'shop' ? 'selected' : ''; ?>>Shop</option>
-                        <option value="user" <?php echo ($_GET['group_by'] ?? '') == 'user' ? 'selected' : ''; ?>>User / Sales Rep</option>
-                        <option value="company" <?php echo ($_GET['group_by'] ?? '') == 'company' ? 'selected' : ''; ?>>Company</option>
-                    </select>
-                </div>
-            </div>
-
-            <div class="form-actions" style="margin-top: 20px;">
-                <button type="submit" name="generate_detailed" class="btn btn-green"><i class="fa-solid fa-filter"></i> Apply Filters</button>
-                <a href="detailed_report.php" class="btn btn-dark" style="text-decoration: none;"><i class="fa-solid fa-rotate-right"></i> Reset</a>
-            </div>
-        </form>
-    </div>
-
-    <?php if (isset($_GET['generate_detailed'])): ?>
-    <div class="glass-panel printable">
-        <div style="display: flex; justify-content: space-between; margin-bottom: 15px;">
-            <span class="section-title" style="margin:0;">Report Results</span>
-            <button onclick="window.print()" class="btn btn-dark"><i class="fa-solid fa-print"></i> Print Report</button>
-        </div>
-
-        <?php
-        // 1. Determine Sorting based on Grouping
-        $group_by_input = $_GET['group_by'] ?? 'none';
-        $order_by_sql = "o.id DESC"; // Default
-        
-        if ($group_by_input == 'date') $order_by_sql = "DATE(o.created_at) DESC, o.id DESC";
-        if ($group_by_input == 'route') $order_by_sql = "r.route_name ASC, o.id DESC";
-        if ($group_by_input == 'shop') $order_by_sql = "s.shop_name ASC, o.id DESC";
-        if ($group_by_input == 'user') $order_by_sql = "u.username ASC, o.id DESC";
-        if ($group_by_input == 'company') $order_by_sql = "c.name ASC, o.id DESC";
-
-        // 2. Build the SQL Query
-        $query = "SELECT 
-                    o.id AS order_id, o.created_at, o.order_status,
-                    c.name AS company_name, u.username, r.route_name, s.shop_name, 
-                    i.item_name, oi.quantity, oi.price, (oi.quantity * oi.price) AS line_total
-                  FROM orders o
-                  LEFT JOIN order_items oi ON o.id = oi.order_id
-                  LEFT JOIN items i ON oi.item_id = i.id
-                  LEFT JOIN companies c ON o.company_id = c.id
-                  LEFT JOIN users u ON o.created_by = u.id
-                  LEFT JOIN routes r ON o.route_id = r.id
-                  LEFT JOIN shops s ON o.shop_id = s.id
-                  WHERE 1=1";
-
-        if (!empty($_GET['company_id'])) $query .= " AND o.company_id='" . mysqli_real_escape_string($conn, $_GET['company_id']) . "'";
-        if (!empty($_GET['user_id'])) $query .= " AND o.created_by='" . mysqli_real_escape_string($conn, $_GET['user_id']) . "'";
-        if (!empty($_GET['route_id'])) $query .= " AND o.route_id='" . mysqli_real_escape_string($conn, $_GET['route_id']) . "'";
-        if (!empty($_GET['shop_id'])) $query .= " AND o.shop_id='" . mysqli_real_escape_string($conn, $_GET['shop_id']) . "'";
-        if (!empty($_GET['date_from']) && !empty($_GET['date_to'])) {
-            $from = mysqli_real_escape_string($conn, $_GET['date_from']) . " 00:00:00";
-            $to = mysqli_real_escape_string($conn, $_GET['date_to']) . " 23:59:59";
-            $query .= " AND o.created_at BETWEEN '{$from}' AND '{$to}'";
-        }
-        
-        $query .= " ORDER BY {$order_by_sql}";
-        $result = mysqli_query($conn, $query);
-
-        // 3. Process Data into a Grouped Array Structure
-        $reportData = [];
-        $overall_grand_total = 0;
-
-        if ($result && mysqli_num_rows($result) > 0) {
-            while ($row = mysqli_fetch_assoc($result)) {
-                // Determine the Group Name
-                $groupVal = "All Orders";
-                if ($group_by_input == 'date') $groupVal = date('d F Y', strtotime($row['created_at']));
-                elseif ($group_by_input == 'route') $groupVal = $row['route_name'] ? "Route: {$row['route_name']}" : "Unassigned Route";
-                elseif ($group_by_input == 'shop') $groupVal = $row['shop_name'] ? "Shop: {$row['shop_name']}" : "Unassigned Shop";
-                elseif ($group_by_input == 'user') $groupVal = $row['username'] ? "Rep: {$row['username']}" : "Unassigned User";
-                elseif ($group_by_input == 'company') $groupVal = $row['company_name'] ? "Company: {$row['company_name']}" : "Unassigned Company";
-
-                $oid = $row['order_id'];
-
-                // Initialize Order if it doesn't exist in the array yet
-                if (!isset($reportData[$groupVal][$oid])) {
-                    $reportData[$groupVal][$oid] = [
-                        'date' => $row['created_at'],
-                        'status' => $row['order_status'],
-                        'company' => $row['company_name'],
-                        'user' => $row['username'],
-                        'route' => $row['route_name'],
-                        'shop' => $row['shop_name'],
-                        'items' => [],
-                        'order_total' => 0
-                    ];
-                }
-
-                // Append items to the order
-                if ($row['item_name']) {
-                    $reportData[$groupVal][$oid]['items'][] = [
-                        'name' => $row['item_name'],
-                        'qty' => $row['quantity'],
-                        'price' => $row['price'],
-                        'total' => $row['line_total']
-                    ];
-                    $reportData[$groupVal][$oid]['order_total'] += $row['line_total'];
-                    $overall_grand_total += $row['line_total'];
-                }
-            }
-        }
-        ?>
-
-        <style>
-            .item-list { margin: 0; padding: 0; list-style: none; font-size: 0.85rem; }
-            .item-list li { border-bottom: 1px dashed #ccc; padding: 4px 0; display: flex; justify-content: space-between; }
-            .item-list li:last-child { border-bottom: none; }
-            .group-header { background-color: var(--primary); color: white; padding: 12px; font-size: 1.1rem; font-weight: bold; }
-            .order-row td { vertical-align: top; padding: 12px; border-bottom: 1px solid #ddd; }
-        </style>
-
-        <?php if (!empty($reportData)): ?>
-            <table style="width: 100%; border-collapse: collapse;">
-                <thead style="background: #f4f4f4; text-align: left;">
-                    <tr>
-                        <th style="padding: 10px;">Order # & Date</th>
-                        <th style="padding: 10px;">Network (User/Co)</th>
-                        <th style="padding: 10px;">Location (Route/Shop)</th>
-                        <th style="padding: 10px; width: 35%;">Items Sold</th>
-                        <th style="padding: 10px; text-align: right;">Order Total</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php foreach ($reportData as $groupName => $orders): ?>
-                        
-                        <?php if ($group_by_input != 'none'): ?>
-                            <tr>
-                                <td colspan="5" class="group-header">
-                                    <i class="fa-solid fa-folder-open"></i> <?php echo $groupName; ?>
-                                </td>
-                            </tr>
-                        <?php endif; ?>
-
-                        <?php 
-                        $group_subtotal = 0;
-                        foreach ($orders as $oid => $ord): 
-                            $group_subtotal += $ord['order_total'];
-                            $status_color = $ord['status'] == 1 ? "green" : "orange";
-                        ?>
-                            <tr class="order-row">
-                                <td>
-                                    <strong>#<?php echo $oid; ?></strong><br>
-                                    <small style="color:#666;"><?php echo date('d M Y, h:i A', strtotime($ord['date'])); ?></small><br>
-                                    <span style='font-size:0.75rem; color:<?php echo $status_color; ?>; border:1px solid <?php echo $status_color; ?>; padding:1px 4px; border-radius:3px;'>
-                                        <?php echo $ord['status'] == 1 ? 'Confirmed' : 'Pending'; ?>
-                                    </span>
-                                </td>
-                                <td>
-                                    <strong><?php echo $ord['user'] ?: 'N/A'; ?></strong><br>
-                                    <small style="color:#666;"><?php echo $ord['company'] ?: 'N/A'; ?></small>
-                                </td>
-                                <td>
-                                    <strong><?php echo $ord['shop'] ?: 'N/A'; ?></strong><br>
-                                    <small style="color:#666;"><i class="fa-solid fa-route"></i> <?php echo $ord['route'] ?: 'N/A'; ?></small>
-                                </td>
-                                
-                                <td>
-                                    <ul class="item-list">
-                                        <?php if(empty($ord['items'])) echo "<li>No items found.</li>"; ?>
-                                        <?php foreach($ord['items'] as $item): ?>
-                                            <li>
-                                                <span><?php echo $item['name']; ?> <em>(<?php echo $item['qty']; ?> x $<?php echo number_format($item['price'], 2); ?>)</em></span>
-                                                <strong>$<?php echo number_format($item['total'], 2); ?></strong>
-                                            </li>
-                                        <?php endforeach; ?>
-                                    </ul>
-                                </td>
-                                <td style="text-align: right; font-weight: bold; font-size: 1.1rem; color: #333;">
-                                    $<?php echo number_format($ord['order_total'], 2); ?>
-                                </td>
-                            </tr>
-                        <?php endforeach; ?>
-
-                        <?php if ($group_by_input != 'none'): ?>
-                            <tr style="background-color: #fcfcfc;">
-                                <td colspan="4" style="text-align: right; padding: 10px; font-weight: bold; color: #555;">Subtotal for <?php echo $groupName; ?>:</td>
-                                <td style="text-align: right; padding: 10px; font-weight: bold; color: var(--primary);">$<?php echo number_format($group_subtotal, 2); ?></td>
-                            </tr>
-                        <?php endif; ?>
-
-                    <?php endforeach; ?>
-                </tbody>
-                <tfoot>
-                    <tr style="background-color: #2c3e50; color: white;">
-                        <th colspan="4" style="text-align:right; padding: 15px; font-size: 1.2rem;">Final Grand Total:</th>
-                        <th style="padding: 15px; text-align: right; font-size: 1.2rem;">$<?php echo number_format($overall_grand_total, 2); ?></th>
-                    </tr>
-                </tfoot>
-            </table>
-        <?php else: ?>
-            <div style="text-align:center; padding: 40px; color:#999;">
-                <i class="fa-solid fa-box-open fa-3x" style="margin-bottom:10px;"></i>
-                <p>No orders found for the selected filters.</p>
-            </div>
-        <?php endif; ?>
-    </div>
-    <?php endif; ?>
+<div class="page-header">
+    <div><div class="page-title">Detailed Net Sales</div><div class="page-subtitle">Itemized orders with returns deducted, grouped by choice</div></div>
+    <?php if ($generate): ?><button onclick="window.print()" class="btn btn-ghost btn-sm print-hide"><i class="fa-solid fa-print"></i></button><?php endif; ?>
 </div>
+
+<form method="GET" action="detailed_report.php">
+    <div class="filter-bar">
+        <div class="form-group"><label>Company</label><select name="company_id"><option value="">All</option><?php while($c=$comp_q->fetch_assoc()):?><option value="<?=$c['id']?>" <?=$f_cid==$c['id']?'selected':''?>><?=htmlspecialchars($c['name'])?></option><?php endwhile;?></select></div>
+        <div class="form-group"><label>SR</label><select name="sr_id"><option value="">All</option><?php while($u=$srs_q->fetch_assoc()):?><option value="<?=$u['id']?>" <?=$f_sr==$u['id']?'selected':''?>><?=htmlspecialchars($u['username'])?></option><?php endwhile;?></select></div>
+        <div class="form-group"><label>Route</label><select name="route_id"><option value="">All</option><?php while($r=$routes_q->fetch_assoc()):?><option value="<?=$r['id']?>" <?=$f_route==$r['id']?'selected':''?>><?=htmlspecialchars($r['route_name'])?></option><?php endwhile;?></select></div>
+        <div class="form-group"><label>Product</label><select name="item_id"><option value="">All</option><?php while($it=$items_q->fetch_assoc()):?><option value="<?=$it['id']?>" <?=$f_item==$it['id']?'selected':''?>><?=htmlspecialchars($it['item_name'])?></option><?php endwhile;?></select></div>
+        <div class="form-group"><label>From</label><input type="date" name="date_from" id="date_from" value="<?=htmlspecialchars($f_from)?>"></div>
+        <div class="form-group"><label>To</label><input type="date" name="date_to" id="date_to" value="<?=htmlspecialchars($f_to)?>"></div>
+        <div class="form-group"><label>Group By</label>
+            <select name="group_by">
+                <option value="none"    <?=$f_group==='none'?'selected':''?>>None</option>
+                <option value="date"    <?=$f_group==='date'?'selected':''?>>Date</option>
+                <option value="route"   <?=$f_group==='route'?'selected':''?>>Route</option>
+                <option value="shop"    <?=$f_group==='shop'?'selected':''?>>Shop</option>
+                <option value="user"    <?=$f_group==='user'?'selected':''?>>Sales Rep</option>
+                <option value="company" <?=$f_group==='company'?'selected':''?>>Company</option>
+            </select>
+        </div>
+        <button type="submit" name="run" class="btn btn-primary btn-sm" style="align-self:flex-end"><i class="fa-solid fa-play"></i> Run</button>
+        <a href="detailed_report.php" class="btn btn-ghost btn-sm" style="align-self:flex-end">Reset</a>
+    </div>
+    <div class="date-presets" style="margin-bottom:12px">
+        <button type="button" class="date-preset-btn" data-preset="month">This Month</button>
+        <button type="button" class="date-preset-btn" data-preset="last_month">Last Month</button>
+        <button type="button" class="date-preset-btn" data-preset="week">This Week</button>
+    </div>
+</form>
+
+<?php if (!$generate): ?>
+<div class="card text-center" style="padding:40px"><div class="text-muted"><i class="fa-solid fa-chart-bar" style="font-size:2rem;margin-bottom:12px;display:block"></i>Set filters and click <strong>Run</strong>.</div></div>
+<?php else:
+
+$where  = ["o.order_status=1", "o.order_date BETWEEN ? AND ?"];
+$params = [$f_from, $f_to]; $types = 'ss';
+if ($f_cid)   { $where[] = "o.company_id=$f_cid"; }
+if ($f_sr)    { $where[] = "o.created_by=$f_sr"; }
+if ($f_route) { $where[] = "o.route_id=$f_route"; }
+if ($f_shop)  { $where[] = "o.shop_id=$f_shop"; }
+if ($f_item)  { $where[] = "oi.item_id=$f_item"; }
+
+$order_sql = ['none'=>'o.id DESC','date'=>'DATE(o.order_date) DESC, o.id DESC',
+              'route'=>'r.route_name ASC, o.id DESC','shop'=>'s.shop_name ASC, o.id DESC',
+              'user'=>'u.username ASC, o.id DESC','company'=>'c.name ASC, o.id DESC'];
+$order_by  = $order_sql[$f_group] ?? 'o.id DESC';
+$w = 'WHERE ' . implode(' AND ', $where);
+
+$q = $conn->prepare(
+    "SELECT o.id AS oid, DATE(o.order_date) AS order_date,
+            c.name AS company_name, u.username, r.route_name, s.shop_name, i.item_name,
+            oi.quantity AS gross_qty, oi.price,
+            (oi.quantity * oi.price) AS gross_total,
+            COALESCE((SELECT SUM(ori.return_qty) FROM order_return_items ori WHERE ori.order_id=o.id AND ori.item_id=oi.item_id),0) AS return_qty
+     FROM orders o
+     LEFT JOIN order_items oi ON oi.order_id=o.id
+     LEFT JOIN items i ON i.id=oi.item_id
+     LEFT JOIN companies c ON c.id=o.company_id
+     LEFT JOIN users u ON u.id=o.created_by
+     LEFT JOIN routes r ON r.id=o.route_id
+     LEFT JOIN shops s ON s.id=o.shop_id
+     $w ORDER BY $order_by"
+);
+$q->bind_param($types, ...$params); $q->execute(); $res = $q->get_result();
+
+$report = []; $g_gross = $g_ret = $g_net = 0;
+while ($row = $res->fetch_assoc()) {
+    $key = match($f_group) {
+        'date'    => date('d F Y', strtotime($row['order_date'])),
+        'route'   => $row['route_name']   ?? 'N/A',
+        'shop'    => $row['shop_name']    ?? 'N/A',
+        'user'    => $row['username']     ?? 'N/A',
+        'company' => $row['company_name'] ?? 'N/A',
+        default   => 'all'
+    };
+    $oid = $row['oid'];
+    if (!isset($report[$key][$oid])) {
+        $report[$key][$oid] = ['date'=>$row['order_date'],'company'=>$row['company_name'],
+            'user'=>$row['username'],'route'=>$row['route_name'],'shop'=>$row['shop_name'],
+            'items'=>[],'gross'=>0,'ret'=>0,'net'=>0];
+    }
+    if ($row['item_name']) {
+        $ret_t = $row['return_qty'] * $row['price'];
+        $net_t = $row['gross_total'] - $ret_t;
+        $report[$key][$oid]['items'][] = ['name'=>$row['item_name'],'gqty'=>$row['gross_qty'],
+            'rqty'=>$row['return_qty'],'price'=>$row['price'],'gross'=>$row['gross_total'],'ret'=>$ret_t,'net'=>$net_t];
+        $report[$key][$oid]['gross']+=$row['gross_total'];
+        $report[$key][$oid]['ret']+=$ret_t; $report[$key][$oid]['net']+=$net_t;
+        $g_gross+=$row['gross_total']; $g_ret+=$ret_t; $g_net+=$net_t;
+    }
+}
+$q->close();
+?>
+
+<div class="kpi-grid" style="grid-template-columns:repeat(3,1fr);max-width:540px;margin-bottom:20px">
+    <div class="kpi-card info"><div class="kpi-label">Gross</div><div class="kpi-value" style="font-size:1.3rem"><?=number_format($g_gross,0)?></div></div>
+    <div class="kpi-card danger"><div class="kpi-label">Returns</div><div class="kpi-value" style="font-size:1.3rem"><?=number_format($g_ret,0)?></div></div>
+    <div class="kpi-card"><div class="kpi-label">Net</div><div class="kpi-value" style="font-size:1.3rem"><?=number_format($g_net,0)?></div></div>
+</div>
+
+<div class="print-header">
+    <h1><?=APP_NAME?> &mdash; Detailed Net Sales Report</h1>
+    <p>Period: <?=$f_from?> to <?=$f_to?> | Generated: <?=date('d M Y H:i')?></p>
+</div>
+
+<?php if (!empty($report)): ?>
+<div class="card">
+    <div class="card-header"><span class="card-title">Itemized Transactions</span></div>
+    <?php foreach ($report as $group_name => $orders):
+        $sg=$sr=$sn=0; foreach ($orders as $o){$sg+=$o['gross'];$sr+=$o['ret'];$sn+=$o['net'];}
+    ?>
+        <?php if ($f_group !== 'none'): ?>
+        <div style="background:var(--gray-100);padding:10px 16px;border-bottom:2px solid var(--border);display:flex;justify-content:space-between">
+            <span class="fw-700"><?=htmlspecialchars($group_name)?></span>
+            <span class="text-sm">Gross: <?=number_format($sg,0)?> | -Ret: <?=number_format($sr,0)?> | <strong>Net: <?=number_format($sn,0)?></strong></span>
+        </div>
+        <?php endif; ?>
+        <div class="table-wrap"><table style="font-size:0.82rem">
+            <thead><tr><th>Order</th><th>Company</th><th>SR</th><th>Shop / Route</th><th>Item</th><th class="text-right">Gross</th><th class="text-right text-red">Return</th><th class="text-right text-green">Net</th></tr></thead>
+            <tbody>
+                <?php foreach ($orders as $oid => $ord): if (empty($ord['items'])) continue; $first=true; foreach ($ord['items'] as $item): ?>
+                <tr>
+                    <?php if ($first): ?>
+                    <td rowspan="<?=count($ord['items'])?>" style="vertical-align:top"><a href="#" style="color:var(--primary);font-weight:700">#<?=$oid?></a><div class="text-muted text-xs"><?=date('d M',strtotime($ord['date']))?></div></td>
+                    <td rowspan="<?=count($ord['items'])?>" style="vertical-align:top" class="text-xs"><?=htmlspecialchars($ord['company']??'—')?></td>
+                    <td rowspan="<?=count($ord['items'])?>" style="vertical-align:top" class="text-sm"><?=htmlspecialchars($ord['user']??'—')?></td>
+                    <td rowspan="<?=count($ord['items'])?>" style="vertical-align:top"><span class="text-sm fw-600"><?=htmlspecialchars($ord['shop']??'—')?></span><div class="text-muted text-xs"><?=htmlspecialchars($ord['route']??'—')?></div></td>
+                    <?php endif; ?>
+                    <td><?=htmlspecialchars($item['name'])?><div class="text-muted text-xs"><?=$item['gqty']?>-<?=$item['rqty']?>=<?=$item['gqty']-$item['rqty']?> × <?=number_format($item['price'],2)?></div></td>
+                    <td class="text-right"><?=number_format($item['gross'],0)?></td>
+                    <td class="text-right text-red">-<?=number_format($item['ret'],0)?></td>
+                    <td class="text-right fw-600 text-green"><?=number_format($item['net'],0)?></td>
+                </tr>
+                <?php $first=false; endforeach; endforeach; ?>
+            </tbody>
+        </table></div>
+    <?php endforeach; ?>
+    <div style="background:var(--dark);color:#fff;padding:14px 18px;display:flex;justify-content:space-between;border-radius:0 0 var(--card-radius) var(--card-radius)">
+        <span class="fw-700">Grand Total</span>
+        <span>Gross: <?=number_format($g_gross,0)?> | -Ret: <?=number_format($g_ret,0)?> | <strong style="font-size:1.1rem">Net: <?=number_format($g_net,0)?></strong></span>
+    </div>
+</div>
+<?php else: ?>
+<div class="card text-center" style="padding:40px"><div class="text-muted">No confirmed orders found for the selected filters.</div></div>
+<?php endif;
+endif; ?>
 
 <?php include 'footer.php'; ?>

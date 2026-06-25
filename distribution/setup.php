@@ -408,6 +408,8 @@ if ($action === 'import') {
             last_active DATETIME NULL,
             force_password_change TINYINT(1) DEFAULT 0,
             isDelete TINYINT(1) DEFAULT 0,
+            division_id INT DEFAULT NULL,
+            group_id INT DEFAULT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
 
@@ -478,6 +480,7 @@ if ($action === 'import') {
             hide_from_print TINYINT(1) DEFAULT 0,
             confirmed_by INT NULL,
             confirmed_at DATETIME NULL,
+            order_type VARCHAR(50) DEFAULT 'Local',
             isDelete TINYINT(1) DEFAULT 0,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (customer_id) REFERENCES customers(id),
@@ -763,6 +766,53 @@ if ($action === 'import') {
             `isDelete` TINYINT(1) DEFAULT 0,
             KEY `journal_id` (`journal_id`),
             KEY `account_id` (`account_id`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+
+        "sr_divisions" => "CREATE TABLE IF NOT EXISTS sr_divisions (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            name VARCHAR(100) NOT NULL,
+            code VARCHAR(50) DEFAULT '',
+            region VARCHAR(100) DEFAULT '',
+            isDelete TINYINT(1) DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+
+        "sr_groups" => "CREATE TABLE IF NOT EXISTS sr_groups (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            name VARCHAR(100) NOT NULL,
+            division_id INT DEFAULT NULL,
+            leader_id INT DEFAULT NULL,
+            isDelete TINYINT(1) DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (division_id) REFERENCES sr_divisions(id) ON DELETE SET NULL,
+            FOREIGN KEY (leader_id) REFERENCES users(id) ON DELETE SET NULL
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+
+        "sales_targets" => "CREATE TABLE IF NOT EXISTS sales_targets (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            target_level VARCHAR(20) DEFAULT 'SR',
+            user_id INT NOT NULL,
+            target_period VARCHAR(20) NOT NULL,
+            period_type ENUM('Monthly', 'Quarterly', 'Yearly') DEFAULT 'Monthly',
+            target_revenue DECIMAL(15,2) DEFAULT 0.00,
+            target_qty INT DEFAULT 0,
+            isDelete TINYINT(1) DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+
+        "product_visibility_rules" => "CREATE TABLE IF NOT EXISTS product_visibility_rules (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            product_id INT NOT NULL,
+            user_id INT NOT NULL,
+            hide_from_ui TINYINT(1) DEFAULT 0,
+            hide_from_reports TINYINT(1) DEFAULT 0,
+            created_by INT NOT NULL,
+            isDelete TINYINT(1) DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
     ];
 

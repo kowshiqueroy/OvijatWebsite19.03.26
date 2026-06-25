@@ -1,53 +1,62 @@
 <?php
-// ==========================================
-// 1. Configuration & Data Fetching
-// ==========================================
-include '../config.php';
+/* ── Invoices / Delivery Notes
+   Accepts: ?order_ids=1,2,3  OR  ?truck_load_id=X
+   Requires valid session (any role). ── */
+require_once '../config.php';
+if (!isset($_SESSION['user_id'])) { header("Location: ../index.php"); exit; }
+if (!defined('APP_NAME')) define('APP_NAME', 'EIS');
 
-// Fallback constants
-if (!defined('APP_NAME')) define('APP_NAME', 'Inventory System');
+$cid = (int)$_SESSION['company_id'];
 
-if (!isset($conn) || $conn->connect_error) {
-    die("Database connection failed. Check config.php");
-}
-
-$order_ids_input = $_GET['order_ids'] ?? '';
-if (!$order_ids_input) die("No Order IDs provided.");
-
-$ids_array = explode(',', $order_ids_input);
+/* Resolve order IDs */
 $clean_ids = [];
-foreach ($ids_array as $id) {
-    if ((int)$id > 0) $clean_ids[] = (int)$id;
+
+if (isset($_GET['truck_load_id'])) {
+    /* New: load from truck_loads system */
+    $tlid  = (int)$_GET['truck_load_id'];
+    $stmt  = $conn->prepare(
+        "SELECT tlo.order_id FROM truck_load_orders tlo
+         JOIN truck_loads tl ON tl.id=tlo.truck_load_id
+         WHERE tlo.truck_load_id=? AND tlo.is_active=1 AND tl.company_id=?"
+    );
+    $stmt->bind_param("ii", $tlid, $cid); $stmt->execute();
+    $res = $stmt->get_result();
+    while ($r = $res->fetch_assoc()) $clean_ids[] = (int)$r['order_id'];
+    $stmt->close();
+} else {
+    /* Legacy: comma-separated order IDs */
+    $order_ids_input = $_GET['order_ids'] ?? '';
+    if (!$order_ids_input) die("No Order IDs provided.");
+    foreach (explode(',', $order_ids_input) as $id) {
+        if ((int)$id > 0) $clean_ids[] = (int)$id;
+    }
 }
+
 $unique_requested_ids = array_values(array_unique($clean_ids));
-if (empty($unique_requested_ids)) die("Invalid Order IDs.");
+if (empty($unique_requested_ids)) die("No valid Order IDs.");
 $sql_id_list = implode(',', $unique_requested_ids);
 
-// Fetch Orders
-$sql_orders = "
-    SELECT 
-        o.id as order_id, o.order_date, o.shop_id,
-        s.shop_name, r.route_name,
-        c.name as company_name, c.address as company_address, c.phone as company_phone, c.logo as company_logo
-    FROM orders o
-    JOIN shops s ON o.shop_id = s.id
-    JOIN routes r ON o.route_id = r.id
-    JOIN companies c ON o.company_id = c.id
-    WHERE o.id IN ($sql_id_list)
-";
-$orders_res = $conn->query($sql_orders);
+/* Fetch Orders (scoped to company) */
+$orders_res = $conn->query(
+    "SELECT o.id AS order_id, o.order_date, o.shop_id,
+            s.shop_name, r.route_name,
+            c.name AS company_name, c.address AS company_address,
+            c.phone AS company_phone, c.logo AS company_logo
+     FROM orders o
+     JOIN shops s ON o.shop_id=s.id
+     JOIN routes r ON o.route_id=r.id
+     JOIN companies c ON o.company_id=c.id
+     WHERE o.id IN ($sql_id_list) AND o.company_id=$cid"
+);
 
-// Fetch Items
-$sql_items = "
-    SELECT 
-        oi.order_id, oi.item_id, oi.quantity, oi.price, 
-        (oi.quantity * oi.price) as total,
-        i.item_name
-    FROM order_items oi
-    JOIN items i ON oi.item_id = i.id
-    WHERE oi.order_id IN ($sql_id_list)
-";
-$items_res = $conn->query($sql_items);
+/* Fetch Items */
+$items_res = $conn->query(
+    "SELECT oi.order_id, oi.item_id, oi.quantity, oi.price,
+            (oi.quantity * oi.price) AS total, i.item_name
+     FROM order_items oi
+     JOIN items i ON oi.item_id=i.id
+     WHERE oi.order_id IN ($sql_id_list)"
+);
 
 // ==========================================
 // 2. Data Processing

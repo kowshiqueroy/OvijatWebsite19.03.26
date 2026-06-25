@@ -1,0 +1,35 @@
+Options -Indexes
+ServerSignature Off
+
+# Block direct access to sensitive directories
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+
+  # Deny access to config and core
+  RewriteRule ^config/ - [F,L]
+  RewriteRule ^core/ - [F,L]
+
+  # Deny access to uploads of PHP files
+  RewriteRule ^uploads/.*\.(php|php3|php5|phtml|pl|py|sh|cgi)$ - [F,L]
+</IfModule>
+
+# Security headers
+<IfModule mod_headers.c>
+  Header always set X-Content-Type-Options "nosniff"
+  Header always set X-Frame-Options "SAMEORIGIN"
+  Header always set X-XSS-Protection "1; mode=block"
+  Header always set Referrer-Policy "strict-origin-when-cross-origin"
+</IfModule>
+
+# Deny access to hidden files (.env, .git, etc.)
+<FilesMatch "^\.">
+  Order allow,deny
+  Deny from all
+</FilesMatch>
+
+# Protect install.php after installation (rename or delete after setup)
+# Uncomment after setup:
+# <Files "install.php">
+#   Order allow,deny
+#   Deny from all
+# </Files>

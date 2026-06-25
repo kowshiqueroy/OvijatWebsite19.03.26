@@ -23,7 +23,9 @@ if ($id) {
 }
 
 // QR Code for the verification page itself (Self-referencing)
-$verify_url = BASE_URL . "verify_invoice.php?id=" . $id;
+$protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? "https://" : "http://";
+$host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+$verify_url = $protocol . $host . BASE_URL . "verify_invoice.php?id=" . $id;
 $qr_url = "https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=" . urlencode($verify_url);
 ?>
 <!DOCTYPE html>
@@ -31,83 +33,519 @@ $qr_url = "https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=" . url
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Invoice Verification - <?php echo $company['name']; ?></title>
+    <title>Invoice Verification - <?php echo htmlspecialchars($company['name']); ?></title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
-        body { background-color: #f8f9fa; font-family: 'Segoe UI', Arial, sans-serif; color: #333; }
-        .no-print-area { margin-bottom: 20px; }
-        .verify-container { max-width: 900px; margin: 30px auto; }
-        
-        /* A4 Print Styling (Mirroring view.php) */
-        @page { size: A4; margin: 8mm; }
-        
-        .invoice-wrap { 
-            background: #fff; 
-            padding: 0; 
+        /* Google Font for Premium Aesthetic */
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
+
+        :root {
+            --primary: #4f46e5;
+            --primary-hover: #4338ca;
+            --success: #10b981;
+            --success-light: #ecfdf5;
+            --dark: #0f172a;
+            --gray-50: #f8fafc;
+            --gray-100: #f1f5f9;
+            --gray-200: #e2e8f0;
+            --gray-600: #475569;
+            --gray-700: #334155;
+            --card-shadow: 0 20px 40px -15px rgba(15, 23, 42, 0.05);
+            --border-radius: 12px;
+        }
+
+        body {
+            background-color: #f3f4f6;
+            background-image: radial-gradient(at 0% 0%, rgba(243, 244, 246, 1) 0, transparent 50%), 
+                              radial-gradient(at 50% 0%, rgba(239, 246, 255, 1) 0, transparent 50%);
+            font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+            color: var(--gray-700);
+            min-height: 100vh;
+        }
+
+        /* Beautiful Navigation Bar */
+        .public-navbar {
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(12px);
+            border-bottom: 1px solid var(--gray-200);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        .navbar-brand span {
+            letter-spacing: -0.5px;
+        }
+
+        /* Container limits */
+        .verify-container {
+            max-width: 900px;
+            margin: 40px auto;
+        }
+
+        /* Modern Verification Card */
+        .search-card {
+            background: #fff;
+            border-radius: var(--border-radius);
+            padding: 24px;
+            box-shadow: var(--card-shadow);
+            border: 1px solid rgba(226, 232, 240, 0.8);
+        }
+        .search-card .form-control {
+            border: 1px solid var(--gray-200);
+            padding: 12px 20px;
+            font-size: 15px;
+            border-radius: 30px;
+            transition: all 0.3s ease;
+        }
+        .search-card .form-control:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 4px rgba(79, 70, 229, 0.15);
+        }
+        .search-card .btn-primary {
+            background: linear-gradient(135deg, var(--primary), #3b82f6);
             border: none;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.08);
-            border-radius: 10px;
-            overflow: hidden;
+            font-weight: 600;
+            border-radius: 30px;
+            padding: 12px 30px;
+            transition: all 0.3s ease;
+        }
+        .search-card .btn-primary:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 8px 20px -6px rgba(79, 70, 229, 0.4);
         }
 
-        .print-table { width: 100%; border-collapse: collapse; }
-        .print-table thead { display: table-header-group; }
-
-        .header-grid {
-            display: grid;
-            grid-template-columns: 80px 2.5fr 1.5fr 80px;
-            gap: 15px;
+        /* Verification Status Banner */
+        .status-banner {
+            display: flex;
             align-items: center;
-            border-bottom: 2px solid #000;
-            padding: 20px;
-        }
-        .header-logo img { max-width: 80px; max-height: 80px; }
-        .header-company h2 { margin: 0; font-size: 18px; font-weight: 800; color: #0d6efd; }
-        .header-company p { margin: 0; font-size: 10px; line-height: 1.3; }
-        .header-invoice { border-left: 1px solid #ddd; padding-left: 15px; }
-        .header-invoice h4 { margin: 0; font-size: 14px; font-weight: 800; text-transform: uppercase; }
-        .header-qr img { width: 70px; height: 70px; display: block; margin-left: auto; }
-
-        .bill-inline { font-size: 11px; border-bottom: 1px solid #eee; padding: 10px 20px; background: #fafafa; }
-
-        .item-table-wrap { padding: 20px; }
-        .item-table { width: 100%; border-collapse: collapse; }
-        .item-table th { background: #000 !important; color: #fff !important; padding: 8px; font-size: 11px; text-transform: uppercase; text-align: left; border: 1px solid #000; }
-        .item-table td { padding: 6px 8px; border: 1px solid #ddd; font-size: 11px; }
-        
-        .footer-layout { display: flex; justify-content: space-between; padding: 20px; margin-top: 10px; }
-        .words-section { width: 60%; font-size: 11px; }
-        .totals-section { width: 35%; }
-        .total-row { display: flex; justify-content: space-between; font-size: 12px; padding: 2px 0; }
-        .grand-total-row { border-top: 2px solid #000; font-weight: 900; font-size: 14px; margin-top: 5px; padding-top: 5px; }
-
-        .sig-row { display: flex; justify-content: space-between; margin-top: 50px; padding: 0 20px 40px 20px; }
-        .sig-col { width: 22%; text-align: center; border-top: 1px solid #000; font-size: 9px; padding-top: 5px; text-transform: uppercase; }
-
-        .status-ribbon {
-            width: 100%;
-            text-align: center;
-            padding: 10px;
-            font-weight: 800;
+            justify-content: center;
+            gap: 10px;
+            padding: 16px;
+            border-radius: var(--border-radius) var(--border-radius) 0 0;
+            font-weight: 700;
             text-transform: uppercase;
-            letter-spacing: 2px;
+            letter-spacing: 1px;
+            font-size: 14px;
+            color: #fff;
+            background: linear-gradient(135deg, #059669, #10b981);
+            box-shadow: inset 0 -2px 10px rgba(0,0,0,0.05);
+        }
+        .status-banner.status-draft {
+            background: linear-gradient(135deg, #d97706, #f59e0b);
             color: #fff;
         }
-        .bg-confirmed { background: #198754; }
-        .bg-draft { background: #ffc107; color: #000; }
 
+        /* Authentic Document Style */
+        .invoice-card {
+            background: #fff;
+            border-radius: var(--border-radius);
+            box-shadow: var(--card-shadow);
+            border: 1px solid rgba(226, 232, 240, 0.8);
+            overflow: hidden;
+            position: relative;
+        }
+
+        .invoice-body {
+            padding: 40px;
+        }
+
+        /* Grid Layout for Header */
+        .invoice-header-grid {
+            display: grid;
+            grid-template-columns: 80px 2fr 1.2fr 80px;
+            gap: 24px;
+            border-bottom: 1px solid var(--gray-200);
+            padding-bottom: 24px;
+            margin-bottom: 24px;
+            align-items: center;
+        }
+        .company-details h2 {
+            font-size: 20px;
+            font-weight: 800;
+            color: var(--dark);
+            margin-bottom: 6px;
+        }
+        .company-details p {
+            font-size: 12px;
+            color: var(--gray-600);
+            margin: 0;
+            line-height: 1.5;
+        }
+        .invoice-meta {
+            text-align: left;
+            border-left: 1px solid var(--gray-200);
+            padding-left: 20px;
+        }
+        .invoice-meta h3 {
+            font-size: 22px;
+            font-weight: 800;
+            color: var(--primary);
+            margin-bottom: 8px;
+            text-transform: uppercase;
+        }
+        .invoice-meta p {
+            font-size: 13px;
+            margin: 0;
+            line-height: 1.6;
+            color: var(--gray-700);
+        }
+        .qr-container {
+            display: flex;
+            justify-content: flex-end;
+        }
+        .qr-container img {
+            border: 1px solid var(--gray-200);
+            padding: 4px;
+            border-radius: 8px;
+            background: #fff;
+            transition: transform 0.2s ease;
+        }
+        .qr-container img:hover {
+            transform: scale(1.05);
+        }
+
+        /* Info Cards (Bill To & Delivery Info) */
+        .info-section-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 24px;
+        }
+        .info-card {
+            background: var(--gray-50);
+            border: 1px solid var(--gray-100);
+            border-radius: 8px;
+            padding: 16px 20px;
+        }
+        .info-card-title {
+            font-size: 11px;
+            font-weight: 800;
+            color: var(--primary);
+            text-transform: uppercase;
+            margin-bottom: 10px;
+            letter-spacing: 0.5px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .info-card-text {
+            font-size: 13px;
+            line-height: 1.6;
+            color: var(--gray-700);
+            margin: 0;
+        }
+
+        /* Modern Item Table */
+        .items-table-container {
+            border: 1px solid var(--gray-200);
+            border-radius: 8px;
+            overflow: hidden;
+            margin-bottom: 24px;
+        }
+        .invoice-items-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .invoice-items-table th {
+            background-color: var(--gray-100);
+            color: var(--dark);
+            font-weight: 700;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            padding: 12px 16px;
+            text-align: left;
+            border-bottom: 1px solid var(--gray-200);
+        }
+        .invoice-items-table td {
+            padding: 12px 16px;
+            font-size: 13px;
+            border-bottom: 1px solid var(--gray-100);
+            color: var(--gray-700);
+        }
+        .invoice-items-table tr:last-child td {
+            border-bottom: none;
+        }
+        .free-badge {
+            background-color: var(--success-light);
+            color: var(--success);
+            font-size: 10px;
+            font-weight: 700;
+            padding: 2px 8px;
+            border-radius: 12px;
+            display: inline-block;
+        }
+
+        /* Totals & Signature layout */
+        .invoice-summary-grid {
+            display: grid;
+            grid-template-columns: 1.3fr 1fr;
+            gap: 30px;
+            margin-bottom: 40px;
+            align-items: start;
+        }
+        .words-card {
+            padding: 16px 20px;
+            border-left: 4px solid var(--primary);
+            background-color: var(--gray-50);
+            border-radius: 0 8px 8px 0;
+        }
+        .words-title {
+            font-size: 11px;
+            font-weight: 800;
+            color: var(--gray-600);
+            text-transform: uppercase;
+            margin-bottom: 4px;
+        }
+        .words-content {
+            font-size: 13px;
+            font-style: italic;
+            color: var(--dark);
+            font-weight: 500;
+        }
+        .totals-box {
+            background-color: var(--gray-50);
+            border-radius: 8px;
+            padding: 16px 20px;
+            border: 1px solid var(--gray-100);
+        }
+        .total-line {
+            display: flex;
+            justify-content: space-between;
+            font-size: 13px;
+            padding: 6px 0;
+        }
+        .grand-total-line {
+            border-top: 2px solid var(--gray-200);
+            margin-top: 8px;
+            padding-top: 10px;
+            font-weight: 800;
+            font-size: 16px;
+            color: var(--dark);
+        }
+
+        /* Signatures section */
+        .signatures-row {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 16px;
+            margin-top: 50px;
+            border-top: 1px solid var(--gray-200);
+            padding-top: 24px;
+        }
+        .sig-box {
+            text-align: center;
+        }
+        .sig-line {
+            width: 80%;
+            height: 1px;
+            background-color: var(--gray-200);
+            margin: 0 auto 10px auto;
+        }
+        .sig-label {
+            font-size: 10px;
+            font-weight: 700;
+            color: var(--gray-600);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        /* Verification State styling (Welcome & Failed) */
+        .state-card {
+            background: #fff;
+            border-radius: var(--border-radius);
+            padding: 50px 30px;
+            box-shadow: var(--card-shadow);
+            border: 1px solid rgba(226, 232, 240, 0.8);
+            text-align: center;
+        }
+        .state-icon {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            background-color: rgba(79, 70, 229, 0.08);
+            color: var(--primary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 32px;
+            margin: 0 auto 24px auto;
+        }
+        .state-icon.failed {
+            background-color: #fef2f2;
+            color: #ef4444;
+        }
+        .state-title {
+            font-size: 22px;
+            font-weight: 800;
+            color: var(--dark);
+            margin-bottom: 8px;
+        }
+        .state-desc {
+            font-size: 14px;
+            color: var(--gray-600);
+            max-width: 450px;
+            margin: 0 auto;
+        }
+
+        /* Responsive CSS for Mobile Screens */
+        @media screen and (max-width: 767px) {
+            .verify-container {
+                margin: 20px auto;
+                padding: 0 16px;
+            }
+            .invoice-body {
+                padding: 24px 16px;
+            }
+            .invoice-header-grid {
+                grid-template-columns: 1fr;
+                gap: 20px;
+                text-align: center;
+            }
+            .invoice-meta {
+                text-align: center;
+                border-left: none;
+                padding-left: 0;
+            }
+            .qr-container {
+                justify-content: center;
+            }
+            .info-section-grid {
+                grid-template-columns: 1fr;
+                gap: 16px;
+            }
+            .invoice-summary-grid {
+                grid-template-columns: 1fr;
+                gap: 20px;
+            }
+            .signatures-row {
+                grid-template-columns: repeat(2, 1fr);
+                gap: 24px;
+            }
+            .sig-line {
+                width: 90%;
+            }
+            .items-table-container {
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+            }
+            .invoice-items-table {
+                min-width: 500px;
+            }
+            .public-navbar .container {
+                flex-direction: column;
+                gap: 12px;
+                align-items: center !important;
+            }
+        }
+
+        /* Print CSS - overrides screen CSS for physical paper A4 prints */
         @media print {
-            html, body, .verify-container, .invoice-wrap, .print-table, .item-table { 
-                background: #fff !important; 
-                background-color: #fff !important; 
+            @page {
+                size: A4;
+                margin: 8mm;
+            }
+            body {
+                background: #fff !important;
+                background-image: none !important;
+                color: #000 !important;
+                font-family: Arial, sans-serif !important;
+                font-size: 11px !important;
+            }
+            .no-print, .btn, .public-navbar, .search-card {
+                display: none !important;
+            }
+            .verify-container {
+                margin: 0 !important;
+                padding: 0 !important;
+                max-width: 100% !important;
+                width: 100% !important;
+            }
+            .invoice-card {
+                box-shadow: none !important;
+                border: none !important;
+                border-radius: 0 !important;
+                background: #fff !important;
+            }
+            .status-banner {
+                display: none !important;
+            }
+            .invoice-body {
+                padding: 0 !important;
+            }
+            .invoice-header-grid {
+                grid-template-columns: 80px 2.5fr 1.5fr 80px !important;
+                display: grid !important;
+                border-bottom: 2px solid #000 !important;
+                padding-bottom: 15px !important;
+                margin-bottom: 15px !important;
+                align-items: center !important;
+            }
+            .qr-container {
+                grid-column: 4;
+                display: block !important;
+            }
+            .invoice-meta {
+                grid-column: 3;
+                text-align: left !important;
+                border-left: 1px solid #ddd !important;
+                padding-left: 15px !important;
+            }
+            .company-details {
+                grid-column: 2;
+            }
+            .company-details h2 {
+                color: #000 !important;
+                font-size: 18px !important;
+            }
+            .info-section-grid {
+                grid-template-columns: 1fr 1fr !important;
+                display: grid !important;
+                gap: 15px !important;
+            }
+            .info-card {
+                background: #fff !important;
+                border: 1px solid #ddd !important;
+                padding: 10px !important;
+            }
+            .invoice-items-table th {
+                background-color: #000 !important;
+                color: #fff !important;
+                border: 1px solid #000 !important;
                 -webkit-print-color-adjust: exact !important;
                 print-color-adjust: exact !important;
             }
-            .no-print, .btn, .public-navbar, .search-box-wrap { display: none !important; }
-            .verify-container { margin: 0; width: 100%; max-width: 100%; }
-            .invoice-wrap { box-shadow: none !important; border: none !important; border-radius: 0; }
-            .header-company h2 { color: #0d6efd !important; }
+            .invoice-items-table td {
+                border: 1px solid #ddd !important;
+                padding: 6px 8px !important;
+            }
+            .invoice-summary-grid {
+                grid-template-columns: 1.3fr 1fr !important;
+                display: grid !important;
+                gap: 20px !important;
+                margin-bottom: 20px !important;
+            }
+            .words-card {
+                border-left: 2px solid #000 !important;
+                background: #fff !important;
+            }
+            .totals-box {
+                background: #fff !important;
+                border: none !important;
+                padding: 0 !important;
+            }
+            .grand-total-line {
+                border-top: 2px solid #000 !important;
+            }
+            .signatures-row {
+                grid-template-columns: repeat(5, 1fr) !important;
+                display: grid !important;
+                margin-top: 40px !important;
+            }
+            .sig-line {
+                background-color: #000 !important;
+            }
         }
     </style>
 </head>
@@ -115,14 +553,14 @@ $qr_url = "https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=" . url
 
 <nav class="public-navbar no-print">
     <div class="container d-flex justify-content-between align-items-center py-3">
-        <a href="index.php" class="text-decoration-none d-flex align-items-center">
+        <a href="index.php" class="text-decoration-none d-flex align-items-center navbar-brand">
             <?php if ($company['logo_url']): ?>
-                <img src="<?php echo $company['logo_url']; ?>" height="30" class="me-2">
+                <img src="<?php echo htmlspecialchars($company['logo_url']); ?>" height="30" class="me-2">
             <?php endif; ?>
-            <span class="fw-bold text-dark"><?php echo $company['name']; ?></span>
+            <span class="fw-bold text-dark"><?php echo htmlspecialchars($company['name']); ?></span>
         </a>
-        <div>
-            <button onclick="window.print()" class="btn btn-dark btn-sm rounded-pill px-4 me-2"><i class="fas fa-print me-2"></i>Print A4</button>
+        <div class="d-flex gap-2">
+            <button onclick="window.print()" class="btn btn-dark btn-sm rounded-pill px-4"><i class="fas fa-print me-2"></i>Print A4</button>
             <a href="login.php" class="btn btn-outline-primary btn-sm rounded-pill px-4">Staff Login</a>
         </div>
     </div>
@@ -130,171 +568,218 @@ $qr_url = "https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=" . url
 
 <div class="container verify-container">
     
-    <div class="search-box-wrap no-print row justify-content-center mb-4">
-        <div class="col-md-6">
-            <form method="GET" class="input-group">
-                <input type="text" name="id" class="form-control rounded-start-pill ps-4" placeholder="Enter Invoice ID..." value="<?php echo $id; ?>">
-                <button class="btn btn-primary rounded-end-pill px-4" type="submit">Verify</button>
-            </form>
-        </div>
+    <!-- Search Box Card -->
+    <div class="search-card no-print mb-4">
+        <form method="GET" class="row g-3 align-items-center justify-content-center">
+            <div class="col-md-8 col-sm-12">
+                <div class="input-group">
+                    <span class="input-group-text bg-transparent border-end-0 ps-3 text-muted"><i class="fas fa-search"></i></span>
+                    <input type="text" name="id" class="form-control border-start-0 ps-2" placeholder="Enter Invoice ID to verify (e.g. 336)..." value="<?php echo htmlspecialchars($id); ?>">
+                </div>
+            </div>
+            <div class="col-md-3 col-sm-12 d-grid">
+                <button class="btn btn-primary" type="submit">Verify Now</button>
+            </div>
+        </form>
     </div>
 
     <?php if ($id && $sale): ?>
-        <div class="invoice-wrap">
-            <div class="status-ribbon no-print <?php echo $sale['status'] == 'Confirmed' ? 'bg-confirmed' : 'bg-draft'; ?>">
-                <i class="fas fa-shield-alt me-2"></i> Authentic <?php echo $sale['status']; ?> Invoice
+        <div class="invoice-card">
+            <div class="status-banner <?php echo $sale['status'] == 'Confirmed' ? '' : 'status-draft'; ?>">
+                <i class="fas <?php echo $sale['status'] == 'Confirmed' ? 'fa-shield-halved' : 'fa-triangle-exclamation'; ?> me-2"></i>
+                Authentic <?php echo htmlspecialchars($sale['status']); ?> Invoice
             </div>
 
-            <table class="print-table">
-                <thead>
-                    <tr>
-                        <td style="border:none; padding:0;">
-                            <!-- Header Grid -->
-                            <div class="header-grid">
-                                <div class="header-logo">
-                                    <?php if ($company['logo_url']): ?>
-                                        <?php 
-                                            $logo_path = $company['logo_url'];
-                                            if (!filter_var($logo_path, FILTER_VALIDATE_URL) && strpos($logo_path, 'data:') !== 0) {
-                                                $logo_path = BASE_URL . ltrim($logo_path, '/');
-                                            }
-                                        ?>
-                                        <img src="<?php echo $logo_path; ?>" alt="Logo">
-                                    <?php endif; ?>
-                                </div>
-                                <div class="header-company">
-                                    <h2 class="text-primary"><?php echo $company['name']; ?></h2>
-                                    <p><?php echo $company['address']; ?></p>
-                                    <p>Phone: <?php echo $company['phone']; ?> | Email: <?php echo $company['email']; ?></p>
-                                </div>
-                                <div class="header-invoice">
-                                    <h4>Invoice</h4>
-                                    <p><strong>No:</strong> #<?php echo str_pad($sale['id'], 6, '0', STR_PAD_LEFT); ?></p>
-                                    <p><strong>Date:</strong> <?php echo date('d-m-Y', strtotime($sale['created_at'])); ?></p>
-                                    <p><strong>Status:</strong> <?php echo strtoupper($sale['status']); ?></p>
-                                </div>
-                                <div class="header-qr">
-                                    <img src="<?php echo $qr_url; ?>" alt="QR">
-                                </div>
-                            </div>
+            <div class="invoice-body">
+                <!-- Header Grid -->
+                <div class="invoice-header-grid">
+                    <div class="company-logo">
+                        <?php if ($company['logo_url']): ?>
+                            <?php 
+                                $logo_path = $company['logo_url'];
+                                if (!filter_var($logo_path, FILTER_VALIDATE_URL) && strpos($logo_path, 'data:') !== 0) {
+                                    $logo_path = BASE_URL . ltrim($logo_path, '/');
+                                }
+                            ?>
+                            <img src="<?php echo htmlspecialchars($logo_path); ?>" alt="Logo" style="max-width: 80px; max-height: 80px;">
+                        <?php endif; ?>
+                    </div>
+                    <div class="company-details">
+                        <h2><?php echo htmlspecialchars($company['name']); ?></h2>
+                        <p><?php echo htmlspecialchars($company['address']); ?></p>
+                        <p>Phone: <?php echo htmlspecialchars($company['phone']); ?> | Email: <?php echo htmlspecialchars($company['email']); ?></p>
+                    </div>
+                    <div class="invoice-meta">
+                        <h3>Invoice</h3>
+                        <p><strong>No:</strong> #<?php echo str_pad($sale['id'], 6, '0', STR_PAD_LEFT); ?></p>
+                        <p><strong>Date:</strong> <?php echo date('d-m-Y', strtotime($sale['created_at'])); ?></p>
+                        <p><strong>Status:</strong> <span class="badge <?php echo $sale['status'] == 'Confirmed' ? 'bg-success' : 'bg-warning text-dark'; ?>"><?php echo strtoupper($sale['status']); ?></span></p>
+                    </div>
+                    <div class="qr-container">
+                        <img src="<?php echo $qr_url; ?>" alt="QR" style="width: 75px; height: 75px;">
+                    </div>
+                </div>
 
-                            <div class="bill-inline text-center">
-                                <strong>BILL TO:</strong> <?php echo $sale['customer_name']; ?> | 
-                                <strong>PHONE:</strong> <?php echo $sale['customer_phone']; ?> | 
-                                <strong>ADDRESS:</strong> <?php echo $sale['customer_address']; ?>
-                            </div>
-
+                <!-- Info Section (Bill To / Delivery Details) -->
+                <div class="info-section-grid">
+                    <div class="info-card">
+                        <div class="info-card-title">
+                            <i class="fas fa-user-tie"></i> Bill To
+                        </div>
+                        <p class="info-card-text">
+                            <strong>Name:</strong> <?php echo htmlspecialchars($sale['customer_name']); ?><br>
+                            <strong>Phone:</strong> <?php echo htmlspecialchars($sale['customer_phone']); ?><br>
+                            <strong>Address:</strong> <?php echo htmlspecialchars($sale['customer_address']); ?>
+                        </p>
+                    </div>
+                    
+                    <div class="info-card">
+                        <div class="info-card-title">
+                            <i class="fas fa-truck-ramp-box"></i> Delivery details
+                        </div>
+                        <p class="info-card-text">
                             <?php if ($sale['status'] == 'Confirmed'): ?>
-                            <div class="bill-inline text-center" style="background: #f8f9fa; border: 1px solid #ddd; padding: 2px; font-size: 9px; margin-top: -10px;">
-                                <strong>DELIVERY STATUS:</strong> <?php echo strtoupper($sale['delivery_status']); ?> | 
-                                <strong>DATE:</strong> <?php echo $sale['delivery_date'] ? date('d-m-Y', strtotime($sale['delivery_date'])) : 'PENDING'; ?>
+                                <strong>Delivery Status:</strong> <?php echo htmlspecialchars($sale['delivery_status']); ?><br>
+                                <strong>Delivery Date:</strong> <?php echo $sale['delivery_date'] ? date('d-m-Y', strtotime($sale['delivery_date'])) : 'Pending'; ?><br>
                                 <?php if ($truck_load): ?>
-                                    | <strong>TRUCK:</strong> <?php echo $truck_load['truck_no']; ?> | <strong>DRIVER:</strong> <?php echo $truck_load['driver_name']; ?>
+                                    <strong>Truck No:</strong> <?php echo htmlspecialchars($truck_load['truck_no']); ?><br>
+                                    <strong>Driver:</strong> <?php echo htmlspecialchars($truck_load['driver_name']); ?>
+                                <?php else: ?>
+                                    <strong>Truck / Driver:</strong> Unassigned
                                 <?php endif; ?>
-                            </div>
+                            <?php else: ?>
+                                <em>Invoice is in Draft status. Delivery details will be available once confirmed.</em>
                             <?php endif; ?>
-                        </td>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr>
-                        <td style="border:none; padding:0;">
-                            <div class="item-table-wrap">
-                                <table class="item-table">
-                                    <thead>
-                                        <tr>
-                                            <th style="width: 5%;">#</th>
-                                            <th style="width: 55%;">Product Description</th>
-                                            <th style="width: 10%; text-align: center;">Qty</th>
-                                            <th style="width: 15%; text-align: right;">Rate</th>
-                                            <th style="width: 15%; text-align: right;">Total</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        <?php 
-                                        $i = 1;
-                                        foreach ($items as $item): ?>
-                                            <?php if ($item['billed_qty'] > 0): ?>
-                                            <tr>
-                                                <td><?php echo $i++; ?></td>
-                                                <td><strong><?php echo $item['product_name']; ?></strong><?php echo $item['note'] ? " - ".$item['note'] : ""; ?></td>
-                                                <td class="text-center"><?php echo $item['billed_qty']; ?></td>
-                                                <td class="text-end"><?php echo number_format($item['rate'], 2); ?></td>
-                                                <td class="text-end fw-bold"><?php echo number_format($item['total'], 2); ?></td>
-                                            </tr>
-                                            <?php endif; ?>
-                                            <?php if ($item['free_qty'] > 0): ?>
-                                            <tr style="color: #198754;">
-                                                <td><?php echo $i++; ?></td>
-                                                <td><strong><?php echo $item['product_name']; ?></strong><br><small class="text-muted">FREE</small></td>
-                                                <td class="text-center"><?php echo $item['free_qty']; ?></td>
-                                                <td class="text-end"><?php echo number_format($item['rate'], 2); ?></td>
-                                                <td class="text-end fw-bold">0.00</td>
-                                            </tr>
-                                            <?php endif; ?>
-                                        <?php endforeach; ?>
-                                    </tbody>
-                                </table>
-                            </div>
-                        </td>
-                    </tr>
-                </tbody>
-                <tfoot>
-                    <tr>
-                        <td style="border:none; padding:0;">
-                            <div class="footer-layout">
-                                <div class="words-section">
-                                    <strong>Amount in Words:</strong><br>
-                                    <?php echo number_to_words($sale['grand_total']); ?>
-                                    <div class="mt-3 no-print">
-                                        <div class="alert alert-success py-2 small d-inline-block">
-                                            <i class="fas fa-check-circle me-1"></i> Digitally Verified Invoice
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="totals-section">
-                                    <div class="total-row"><span>Sub Total</span><span><?php echo number_format($sale['total_amount'], 2); ?></span></div>
-                                    <?php if ($sale['discount'] > 0): ?>
-                                        <div class="total-row text-danger"><span>Discount</span><span>-<?php echo number_format($sale['discount'], 2); ?></span></div>
-                                    <?php endif; ?>
-                                    <div class="total-row grand-total-row"><span>NET TOTAL</span><span>৳ <?php echo number_format($sale['grand_total'], 2); ?></span></div>
-                                </div>
-                            </div>
+                        </p>
+                    </div>
+                </div>
 
-                            <div class="sig-row">
-                                <div class="sig-col">Prepared By</div>
-                                <div class="sig-col">Warehouse Out</div>
-                                <div class="sig-col">Customer Received</div>
-                                <div class="sig-col">Authorized Authority</div>
-                            </div>
+                <!-- Items Table -->
+                <div class="items-table-container">
+                    <table class="invoice-items-table">
+                        <thead>
+                            <tr>
+                                <th style="width: 8%;">#</th>
+                                <th style="width: 50%;">Product Description</th>
+                                <th style="width: 12%; text-align: center;">Qty</th>
+                                <th style="width: 15%; text-align: right;">Rate (BDT)</th>
+                                <th style="width: 15%; text-align: right;">Total (BDT)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php 
+                            $i = 1;
+                            foreach ($items as $item): ?>
+                                <?php if ($item['billed_qty'] > 0): ?>
+                                <tr>
+                                    <td><?php echo $i++; ?></td>
+                                    <td>
+                                        <strong><?php echo htmlspecialchars($item['product_name']); ?></strong>
+                                        <?php echo $item['note'] ? "<br><small class='text-muted'>" . htmlspecialchars($item['note']) . "</small>" : ""; ?>
+                                    </td>
+                                    <td class="text-center"><?php echo $item['billed_qty']; ?></td>
+                                    <td class="text-end"><?php echo number_format($item['rate'], 2); ?></td>
+                                    <td class="text-end fw-bold"><?php echo number_format($item['total'], 2); ?></td>
+                                </tr>
+                                <?php endif; ?>
+                                <?php if ($item['free_qty'] > 0): ?>
+                                <tr>
+                                    <td><?php echo $i++; ?></td>
+                                    <td>
+                                        <strong><?php echo htmlspecialchars($item['product_name']); ?></strong>
+                                        <br><span class="free-badge">FREE ITEM</span>
+                                    </td>
+                                    <td class="text-center"><?php echo $item['free_qty']; ?></td>
+                                    <td class="text-end"><?php echo number_format($item['rate'], 2); ?></td>
+                                    <td class="text-end fw-bold">0.00</td>
+                                </tr>
+                                <?php endif; ?>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
 
-                            <div class="text-center py-4 small text-muted border-top mx-4">
-                                Powered by <strong>sohojweb</strong>
+                <!-- Summary Section -->
+                <div class="invoice-summary-grid">
+                    <div class="words-card">
+                        <div class="words-title">Amount in Words</div>
+                        <div class="words-content"><?php echo number_to_words($sale['grand_total']); ?></div>
+                        <div class="mt-3 no-print">
+                            <span class="badge bg-success-subtle text-success border border-success-subtle px-3 py-2">
+                                <i class="fas fa-circle-check me-1"></i> Digital Authenticity Verified
+                            </span>
+                        </div>
+                    </div>
+                    <div class="totals-box">
+                        <div class="total-line">
+                            <span class="text-muted">Sub Total</span>
+                            <span><?php echo number_format($sale['total_amount'], 2); ?></span>
+                        </div>
+                        <?php if ($sale['discount'] > 0): ?>
+                            <div class="total-line text-danger">
+                                <span>Discount</span>
+                                <span>-<?php echo number_format($sale['discount'], 2); ?></span>
                             </div>
-                        </td>
-                    </tr>
-                </tfoot>
-            </table>
+                        <?php endif; ?>
+                        <div class="total-line grand-total-line">
+                            <span>NET TOTAL</span>
+                            <span>৳ <?php echo number_format($sale['grand_total'], 2); ?></span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Signatures -->
+                <div class="signatures-row">
+                    <div class="sig-box">
+                        <div class="sig-line"></div>
+                        <div class="sig-label">Driver</div>
+                    </div>
+                    <div class="sig-box">
+                        <div class="sig-line"></div>
+                        <div class="sig-label">Security</div>
+                    </div>
+                    <div class="sig-box">
+                        <div class="sig-line"></div>
+                        <div class="sig-label">Distribution</div>
+                    </div>
+                    <div class="sig-box">
+                        <div class="sig-line"></div>
+                        <div class="sig-label">Accounts</div>
+                    </div>
+                    <div class="sig-box">
+                        <div class="sig-line"></div>
+                        <div class="sig-label">Authorized Authority</div>
+                    </div>
+                </div>
+            </div>
         </div>
 
     <?php elseif ($id): ?>
-        <div class="alert alert-danger text-center p-5 shadow-sm rounded-4">
-            <i class="fas fa-search fa-3x mb-3 opacity-50"></i>
-            <h3>Verification Failed</h3>
-            <p>We couldn't find an invoice with ID <strong>#<?php echo htmlspecialchars($id); ?></strong>.</p>
-            <a href="verify_invoice.php" class="btn btn-primary rounded-pill px-5 mt-2">Try Again</a>
+        <div class="state-card text-danger">
+            <div class="state-icon failed">
+                <i class="fas fa-triangle-exclamation"></i>
+            </div>
+            <h3 class="state-title text-dark">Verification Failed</h3>
+            <p class="state-desc mb-4">We couldn't find an invoice matching ID <strong>#<?php echo htmlspecialchars($id); ?></strong> in our system. Please check the ID and try again.</p>
+            <a href="verify_invoice.php" class="btn btn-primary rounded-pill px-5">Go Back</a>
         </div>
     <?php else: ?>
-        <div class="text-center py-5">
-            <i class="fas fa-fingerprint fa-4x text-primary opacity-25 mb-3"></i>
-            <h4 class="fw-bold">Public Verification Portal</h4>
-            <p class="text-muted">Type an Invoice ID above to confirm its authenticity.</p>
+        <div class="state-card">
+            <div class="state-icon">
+                <i class="fas fa-fingerprint"></i>
+            </div>
+            <h3 class="state-title">Public Verification Portal</h3>
+            <p class="state-desc mb-4">Enter an Invoice ID in the search bar above to instantly verify its authenticity and delivery details.</p>
+            <div class="d-flex justify-content-center gap-2 no-print">
+                <span class="badge bg-light text-dark border px-3 py-2"><i class="fas fa-shield-alt text-primary me-1"></i> Secure Authentication</span>
+                <span class="badge bg-light text-dark border px-3 py-2"><i class="fas fa-circle-check text-success me-1"></i> Official Document</span>
+            </div>
         </div>
     <?php endif; ?>
 
     <div class="text-center mt-5 mb-5 text-muted no-print" style="font-size: 11px;">
-        &copy; <?php echo date('Y'); ?> <?php echo $company['name']; ?>. All rights reserved.<br>
-        This portal is provided for public document verification.
+        &copy; <?php echo date('Y'); ?> <?php echo htmlspecialchars($company['name']); ?>. All rights reserved.<br>
+        This portal is provided for public document verification. Powered by <strong>sohojweb</strong>
     </div>
 </div>
 

@@ -1,285 +1,193 @@
 <?php
+$pageTitle = 'Dashboard';
 include 'header.php';
 
-// Base where clause for the selected company
-$selected_company = isset($_GET['company_id']) ? $_GET['company_id'] : '';
-$where_clause = !empty($selected_company) ? "AND o.company_id = '" . mysqli_real_escape_string($conn, $selected_company) . "'" : "";
+/* Company filter */
+$sel_cid = (int)($_GET['company_id'] ?? 0);
+$where_cid = $sel_cid ? "AND o.company_id=$sel_cid" : '';
+$w_cid     = $sel_cid ? "WHERE company_id=$sel_cid" : '';
+
+/* KPIs */
+$kpi_q = $conn->query(
+    "SELECT COUNT(DISTINCT o.id) AS orders,
+            COALESCE(SUM(oi.quantity*oi.price),0) AS revenue,
+            COUNT(DISTINCT o.shop_id) AS shops
+     FROM orders o LEFT JOIN order_items oi ON o.id=oi.order_id
+     WHERE o.order_status=1 $where_cid"
+);
+$kpi = $kpi_q->fetch_assoc();
+$avg_order = $kpi['orders'] > 0 ? $kpi['revenue'] / $kpi['orders'] : 0;
+
+/* Truck stats */
+$tl_q = $conn->query(
+    "SELECT status, COUNT(*) AS c FROM truck_loads " .
+    ($sel_cid ? "WHERE company_id=$sel_cid" : "") . " GROUP BY status"
+);
+$tl_stats = []; while ($r = $tl_q->fetch_assoc()) $tl_stats[$r['status']] = $r['c'];
+
+/* 30-day trend */
+$trend_q = $conn->query(
+    "SELECT DATE(o.created_at) AS d, COALESCE(SUM(oi.quantity*oi.price),0) AS rev
+     FROM orders o LEFT JOIN order_items oi ON o.id=oi.order_id
+     WHERE o.order_status=1 $where_cid AND o.created_at >= DATE_SUB(NOW(),INTERVAL 30 DAY)
+     GROUP BY DATE(o.created_at) ORDER BY d ASC"
+);
+$trend_labels = []; $trend_data = [];
+while ($r = $trend_q->fetch_assoc()) { $trend_labels[] = date('d M', strtotime($r['d'])); $trend_data[] = (float)$r['rev']; }
+
+/* Top 5 products */
+$prod_q = $conn->query(
+    "SELECT i.item_name, SUM(oi.quantity*oi.price) AS rev
+     FROM order_items oi JOIN orders o ON o.id=oi.order_id JOIN items i ON i.id=oi.item_id
+     WHERE o.order_status=1 $where_cid GROUP BY oi.item_id ORDER BY rev DESC LIMIT 5"
+);
+$prod_labels = []; $prod_data = [];
+while ($r = $prod_q->fetch_assoc()) { $prod_labels[] = $r['item_name']; $prod_data[] = (float)$r['rev']; }
+
+/* Top 5 SRs */
+$sr_q = $conn->query(
+    "SELECT u.username, SUM(oi.quantity*oi.price) AS rev, COUNT(DISTINCT o.id) AS orders
+     FROM orders o LEFT JOIN order_items oi ON o.id=oi.order_id JOIN users u ON u.id=o.created_by
+     WHERE o.order_status=1 $where_cid GROUP BY o.created_by ORDER BY rev DESC LIMIT 5"
+);
+$sr_labels = []; $sr_data = [];
+while ($r = $sr_q->fetch_assoc()) { $sr_labels[] = $r['username']; $sr_data[] = (float)$r['rev']; }
+
+/* Top 5 routes */
+$route_q = $conn->query(
+    "SELECT r.route_name, SUM(oi.quantity*oi.price) AS rev
+     FROM orders o LEFT JOIN order_items oi ON o.id=oi.order_id JOIN routes r ON r.id=o.route_id
+     WHERE o.order_status=1 $where_cid GROUP BY o.route_id ORDER BY rev DESC LIMIT 5"
+);
+$route_labels = []; $route_data = [];
+while ($r = $route_q->fetch_assoc()) { $route_labels[] = $r['route_name']; $route_data[] = (float)$r['rev']; }
+
+/* Companies list for filter */
+$comp_q = $conn->query("SELECT id, name FROM companies ORDER BY name ASC");
 ?>
 
-<div class="container">
-   <div class="glass-panel printable">
-   
-   <div class="form-section" style="margin-bottom: 30px; text-align: center; background: #f9f9f9; padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
-       <form method="GET" action="">
-           <label for="company_id" style="font-size: 1.2rem; margin-right: 10px; font-weight: 600; color: #333;"><i class="fa-solid fa-building"></i> Select Dashboard Data:</label>
-           <select name="company_id" id="company_id" onchange="this.form.submit()" style="padding: 10px; font-size: 1rem; border-radius: 5px; border: 1px solid #ccc; min-width: 250px;">
-               <option value="">-- All Companies Overview --</option>
-               <?php
-               $comp_query = "SELECT id, name FROM companies ORDER BY name ASC";
-               $comp_result = mysqli_query($conn, $comp_query);
-               if ($comp_result && mysqli_num_rows($comp_result) > 0) {
-                   while ($comp = mysqli_fetch_assoc($comp_result)) {
-                       $selected = ($selected_company == $comp['id']) ? 'selected' : '';
-                       echo "<option value='{$comp['id']}' {$selected}>{$comp['name']}</option>";
-                   }
-               }
-               ?>
-           </select>
-       </form>
-   </div>
+<div class="page-header">
+    <div><div class="page-title">Analytics Dashboard</div><div class="page-subtitle">System-wide sales and delivery performance</div></div>
+    <form method="GET" style="display:flex;gap:6px;align-items:flex-end">
+        <div>
+            <label style="font-size:0.75rem;color:var(--gray-500)">Company</label>
+            <select name="company_id" onchange="this.form.submit()" style="padding:6px 10px;width:auto;min-width:180px">
+                <option value="">All Companies</option>
+                <?php while ($c = $comp_q->fetch_assoc()): ?>
+                    <option value="<?=$c['id']?>" <?=$sel_cid==$c['id']?'selected':''?>><?= htmlspecialchars($c['name']) ?></option>
+                <?php endwhile; ?>
+            </select>
+        </div>
+    </form>
+</div>
 
-  <style>
-    .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 40px; }
-    .kpi-card { background: linear-gradient(135deg, #ffffff, #f1f5f9); border-radius: 12px; padding: 20px; text-align: center; box-shadow: 0 4px 15px rgba(0,0,0,0.05); border-left: 5px solid var(--primary); }
-    .kpi-card h3 { margin: 0; font-size: 1rem; color: #666; font-weight: 500; text-transform: uppercase; }
-    .kpi-card .value { font-size: 2rem; font-weight: 700; color: #333; margin: 10px 0 0; }
-    
-    .dashboard-section { margin-bottom: 50px; background: #fff; padding: 20px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
-    .dashboard-section h2 { font-weight: 600; font-size: 1.5rem; margin-top: 0; margin-bottom: 20px; color: #2c3e50; border-bottom: 2px solid #eee; padding-bottom: 10px; }
-    
-    .grid-2col { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; align-items: center; }
-    @media(max-width: 768px) { .grid-2col { grid-template-columns: 1fr; } }
-    
-    table.data-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
-    table.data-table th, table.data-table td { border: 1px solid #eee; padding: 12px; text-align: left; }
-    table.data-table th { background-color: #f8f9fa; color: #333; font-weight: 600; }
-    table.data-table tr:hover { background-color: #f1f5f9; }
-    
-    .chart-container { position: relative; height: 300px; width: 100%; }
-    .chart-container-large { position: relative; height: 400px; width: 100%; }
-  </style>
+<!-- KPIs -->
+<div class="kpi-grid">
+    <div class="kpi-card">
+        <div class="kpi-label">Total Revenue</div>
+        <div class="kpi-value" style="font-size:1.5rem"><?= number_format($kpi['revenue'], 0) ?></div>
+        <div class="kpi-sub">BDT (confirmed orders)</div>
+    </div>
+    <div class="kpi-card info">
+        <div class="kpi-label">Confirmed Orders</div>
+        <div class="kpi-value"><?= number_format($kpi['orders']) ?></div>
+        <div class="kpi-sub">&nbsp;</div>
+    </div>
+    <div class="kpi-card warning">
+        <div class="kpi-label">Active Shops</div>
+        <div class="kpi-value"><?= number_format($kpi['shops']) ?></div>
+        <div class="kpi-sub">with confirmed orders</div>
+    </div>
+    <div class="kpi-card danger">
+        <div class="kpi-label">Avg Order Value</div>
+        <div class="kpi-value" style="font-size:1.5rem"><?= number_format($avg_order, 0) ?></div>
+        <div class="kpi-sub">BDT per order</div>
+    </div>
+</div>
 
-  <?php
-  // ==========================================
-  // 1. KPI Queries
-  // ==========================================
-  $kpi_sales_q = mysqli_query($conn, "SELECT COALESCE(SUM(oi.quantity * oi.price), 0) as total FROM orders o JOIN order_items oi ON o.id = oi.order_id WHERE o.order_status = 1 $where_clause");
-  $kpi_sales = mysqli_fetch_assoc($kpi_sales_q)['total'];
+<!-- Truck Load Summary -->
+<div class="card mb-20">
+    <div class="card-header"><span class="card-title"><i class="fa-solid fa-truck" style="color:var(--primary)"></i> Truck Load Overview</span></div>
+    <div class="pipeline-grid">
+    <?php
+    $pl = ['draft'=>'Draft','submitted'=>'Submitted','approved'=>'Approved','loading'=>'Loading',
+           'ready'=>'Ready','in_transit'=>'In Transit','delivered'=>'Delivered','cancelled'=>'Cancelled'];
+    $pc = ['draft'=>'var(--gray-500)','submitted'=>'var(--info)','approved'=>'#0f766e','loading'=>'var(--warning)',
+           'ready'=>'#c2410c','in_transit'=>'#6d28d9','delivered'=>'var(--primary)','cancelled'=>'var(--danger)'];
+    foreach ($pl as $s => $lbl):
+    ?>
+        <div class="pipeline-col">
+            <div class="pipeline-col-status" style="color:<?=$pc[$s]?>"><?=$lbl?></div>
+            <div class="pipeline-col-count"><?= $tl_stats[$s] ?? 0 ?></div>
+            <div class="pipeline-col-label">loads</div>
+        </div>
+    <?php endforeach; ?>
+    </div>
+</div>
 
-  $kpi_orders_q = mysqli_query($conn, "SELECT COUNT(id) as total FROM orders o WHERE o.order_status = 1 $where_clause");
-  $kpi_orders = mysqli_fetch_assoc($kpi_orders_q)['total'];
-
-  $kpi_shops_q = mysqli_query($conn, "SELECT COUNT(DISTINCT shop_id) as total FROM orders o WHERE o.order_status = 1 $where_clause");
-  $kpi_shops = mysqli_fetch_assoc($kpi_shops_q)['total'];
-  ?>
-
-  <div class="kpi-grid">
-      <div class="kpi-card" style="border-left-color: #28a745;">
-          <h3><i class="fa-solid fa-sack-dollar"></i> Total Revenue</h3>
-          <div class="value">$<?php echo number_format($kpi_sales, 2); ?></div>
-      </div>
-      <div class="kpi-card" style="border-left-color: #007bff;">
-          <h3><i class="fa-solid fa-cart-check"></i> Confirmed Orders</h3>
-          <div class="value"><?php echo number_format($kpi_orders); ?></div>
-      </div>
-      <div class="kpi-card" style="border-left-color: #ffc107;">
-          <h3><i class="fa-solid fa-store"></i> Active Shops</h3>
-          <div class="value"><?php echo number_format($kpi_shops); ?></div>
-      </div>
-      <div class="kpi-card" style="border-left-color: #17a2b8;">
-          <h3><i class="fa-solid fa-chart-line"></i> Avg Order Value</h3>
-          <div class="value">$<?php echo $kpi_orders > 0 ? number_format($kpi_sales / $kpi_orders, 2) : '0.00'; ?></div>
-      </div>
-  </div>
-
-  <div class="dashboard-section">
-      <h2>📈 30-Day Sales Trend</h2>
-      <div class="chart-container-large">
-          <canvas id="trendLineChart"></canvas>
-      </div>
-      <table class="data-table" id="trendTable" style="display:none;">
-          <thead><tr><th>Date</th><th>Revenue</th></tr></thead>
-          <tbody>
-              <?php
-              $trend_q = "SELECT DATE(o.created_at) as order_date, COALESCE(SUM(oi.quantity * oi.price), 0) as daily_rev 
-                          FROM orders o JOIN order_items oi ON o.id = oi.order_id 
-                          WHERE o.order_status = 1 $where_clause 
-                          GROUP BY DATE(o.created_at) ORDER BY order_date DESC LIMIT 30";
-              $trend_res = mysqli_query($conn, $trend_q);
-              $trend_data = [];
-              if($trend_res) { while($row = mysqli_fetch_assoc($trend_res)) { $trend_data[] = $row; } }
-              $trend_data = array_reverse($trend_data); // Reverse to show oldest to newest left-to-right
-              foreach($trend_data as $row) {
-                  echo "<tr><td>" . date('M d', strtotime($row['order_date'])) . "</td><td>{$row['daily_rev']}</td></tr>";
-              }
-              if(empty($trend_data)) echo "<tr><td>No Data</td><td>0</td></tr>";
-              ?>
-          </tbody>
-      </table>
-  </div>
-
-  <div class="dashboard-section grid-2col">
-      <div>
-          <h2>📦 Top Selling Products</h2>
-          <table class="data-table" id="itemTable">
-            <thead><tr><th>Product Name</th><th>Qty Sold</th><th>Revenue ($)</th></tr></thead>
-            <tbody>
-              <?php
-              $item_q = "SELECT i.item_name, SUM(oi.quantity) as qty, COALESCE(SUM(oi.quantity * oi.price), 0) as rev 
-                         FROM order_items oi JOIN orders o ON oi.order_id = o.id JOIN items i ON oi.item_id = i.id 
-                         WHERE o.order_status = 1 $where_clause GROUP BY oi.item_id ORDER BY rev DESC LIMIT 5";
-              $item_res = mysqli_query($conn, $item_q);
-              if($item_res && mysqli_num_rows($item_res) > 0) {
-                  while($row = mysqli_fetch_assoc($item_res)) {
-                      echo "<tr><td>{$row['item_name']}</td><td>{$row['qty']}</td><td>" . number_format($row['rev'], 2) . "</td><td class='raw-val' style='display:none;'>{$row['rev']}</td></tr>";
-                  }
-              } else { echo "<tr><td>No Data</td><td>0</td><td>0.00</td><td class='raw-val' style='display:none;'>0</td></tr>"; }
-              ?>
-            </tbody>
-          </table>
-      </div>
-      <div class="chart-container"><canvas id="itemDoughnutChart"></canvas></div>
-  </div>
-
-  <div class="dashboard-section grid-2col">
-      <div class="chart-container"><canvas id="userBarChart"></canvas></div>
-      <div>
-          <h2>👨‍💼 Top Sales Representatives</h2>
-          <table class="data-table" id="userTable">
-            <thead><tr><th>Sales Rep</th><th>Orders</th><th>Revenue ($)</th></tr></thead>
-            <tbody>
-              <?php
-              $user_q = "SELECT u.username, COUNT(DISTINCT o.id) as orders, COALESCE(SUM(oi.quantity * oi.price), 0) as rev 
-                         FROM orders o LEFT JOIN order_items oi ON o.id = oi.order_id JOIN users u ON o.created_by = u.id 
-                         WHERE o.order_status = 1 $where_clause GROUP BY o.created_by ORDER BY rev DESC LIMIT 5";
-              $user_res = mysqli_query($conn, $user_q);
-              if($user_res && mysqli_num_rows($user_res) > 0) {
-                  while($row = mysqli_fetch_assoc($user_res)) {
-                      echo "<tr><td>{$row['username']}</td><td>{$row['orders']}</td><td>" . number_format($row['rev'], 2) . "</td><td class='raw-val' style='display:none;'>{$row['rev']}</td></tr>";
-                  }
-              } else { echo "<tr><td>No Data</td><td>0</td><td>0.00</td><td class='raw-val' style='display:none;'>0</td></tr>"; }
-              ?>
-            </tbody>
-          </table>
-      </div>
-  </div>
-
-  <div class="dashboard-section grid-2col">
-      <div>
-          <h2>🗺️ Top Performing Routes</h2>
-          <table class="data-table" id="routeTable">
-            <thead><tr><th>Route Name</th><th>Revenue ($)</th></tr></thead>
-            <tbody>
-              <?php
-              $route_q = "SELECT r.route_name, COALESCE(SUM(oi.quantity * oi.price), 0) as rev 
-                          FROM orders o LEFT JOIN order_items oi ON o.id = oi.order_id JOIN routes r ON o.route_id = r.id 
-                          WHERE o.order_status = 1 $where_clause GROUP BY o.route_id ORDER BY rev DESC LIMIT 5";
-              $route_res = mysqli_query($conn, $route_q);
-              if($route_res && mysqli_num_rows($route_res) > 0) {
-                  while($row = mysqli_fetch_assoc($route_res)) {
-                      echo "<tr><td>{$row['route_name']}</td><td>" . number_format($row['rev'], 2) . "</td><td class='raw-val' style='display:none;'>{$row['rev']}</td></tr>";
-                  }
-              } else { echo "<tr><td>No Data</td><td>0.00</td><td class='raw-val' style='display:none;'>0</td></tr>"; }
-              ?>
-            </tbody>
-          </table>
-      </div>
-      <div class="chart-container"><canvas id="routePieChart"></canvas></div>
-  </div>
-
-  <div class="dashboard-section grid-2col">
-      <div class="chart-container"><canvas id="shopPolarChart"></canvas></div>
-      <div>
-          <h2>🏪 Top Shops/Customers</h2>
-          <table class="data-table" id="shopTable">
-            <thead><tr><th>Shop Name</th><th>Revenue ($)</th></tr></thead>
-            <tbody>
-              <?php
-              $shop_q = "SELECT s.shop_name, COALESCE(SUM(oi.quantity * oi.price), 0) as rev 
-                         FROM orders o LEFT JOIN order_items oi ON o.id = oi.order_id JOIN shops s ON o.shop_id = s.id 
-                         WHERE o.order_status = 1 $where_clause GROUP BY o.shop_id ORDER BY rev DESC LIMIT 5";
-              $shop_res = mysqli_query($conn, $shop_q);
-              if($shop_res && mysqli_num_rows($shop_res) > 0) {
-                  while($row = mysqli_fetch_assoc($shop_res)) {
-                      echo "<tr><td>{$row['shop_name']}</td><td>" . number_format($row['rev'], 2) . "</td><td class='raw-val' style='display:none;'>{$row['rev']}</td></tr>";
-                  }
-              } else { echo "<tr><td>No Data</td><td>0.00</td><td class='raw-val' style='display:none;'>0</td></tr>"; }
-              ?>
-            </tbody>
-          </table>
-      </div>
-  </div>
-
+<!-- Charts -->
+<div class="grid-layout md-2">
+    <div class="card" style="grid-column:1/-1">
+        <div class="card-header"><span class="card-title">30-Day Revenue Trend</span></div>
+        <div style="height:280px"><canvas id="trendChart"></canvas></div>
+    </div>
+    <div class="card">
+        <div class="card-header"><span class="card-title">Top 5 Products</span></div>
+        <div style="height:260px"><canvas id="prodChart"></canvas></div>
+    </div>
+    <div class="card">
+        <div class="card-header"><span class="card-title">Top 5 Sales Reps</span></div>
+        <div style="height:260px"><canvas id="srChart"></canvas></div>
+    </div>
+    <div class="card" style="grid-column:1/-1">
+        <div class="card-header"><span class="card-title">Top 5 Routes by Revenue</span></div>
+        <div style="height:220px"><canvas id="routeChart"></canvas></div>
+    </div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
-// Universal color palettes
-const bgColors = ['rgba(54, 162, 235, 0.7)', 'rgba(255, 99, 132, 0.7)', 'rgba(255, 206, 86, 0.7)', 'rgba(75, 192, 192, 0.7)', 'rgba(153, 102, 255, 0.7)'];
-const borderColors = ['#36a2eb', '#ff6384', '#ffce56', '#4bc0c0', '#9966ff'];
+const colors = ['#10b981','#3b82f6','#f59e0b','#ef4444','#8b5cf6','#06b6d4'];
 
-// Utility to parse tables (Looks for a specific hidden column containing unformatted raw numbers)
-function parseTableData(tableId, labelColIndex, valueColIndex) {
-  const rows = document.querySelectorAll(`#${tableId} tbody tr`);
-  const labels = []; const values = [];
-  rows.forEach(row => {
-    const cells = row.querySelectorAll('td');
-    labels.push(cells[labelColIndex].innerText);
-    // Parse the hidden raw-val column if it exists, otherwise fallback to parsing text
-    const rawValCell = row.querySelector('.raw-val');
-    const val = rawValCell ? parseFloat(rawValCell.innerText) : parseFloat(cells[valueColIndex].innerText.replace(/,/g, ''));
-    values.push(val || 0);
-  });
-  return { labels, values };
-}
-
-// 1. Trend Line Chart
-const trendData = parseTableData('trendTable', 0, 1);
-new Chart(document.getElementById('trendLineChart'), {
-  type: 'line',
-  data: {
-    labels: trendData.labels,
-    datasets: [{
-      label: 'Daily Revenue ($)', data: trendData.values,
-      borderColor: '#28a745', backgroundColor: 'rgba(40, 167, 69, 0.1)',
-      borderWidth: 2, fill: true, tension: 0.3, pointBackgroundColor: '#28a745'
-    }]
-  },
-  options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+new Chart(document.getElementById('trendChart'), {
+    type: 'line',
+    data: {
+        labels: <?= json_encode($trend_labels) ?>,
+        datasets: [{ label: 'Revenue (BDT)', data: <?= json_encode($trend_data) ?>,
+            borderColor: '#10b981', backgroundColor: 'rgba(16,185,129,0.08)',
+            fill: true, tension: 0.3, pointRadius: 3, borderWidth: 2 }]
+    },
+    options: { responsive: true, maintainAspectRatio: false,
+        scales: { y: { beginAtZero: true } }, plugins: { legend: { display: false } } }
 });
 
-// 2. Item Doughnut Chart
-const itemData = parseTableData('itemTable', 0, 2);
-new Chart(document.getElementById('itemDoughnutChart'), {
-  type: 'doughnut',
-  data: {
-    labels: itemData.labels,
-    datasets: [{ data: itemData.values, backgroundColor: bgColors, borderColor: '#fff', borderWidth: 2 }]
-  },
-  options: { responsive: true, maintainAspectRatio: false }
+new Chart(document.getElementById('prodChart'), {
+    type: 'doughnut',
+    data: {
+        labels: <?= json_encode($prod_labels) ?>,
+        datasets: [{ data: <?= json_encode($prod_data) ?>, backgroundColor: colors }]
+    },
+    options: { responsive: true, maintainAspectRatio: false }
 });
 
-// 3. User Bar Chart
-const userData = parseTableData('userTable', 0, 2);
-new Chart(document.getElementById('userBarChart'), {
-  type: 'bar',
-  data: {
-    labels: userData.labels,
-    datasets: [{ label: 'Revenue Generated ($)', data: userData.values, backgroundColor: bgColors, borderColor: borderColors, borderWidth: 1 }]
-  },
-  options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+new Chart(document.getElementById('srChart'), {
+    type: 'bar',
+    data: {
+        labels: <?= json_encode($sr_labels) ?>,
+        datasets: [{ label: 'Revenue (BDT)', data: <?= json_encode($sr_data) ?>, backgroundColor: '#3b82f6' }]
+    },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } },
+        scales: { y: { beginAtZero: true } } }
 });
 
-// 4. Route Pie Chart
-const routeData = parseTableData('routeTable', 0, 1);
-new Chart(document.getElementById('routePieChart'), {
-  type: 'pie',
-  data: {
-    labels: routeData.labels,
-    datasets: [{ data: routeData.values, backgroundColor: bgColors, borderColor: '#fff', borderWidth: 2 }]
-  },
-  options: { responsive: true, maintainAspectRatio: false }
-});
-
-// 5. Shop Polar Area Chart
-const shopData = parseTableData('shopTable', 0, 1);
-new Chart(document.getElementById('shopPolarChart'), {
-  type: 'polarArea',
-  data: {
-    labels: shopData.labels,
-    datasets: [{ data: shopData.values, backgroundColor: bgColors }]
-  },
-  options: { responsive: true, maintainAspectRatio: false }
+new Chart(document.getElementById('routeChart'), {
+    type: 'bar',
+    data: {
+        labels: <?= json_encode($route_labels) ?>,
+        datasets: [{ label: 'Revenue (BDT)', data: <?= json_encode($route_data) ?>, backgroundColor: '#f59e0b' }]
+    },
+    options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y',
+        plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true } } }
 });
 </script>
 

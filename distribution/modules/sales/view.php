@@ -76,7 +76,7 @@ $qr_url     = 'https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=' .
     .grand-total-row { border-top: 2px solid #000; font-weight: 900; font-size: 14px; margin-top: 5px; padding-top: 5px; color: #000 !important; }
 
     .sig-row { display: flex; justify-content: space-between; margin-top: 50px; }
-    .sig-col { width: 22%; text-align: center; border-top: 1px solid #000; font-size: 9px; padding-top: 5px; text-transform: uppercase; color: #000 !important; }
+    .sig-col { width: 18%; text-align: center; border-top: 1px solid #000; font-size: 9px; padding-top: 5px; text-transform: uppercase; color: #000 !important; }
 
     @media print {
         * { 
@@ -344,9 +344,10 @@ $qr_url     = 'https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=' .
                     </div>
 
                     <div class="sig-row">
-                        <div class="sig-col">Prepared By (<?php echo $sale['creator_name']; ?>)</div>
-                        <div class="sig-col">Warehouse Out</div>
-                        <div class="sig-col">Customer Received</div>
+                        <div class="sig-col">Driver</div>
+                        <div class="sig-col">Security</div>
+                        <div class="sig-col">Distribution</div>
+                        <div class="sig-col">Accounts</div>
                         <div class="sig-col">Authorized Authority</div>
                     </div>
 

@@ -1,366 +1,427 @@
 <?php
+$pageTitle = 'Dashboard';
 include 'header.php';
 
-// ==========================================
-// 1. SECURE SESSION LOCK
-// ==========================================
-$session_company_id = $_SESSION['company_id'] ?? 1; // Fallback to 1 if testing
-$session_user_id = $_SESSION['user_id'] ?? 1;       // Fallback to 1 if testing
+$cid = (int)$_SESSION['company_id'];
+$uid = (int)$_SESSION['user_id'];
 
-// ==========================================
-// 2. FILTER PARAMETERS
-// ==========================================
-$interval = $_GET['interval'] ?? 'day'; 
-$date_from = $_GET['date_from'] ?? date('Y-m-01'); // Default: Start of this month
-$date_to = $_GET['date_to'] ?? date('Y-m-t');      // Default: End of this month
-$compare_user_id = $_GET['compare_user_id'] ?? '';
+/* ════════════════════════════════════════════════════
+   MANAGER DASHBOARD
+════════════════════════════════════════════════════ */
+if ($is_manager):
 
-// Determine SQL & PHP Date Formatting based on interval
-if ($interval == 'year') {
-    $sql_format = '%Y'; $php_format = 'Y'; $step = '+1 year'; $display_format = 'Y';
-} elseif ($interval == 'month') {
-    $sql_format = '%Y-%m'; $php_format = 'Y-m'; $step = '+1 month'; $display_format = 'F Y';
-} else {
-    $sql_format = '%Y-%m-%d'; $php_format = 'Y-m-d'; $step = '+1 day'; $display_format = 'd M Y';
+/* ── Month filter ── */
+$month = (int)($_GET['month'] ?? date('n'));
+$year  = (int)($_GET['year']  ?? date('Y'));
+$from  = sprintf('%04d-%02d-01', $year, $month);
+$to    = date('Y-m-t', strtotime($from));
+
+/* ── KPIs ── */
+$stmt = $conn->prepare("SELECT COUNT(DISTINCT o.id) AS orders, COALESCE(SUM(oi.quantity*oi.price),0) AS revenue
+    FROM orders o LEFT JOIN order_items oi ON o.id=oi.order_id
+    WHERE o.company_id=? AND o.order_status=1 AND o.order_date BETWEEN ? AND ?");
+$stmt->bind_param("iss", $cid, $from, $to);
+$stmt->execute();
+$kpi = $stmt->get_result()->fetch_assoc();
+$stmt->close();
+
+$stmt = $conn->prepare("SELECT COUNT(*) AS c FROM truck_loads WHERE company_id=? AND status='submitted'");
+$stmt->bind_param("i", $cid); $stmt->execute();
+$pending_approvals = (int)$stmt->get_result()->fetch_assoc()['c']; $stmt->close();
+
+$stmt = $conn->prepare("SELECT COUNT(DISTINCT created_by) AS c FROM orders WHERE company_id=? AND order_date BETWEEN ? AND ?");
+$stmt->bind_param("iss", $cid, $from, $to); $stmt->execute();
+$active_srs = (int)$stmt->get_result()->fetch_assoc()['c']; $stmt->close();
+
+$stmt = $conn->prepare("SELECT COUNT(*) AS c FROM truck_loads WHERE company_id=? AND status='in_transit'");
+$stmt->bind_param("i", $cid); $stmt->execute();
+$in_transit = (int)$stmt->get_result()->fetch_assoc()['c']; $stmt->close();
+
+/* ── Truck pipeline counts ── */
+$pipeline_statuses = ['draft','submitted','approved','loading','ready','in_transit','delivered'];
+$pipeline = [];
+foreach ($pipeline_statuses as $s) {
+    $stmt = $conn->prepare("SELECT COUNT(*) AS c FROM truck_loads WHERE company_id=? AND status=?");
+    $stmt->bind_param("is", $cid, $s); $stmt->execute();
+    $pipeline[$s] = (int)$stmt->get_result()->fetch_assoc()['c']; $stmt->close();
 }
 
-// ==========================================
-// 3. DATA FETCHING FUNCTION
-// ==========================================
-// This function gets gross and returns for a specific user and calculates net
-function getUserNetTrend($conn, $company_id, $user_id, $from, $to, $sql_format) {
-    $data = [];
-    
-    // Fetch Gross Sales
-    $q1 = "SELECT DATE_FORMAT(o.created_at, '$sql_format') as dt, SUM(oi.quantity * oi.price) as val 
-           FROM orders o JOIN order_items oi ON o.id = oi.order_id 
-           WHERE o.order_status=1 AND o.company_id='$company_id' AND o.created_by='$user_id' 
-           AND o.created_at BETWEEN '$from 00:00:00' AND '$to 23:59:59' 
-           GROUP BY dt";
-    $res1 = mysqli_query($conn, $q1);
-    if($res1) while($r = mysqli_fetch_assoc($res1)) { $data[$r['dt']]['gross'] = $r['val']; }
-    
-    // Fetch Returns
-    $q2 = "SELECT DATE_FORMAT(r.created_at, '$sql_format') as dt, SUM(ori.return_qty * ori.price) as val 
-           FROM order_returns r JOIN order_return_items ori ON r.id = ori.return_id 
-           WHERE r.company_id='$company_id' AND r.user_id='$user_id' 
-           AND r.created_at BETWEEN '$from 00:00:00' AND '$to 23:59:59' 
-           GROUP BY dt";
-    $res2 = mysqli_query($conn, $q2);
-    if($res2) while($r = mysqli_fetch_assoc($res2)) { $data[$r['dt']]['ret'] = $r['val']; }
-    
-    return $data;
-}
+/* ── SR target fulfillment (top 10) ── */
+$target_rows = $conn->prepare(
+    "SELECT u.username, t.target_amount,
+     COALESCE((
+       SELECT SUM(oi.quantity*oi.price)
+       FROM truck_loads tl
+       JOIN truck_load_orders tlo ON tlo.truck_load_id=tl.id AND tlo.is_active=1
+       JOIN order_items oi ON oi.order_id=tlo.order_id
+       WHERE tl.assigned_sr_id=u.id AND tl.company_id=?
+         AND tl.status='delivered'
+         AND MONTH(tl.delivered_at)=? AND YEAR(tl.delivered_at)=?
+     ),0) AS achieved
+     FROM targets t
+     JOIN users u ON u.id=t.target_entity_id
+     WHERE t.company_id=? AND t.target_type='sr' AND t.month=? AND t.year=?
+     ORDER BY achieved/NULLIF(t.target_amount,0) DESC LIMIT 10"
+);
+$target_rows->bind_param("iiiii" . "i", $cid, $month, $year, $cid, $month, $year);
+$target_rows->execute();
+$targets_res = $target_rows->get_result();
 
-// Fetch Data for Primary User (Logged in User)
-$my_data_raw = getUserNetTrend($conn, $session_company_id, $session_user_id, $date_from, $date_to, $sql_format);
+/* ── Recent truck loads ── */
+$recent_loads = $conn->prepare(
+    "SELECT tl.id, tl.load_name, tl.status, tl.total_orders, tl.total_value,
+            tl.created_at, u.username AS sr_name
+     FROM truck_loads tl
+     JOIN users u ON u.id=tl.assigned_sr_id
+     WHERE tl.company_id=? ORDER BY tl.created_at DESC LIMIT 8"
+);
+$recent_loads->bind_param("i", $cid); $recent_loads->execute();
+$loads_res = $recent_loads->get_result();
 
-// Fetch Data for Compared User (If Selected)
-$compare_data_raw = [];
-$compare_user_name = "";
-if (!empty($compare_user_id)) {
-    $compare_data_raw = getUserNetTrend($conn, $session_company_id, $compare_user_id, $date_from, $date_to, $sql_format);
-    $c_user_q = mysqli_query($conn, "SELECT username FROM users WHERE id='$compare_user_id'");
-    if($c_user_q && mysqli_num_rows($c_user_q) > 0) {
-        $compare_user_name = mysqli_fetch_assoc($c_user_q)['username'];
-    }
-}
-
-// ==========================================
-// 4. PREPARE UNIFORM DATA FOR CHART.JS
-// ==========================================
-$chart_labels = [];
-$my_gross_arr = []; $my_ret_arr = []; $my_net_arr = [];
-$comp_gross_arr = []; $comp_ret_arr = []; $comp_net_arr = [];
-
-$total_my_gross = 0; $total_my_ret = 0; $total_my_net = 0;
-$total_comp_gross = 0; $total_comp_ret = 0; $total_comp_net = 0;
-
-$current_date = strtotime($date_from);
-$end_date = strtotime($date_to);
-
-// Create a continuous timeline so charts don't have gaps
-while ($current_date <= $end_date) {
-    $period_key = date($php_format, $current_date);
-    $chart_labels[] = date($display_format, $current_date);
-    
-    // My Data Calculation
-    $m_gross = $my_data_raw[$period_key]['gross'] ?? 0;
-    $m_ret = $my_data_raw[$period_key]['ret'] ?? 0;
-    $m_net = $m_gross - $m_ret;
-    
-    $my_gross_arr[] = $m_gross; $my_ret_arr[] = $m_ret; $my_net_arr[] = $m_net;
-    $total_my_gross += $m_gross; $total_my_ret += $m_ret; $total_my_net += $m_net;
-    
-    // Compare Data Calculation
-    if (!empty($compare_user_id)) {
-        $c_gross = $compare_data_raw[$period_key]['gross'] ?? 0;
-        $c_ret = $compare_data_raw[$period_key]['ret'] ?? 0;
-        $c_net = $c_gross - $c_ret;
-        
-        $comp_gross_arr[] = $c_gross; $comp_ret_arr[] = $c_ret; $comp_net_arr[] = $c_net;
-        $total_comp_gross += $c_gross; $total_comp_ret += $c_ret; $total_comp_net += $c_net;
-    }
-    
-    $current_date = strtotime($step, $current_date);
-}
+$status_badge = [
+    'draft'=>'badge-gray','submitted'=>'badge-blue','approved'=>'badge-teal',
+    'loading'=>'badge-yellow','ready'=>'badge-orange','in_transit'=>'badge-purple',
+    'delivered'=>'badge-green','cancelled'=>'badge-red','returned'=>'badge-brown'
+];
 ?>
 
-<div class="container">
-    
-    <div class="form-section glass-panel" style="margin-bottom: 30px; border-top: 4px solid var(--primary);">
-        <h2 style="margin-top:0;"><i class="fa-solid fa-chart-line"></i> My Performance Dashboard</h2>
-        <p style="color: #666; font-size: 0.9rem;">Analyze your net sales trends. Expand the date range to compare months, or select a colleague to compare performance.</p>
-        
-        <form method="GET">
-            <div class="grid-layout desktop-4">
-                <div>
-                    <label>View By</label>
-                    <select name="interval" style="border-color: var(--primary); font-weight: bold;">
-                        <option value="day" <?php echo $interval == 'day' ? 'selected' : ''; ?>>Daily</option>
-                        <option value="month" <?php echo $interval == 'month' ? 'selected' : ''; ?>>Monthly</option>
-                        <option value="year" <?php echo $interval == 'year' ? 'selected' : ''; ?>>Yearly</option>
-                    </select>
-                </div>
-                <div><label>Date From</label><input type="date" name="date_from" value="<?php echo $date_from; ?>"></div>
-                <div><label>Date To</label><input type="date" name="date_to" value="<?php echo $date_to; ?>"></div>
-                
-                <div>
-                    <label>Compare With (Optional)</label>
-                    <select name="compare_user_id">
-                        <option value="">-- No Comparison --</option>
-                        <?php
-                        // Fetch other users in the same company
-                        $uq = mysqli_query($conn, "SELECT id, username FROM users WHERE company_id='$session_company_id' AND id != '$session_user_id' AND status=1");
-                        if ($uq) while ($u = mysqli_fetch_assoc($uq)) {
-                            $sel = ($compare_user_id == $u['id']) ? 'selected' : '';
-                            echo "<option value='{$u['id']}' $sel>{$u['username']}</option>";
-                        }
-                        ?>
-                    </select>
-                </div>
-            </div>
-            <div class="form-actions" style="margin-top: 15px;">
-                <button type="submit" class="btn btn-primary"><i class="fa-solid fa-bolt"></i> Update Dashboard</button>
-            </div>
-        </form>
+<div class="page-header">
+    <div>
+        <div class="page-title">Manager Dashboard</div>
+        <div class="page-subtitle"><?= date('F Y', strtotime($from)) ?> &mdash; <?= htmlspecialchars($company_name) ?></div>
     </div>
-
-    <style>
-        .kpi-wrapper { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin-bottom: 30px; }
-        .kpi-box { background: #fff; padding: 20px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); display: flex; justify-content: space-between; align-items: center; }
-        .kpi-main h4 { margin: 0 0 5px 0; color: #888; font-weight: 500; text-transform: uppercase; font-size: 0.85rem; }
-        .kpi-main h2 { margin: 0; color: #333; font-size: 2rem; }
-        .kpi-sub { text-align: right; font-size: 0.9rem; }
-    </style>
-
-    <div class="kpi-wrapper">
-        <div class="kpi-box" style="border-left: 5px solid #28a745;">
-            <div class="kpi-main">
-                <h4><i class="fa-solid fa-user"></i> My Net Sales</h4>
-                <h2>$<?php echo number_format($total_my_net, 2); ?></h2>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <form method="GET" style="display:flex;gap:8px;align-items:flex-end">
+            <div>
+                <label style="font-size:0.75rem;color:var(--gray-500)">Month</label>
+                <select name="month" style="width:auto;padding:6px 10px">
+                    <?php for ($m=1;$m<=12;$m++): ?>
+                        <option value="<?=$m?>" <?=$m==$month?'selected':''?>><?=date('M',mktime(0,0,0,$m,1))?></option>
+                    <?php endfor; ?>
+                </select>
             </div>
-            <div class="kpi-sub">
-                <div style="color: #666;">Gross: $<?php echo number_format($total_my_gross, 2); ?></div>
-                <div style="color: #dc3545;">Returns: -$<?php echo number_format($total_my_ret, 2); ?></div>
+            <div>
+                <label style="font-size:0.75rem;color:var(--gray-500)">Year</label>
+                <select name="year" style="width:auto;padding:6px 10px">
+                    <?php for ($y=date('Y');$y>=date('Y')-3;$y--): ?>
+                        <option value="<?=$y?>" <?=$y==$year?'selected':''?>><?=$y?></option>
+                    <?php endfor; ?>
+                </select>
             </div>
+            <button type="submit" class="btn btn-primary btn-sm">Go</button>
+        </form>
+        <?php if ($pending_approvals > 0): ?>
+            <a href="truck_loads.php?status=submitted" class="btn btn-danger btn-sm">
+                <i class="fa-solid fa-bell"></i> <?= $pending_approvals ?> Pending Approval
+            </a>
+        <?php endif; ?>
+    </div>
+</div>
+
+<!-- KPIs -->
+<div class="kpi-grid">
+    <div class="kpi-card">
+        <div class="kpi-label">Revenue (Month)</div>
+        <div class="kpi-value" style="font-size:1.4rem"><?= number_format($kpi['revenue'], 0) ?></div>
+        <div class="kpi-sub">from <?= number_format($kpi['orders']) ?> confirmed orders</div>
+    </div>
+    <div class="kpi-card warning">
+        <div class="kpi-label">Pending Approvals</div>
+        <div class="kpi-value"><?= $pending_approvals ?></div>
+        <div class="kpi-sub"><a href="truck_loads.php?status=submitted" style="color:var(--warning)">Review &rarr;</a></div>
+    </div>
+    <div class="kpi-card info">
+        <div class="kpi-label">In Transit Now</div>
+        <div class="kpi-value"><?= $in_transit ?></div>
+        <div class="kpi-sub"><a href="truck_loads.php?status=in_transit" style="color:var(--info)">Track &rarr;</a></div>
+    </div>
+    <div class="kpi-card danger">
+        <div class="kpi-label">SR Requests</div>
+        <div class="kpi-value"><?= $pending_requests ?></div>
+        <div class="kpi-sub"><a href="sr_requests.php" style="color:var(--danger)">Review &rarr;</a></div>
+    </div>
+</div>
+
+<!-- Truck Pipeline -->
+<div class="card mb-20">
+    <div class="card-header">
+        <span class="card-title"><i class="fa-solid fa-truck" style="color:var(--primary)"></i> Truck Load Pipeline</span>
+        <a href="truck_loads.php" class="btn btn-ghost btn-sm">All Loads</a>
+    </div>
+    <div class="pipeline-grid">
+        <?php
+        $pl_labels = ['draft'=>'Draft','submitted'=>'Submitted','approved'=>'Approved',
+                      'loading'=>'Loading','ready'=>'Ready','in_transit'=>'In Transit','delivered'=>'Delivered'];
+        $pl_colors = ['draft'=>'var(--gray-500)','submitted'=>'var(--info)','approved'=>'#0f766e',
+                      'loading'=>'var(--warning)','ready'=>'#c2410c','in_transit'=>'#6d28d9','delivered'=>'var(--primary)'];
+        foreach ($pl_labels as $s => $lbl):
+        ?>
+        <a href="truck_loads.php?status=<?= $s ?>" class="pipeline-col" style="text-decoration:none">
+            <div class="pipeline-col-status" style="color:<?= $pl_colors[$s] ?>"><?= $lbl ?></div>
+            <div class="pipeline-col-count"><?= $pipeline[$s] ?></div>
+            <div class="pipeline-col-label">loads</div>
+        </a>
+        <?php endforeach; ?>
+    </div>
+</div>
+
+<div class="grid-layout md-2">
+    <!-- Target Fulfillment -->
+    <div class="card">
+        <div class="card-header">
+            <span class="card-title"><i class="fa-solid fa-bullseye" style="color:var(--warning)"></i> Target Fulfillment</span>
+            <a href="targets.php" class="btn btn-ghost btn-sm">Manage</a>
         </div>
-
-        <?php if (!empty($compare_user_id)): ?>
-        <div class="kpi-box" style="border-left: 5px solid #9966ff;">
-            <div class="kpi-main">
-                <h4><i class="fa-solid fa-user-group"></i> <?php echo $compare_user_name; ?>'s Net Sales</h4>
-                <h2>$<?php echo number_format($total_comp_net, 2); ?></h2>
+        <?php if ($targets_res->num_rows > 0): ?>
+            <?php while ($tr = $targets_res->fetch_assoc()):
+                $pct = $tr['target_amount'] > 0 ? min(110, round($tr['achieved']/$tr['target_amount']*100)) : 0;
+                $bar_class = $pct >= 100 ? 'gold' : ($pct >= 80 ? '' : ($pct >= 50 ? 'warn' : 'danger'));
+            ?>
+            <div style="margin-bottom:14px">
+                <div class="flex-between mb-4">
+                    <span class="fw-600 text-sm"><?= htmlspecialchars($tr['username']) ?></span>
+                    <span class="text-sm <?= $pct>=100?'text-green':($pct>=50?'text-yellow':'text-red') ?>"><?= $pct ?>%</span>
+                </div>
+                <div class="progress-bar-wrap">
+                    <div class="progress-bar-fill <?= $bar_class ?>" style="width:<?= $pct ?>%"></div>
+                </div>
+                <div class="text-muted text-xs mt-4"><?= number_format($tr['achieved']) ?> / <?= number_format($tr['target_amount']) ?></div>
             </div>
-            <div class="kpi-sub">
-                <div style="color: #666;">Gross: $<?php echo number_format($total_comp_gross, 2); ?></div>
-                <div style="color: #dc3545;">Returns: -$<?php echo number_format($total_comp_ret, 2); ?></div>
-            </div>
-        </div>
+            <?php endwhile; ?>
+        <?php else: ?>
+            <div class="text-muted text-sm" style="padding:20px 0">No targets set for this month. <a href="targets.php">Set targets &rarr;</a></div>
         <?php endif; ?>
     </div>
 
-    <div class="grid-layout desktop-2" style="margin-bottom: 30px;">
-        
-        <div class="glass-panel printable">
-            <h3 style="margin-top:0; border-bottom: 1px solid #eee; padding-bottom:10px;">📈 Net Sales Trend (<?php echo ucfirst($interval); ?>)</h3>
-            <div style="position: relative; height: 350px; width: 100%;">
-                <canvas id="netTrendChart"></canvas>
-            </div>
+    <!-- Recent Truck Loads -->
+    <div class="card">
+        <div class="card-header">
+            <span class="card-title"><i class="fa-solid fa-list" style="color:var(--info)"></i> Recent Loads</span>
+            <a href="truck_loads.php" class="btn btn-ghost btn-sm">All</a>
         </div>
-
-        <div class="glass-panel printable">
-            <h3 style="margin-top:0; border-bottom: 1px solid #eee; padding-bottom:10px;">📊 Breakdown: Gross vs Returns</h3>
-            <div style="position: relative; height: 350px; width: 100%;">
-                <canvas id="breakdownChart"></canvas>
-            </div>
-        </div>
-    </div>
-
-    <div class="glass-panel printable">
-        <h3 style="margin-top:0; border-bottom: 1px solid #eee; padding-bottom:10px;"><i class="fa-solid fa-table"></i> Period-by-Period Summary</h3>
-        <div class="table-responsive">
-            <table class="table-simple" style="width: 100%; text-align: left;">
-                <thead style="background: #f4f4f4;">
-                    <tr>
-                        <th>Period</th>
-                        <th>My Gross</th>
-                        <th style="color:#dc3545;">My Returns</th>
-                        <th style="color:#28a745;">My Net</th>
-                        <?php if (!empty($compare_user_id)): ?>
-                            <th style="border-left: 2px solid #ddd;"><?php echo $compare_user_name; ?> Gross</th>
-                            <th style="color:#dc3545;"><?php echo $compare_user_name; ?> Returns</th>
-                            <th style="color:#9966ff;"><?php echo $compare_user_name; ?> Net</th>
-                        <?php endif; ?>
-                    </tr>
-                </thead>
+        <div class="table-wrap">
+            <table>
+                <thead><tr><th>Load</th><th>SR</th><th>Status</th><th>Value</th></tr></thead>
                 <tbody>
-                    <?php foreach ($chart_labels as $index => $label): ?>
+                    <?php if ($loads_res->num_rows > 0): ?>
+                        <?php while ($ld = $loads_res->fetch_assoc()): ?>
                         <tr>
-                            <td><strong><?php echo $label; ?></strong></td>
-                            <td>$<?php echo number_format($my_gross_arr[$index], 2); ?></td>
-                            <td style="color:#dc3545;">-$<?php echo number_format($my_ret_arr[$index], 2); ?></td>
-                            <td style="color:#28a745; font-weight:bold;">$<?php echo number_format($my_net_arr[$index], 2); ?></td>
-                            
-                            <?php if (!empty($compare_user_id)): ?>
-                                <td style="border-left: 2px solid #ddd;">$<?php echo number_format($comp_gross_arr[$index], 2); ?></td>
-                                <td style="color:#dc3545;">-$<?php echo number_format($comp_ret_arr[$index], 2); ?></td>
-                                <td style="color:#9966ff; font-weight:bold;">$<?php echo number_format($comp_net_arr[$index], 2); ?></td>
-                            <?php endif; ?>
+                            <td><a href="truck_loads.php?view=<?= $ld['id'] ?>" style="color:var(--primary);font-weight:600"><?= htmlspecialchars($ld['load_name']) ?></a>
+                                <div class="text-muted text-xs"><?= $ld['total_orders'] ?> orders</div>
+                            </td>
+                            <td class="text-sm"><?= htmlspecialchars($ld['sr_name']) ?></td>
+                            <td><span class="badge ts-<?= $ld['status'] ?>"><?= ucfirst(str_replace('_',' ',$ld['status'])) ?></span></td>
+                            <td class="text-sm fw-600"><?= number_format($ld['total_value'],0) ?></td>
                         </tr>
-                    <?php endforeach; ?>
+                        <?php endwhile; ?>
+                    <?php else: ?>
+                        <tr><td colspan="4" class="text-center text-muted" style="padding:20px">No truck loads yet.</td></tr>
+                    <?php endif; ?>
                 </tbody>
             </table>
         </div>
     </div>
 </div>
 
+<?php $target_rows->close(); $recent_loads->close();
 
-    <div class="box" style="display:flex; justify-content:center; align-items:center; margin:30px auto; box-shadow: 0 15px 35px rgba(0,0,0,0.1); border-radius: 12px; padding: 20px; background-color: #fff;">
-      <p id="latitude"><span id="latitude-val"></span></p>
-      <p id="longitude"><span id="longitude-val"></span></p>
-      <p id="address" style="font-weight:bold; color:#333;">
-        <span id="address-val"></span>
-      </p>
-    </div>
-  </div>
+/* ════════════════════════════════════════════════════
+   SR DASHBOARD
+════════════════════════════════════════════════════ */
+else:
 
-  <script>
-    function getLocation() {
-      if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(async function (position) {
-          let latitude = position.coords.latitude;
-          let longitude = position.coords.longitude;
+$month = (int)date('n'); $year = (int)date('Y');
+$from  = date('Y-m-01'); $to = date('Y-m-t');
 
-          document.getElementById("latitude-val").textContent = "Latitude: " + latitude.toFixed(6);
-          document.getElementById("longitude-val").textContent = "Longitude: " + longitude.toFixed(6);
+/* KPIs */
+$stmt = $conn->prepare("SELECT COUNT(DISTINCT o.id) AS orders, COALESCE(SUM(oi.quantity*oi.price),0) AS revenue
+    FROM orders o LEFT JOIN order_items oi ON o.id=oi.order_id
+    WHERE o.company_id=? AND o.created_by=? AND o.order_status=1 AND o.order_date BETWEEN ? AND ?");
+$stmt->bind_param("iiss", $cid, $uid, $from, $to); $stmt->execute();
+$kpi = $stmt->get_result()->fetch_assoc(); $stmt->close();
 
-          try {
-            // Call BigDataCloud Reverse Geocoding API
-            const response = await fetch(
-              `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${latitude}&longitude=${longitude}&localityLanguage=en`
-            );
-            const data = await response.json();
+/* Today's orders */
+$today = date('Y-m-d');
+$stmt = $conn->prepare("SELECT COUNT(*) AS c FROM orders WHERE company_id=? AND created_by=? AND order_date=?");
+$stmt->bind_param("iis", $cid, $uid, $today); $stmt->execute();
+$today_orders = (int)$stmt->get_result()->fetch_assoc()['c']; $stmt->close();
 
-            // Build a clean address string
-            const parts = [
-              data.locality || data.city || "",
-              data.principalSubdivision || "",
-              data.countryName || ""
-            ].filter(Boolean);
+/* My pending truck loads */
+$stmt = $conn->prepare("SELECT COUNT(*) AS c FROM truck_loads WHERE company_id=? AND assigned_sr_id=? AND status NOT IN ('delivered','cancelled','returned')");
+$stmt->bind_param("ii", $cid, $uid); $stmt->execute();
+$active_loads = (int)$stmt->get_result()->fetch_assoc()['c']; $stmt->close();
 
-            document.getElementById("address-val").textContent =
-              "Address: " + (parts.length ? parts.join(", ") : "Unknown location");
-          } catch (err) {
-            document.getElementById("address-val").textContent = "Error fetching address.";
-          }
-        }, function () {
-          alert("Please allow LOCATION permission.");
-        });
-      } else {
-        document.getElementById("address-val").textContent = "Geolocation not supported.";
-      }
-    }
+/* My target this month */
+$stmt = $conn->prepare("SELECT target_amount FROM targets WHERE company_id=? AND target_type='sr' AND target_entity_id=? AND month=? AND year=?");
+$stmt->bind_param("iiii", $cid, $uid, $month, $year); $stmt->execute();
+$target_row = $stmt->get_result()->fetch_assoc(); $stmt->close();
+$target_amount = (float)($target_row['target_amount'] ?? 0);
 
-    getLocation();
-  </script>
+/* My achieved (delivered truck loads) */
+$stmt = $conn->prepare(
+    "SELECT COALESCE(SUM(oi.quantity*oi.price),0) AS achieved
+     FROM truck_loads tl
+     JOIN truck_load_orders tlo ON tlo.truck_load_id=tl.id AND tlo.is_active=1
+     JOIN order_items oi ON oi.order_id=tlo.order_id
+     WHERE tl.assigned_sr_id=? AND tl.company_id=? AND tl.status='delivered'
+       AND MONTH(tl.delivered_at)=? AND YEAR(tl.delivered_at)=?"
+);
+$stmt->bind_param("iiii", $uid, $cid, $month, $year); $stmt->execute();
+$achieved = (float)$stmt->get_result()->fetch_assoc()['achieved']; $stmt->close();
+$target_pct = $target_amount > 0 ? min(110, round($achieved/$target_amount*100)) : 0;
 
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<script>
-// Parse PHP Data to JS
-const labels = <?php echo json_encode($chart_labels); ?>;
-const myNet = <?php echo json_encode($my_net_arr); ?>;
-const myGross = <?php echo json_encode($my_gross_arr); ?>;
-const myRet = <?php echo json_encode($my_ret_arr); ?>;
+/* My recent truck loads */
+$my_loads = $conn->prepare(
+    "SELECT tl.id, tl.load_name, tl.status, tl.total_orders, tl.total_value, tl.created_at
+     FROM truck_loads tl
+     WHERE tl.company_id=? AND tl.assigned_sr_id=?
+     ORDER BY tl.created_at DESC LIMIT 6"
+);
+$my_loads->bind_param("ii", $cid, $uid); $my_loads->execute();
+$my_loads_res = $my_loads->get_result();
 
-const isComparing = <?php echo !empty($compare_user_id) ? 'true' : 'false'; ?>;
-const compName = "<?php echo $compare_user_name; ?>";
-const compNet = <?php echo json_encode($comp_net_arr); ?>;
-const compGross = <?php echo json_encode($comp_gross_arr); ?>;
-const compRet = <?php echo json_encode($comp_ret_arr); ?>;
+/* Recent orders */
+$my_orders = $conn->prepare(
+    "SELECT o.id, o.order_date, o.delivery_date, o.order_status,
+            s.shop_name, r.route_name,
+            COALESCE(SUM(oi.quantity*oi.price),0) AS total
+     FROM orders o
+     JOIN shops s ON s.id=o.shop_id
+     JOIN routes r ON r.id=o.route_id
+     LEFT JOIN order_items oi ON oi.order_id=o.id
+     WHERE o.company_id=? AND o.created_by=?
+     GROUP BY o.id ORDER BY o.created_at DESC LIMIT 6"
+);
+$my_orders->bind_param("ii", $cid, $uid); $my_orders->execute();
+$my_orders_res = $my_orders->get_result();
 
-// 1. LINE CHART: Net Sales Trend
-const trendCtx = document.getElementById('netTrendChart').getContext('2d');
-const trendDatasets = [{
-    label: 'My Net Sales ($)',
-    data: myNet,
-    borderColor: '#28a745',
-    backgroundColor: 'rgba(40, 167, 69, 0.1)',
-    borderWidth: 3,
-    fill: true,
-    tension: 0.3,
-    pointBackgroundColor: '#28a745',
-    pointRadius: 4
-}];
-
-if (isComparing) {
-    trendDatasets.push({
-        label: compName + "'s Net Sales ($)",
-        data: compNet,
-        borderColor: '#9966ff',
-        backgroundColor: 'rgba(153, 102, 255, 0.1)',
-        borderWidth: 3,
-        fill: true,
-        tension: 0.3,
-        pointBackgroundColor: '#9966ff',
-        pointRadius: 4
-    });
-}
-
-new Chart(trendCtx, {
-    type: 'line',
-    data: { labels: labels, datasets: trendDatasets },
-    options: {
-        responsive: true, maintainAspectRatio: false,
-        interaction: { mode: 'index', intersect: false },
-        scales: { y: { beginAtZero: true } }
-    }
-});
-
-// 2. BAR CHART: Gross vs Returns Breakdown
-const breakdownCtx = document.getElementById('breakdownChart').getContext('2d');
-const barDatasets = [
-    { label: 'My Gross', data: myGross, backgroundColor: 'rgba(54, 162, 235, 0.8)' },
-    { label: 'My Returns', data: myRet, backgroundColor: 'rgba(220, 53, 69, 0.8)' }
+$status_badge = [
+    'draft'=>'badge-gray','submitted'=>'badge-blue','approved'=>'badge-teal',
+    'loading'=>'badge-yellow','ready'=>'badge-orange','in_transit'=>'badge-purple',
+    'delivered'=>'badge-green','cancelled'=>'badge-red','returned'=>'badge-brown'
 ];
+$bar_class = $target_pct >= 100 ? 'gold' : ($target_pct >= 80 ? '' : ($target_pct >= 50 ? 'warn' : 'danger'));
+?>
 
-if (isComparing) {
-    barDatasets.push({ label: compName + ' Gross', data: compGross, backgroundColor: 'rgba(153, 102, 255, 0.8)' });
-    barDatasets.push({ label: compName + ' Returns', data: compRet, backgroundColor: 'rgba(255, 159, 64, 0.8)' });
-}
+<div class="page-header">
+    <div>
+        <div class="page-title">My Dashboard</div>
+        <div class="page-subtitle"><?= date('F Y') ?> &mdash; <?= htmlspecialchars($company_name) ?></div>
+    </div>
+    <div style="display:flex;gap:8px">
+        <a href="orders.php" class="btn btn-primary btn-sm"><i class="fa-solid fa-plus"></i> New Order</a>
+        <a href="truck_loads.php" class="btn btn-dark btn-sm"><i class="fa-solid fa-truck"></i> Truck Loads</a>
+    </div>
+</div>
 
-new Chart(breakdownCtx, {
-    type: 'bar',
-    data: { labels: labels, datasets: barDatasets },
-    options: {
-        responsive: true, maintainAspectRatio: false,
-        interaction: { mode: 'index', intersect: false },
-        scales: { y: { beginAtZero: true } }
-    }
-});
-</script>
+<div class="kpi-grid">
+    <div class="kpi-card">
+        <div class="kpi-label">Revenue (Month)</div>
+        <div class="kpi-value" style="font-size:1.4rem"><?= number_format($kpi['revenue'],0) ?></div>
+        <div class="kpi-sub"><?= $kpi['orders'] ?> confirmed orders</div>
+    </div>
+    <div class="kpi-card info">
+        <div class="kpi-label">Today's Orders</div>
+        <div class="kpi-value"><?= $today_orders ?></div>
+        <div class="kpi-sub"><a href="orders.php?date_from=<?=$today?>&date_to=<?=$today?>" style="color:var(--info)">View &rarr;</a></div>
+    </div>
+    <div class="kpi-card warning">
+        <div class="kpi-label">Active Truck Loads</div>
+        <div class="kpi-value"><?= $active_loads ?></div>
+        <div class="kpi-sub"><a href="truck_loads.php" style="color:var(--warning)">View &rarr;</a></div>
+    </div>
+    <div class="kpi-card <?= $target_pct >= 80 ? '' : ($target_pct >= 50 ? 'warning' : 'danger') ?>">
+        <div class="kpi-label">Target Fulfillment</div>
+        <div class="kpi-value"><?= $target_pct ?>%</div>
+        <div class="kpi-sub"><?= number_format($achieved,0) ?> / <?= number_format($target_amount,0) ?></div>
+    </div>
+</div>
+
+<!-- Target Progress Bar -->
+<?php if ($target_amount > 0): ?>
+<div class="card mb-20">
+    <div class="card-header">
+        <span class="card-title"><i class="fa-solid fa-bullseye" style="color:var(--warning)"></i> My <?= date('F Y') ?> Target</span>
+        <a href="my_target.php" class="btn btn-ghost btn-sm">Details</a>
+    </div>
+    <div style="margin-bottom:8px">
+        <div class="flex-between mb-4">
+            <span class="text-sm">Progress: <strong><?= number_format($achieved,0) ?></strong> of <strong><?= number_format($target_amount,0) ?></strong></span>
+            <span class="fw-700 <?= $target_pct>=100?'text-green':($target_pct>=50?'text-yellow':'text-red') ?>"><?= $target_pct ?>%</span>
+        </div>
+        <div class="progress-bar-wrap" style="height:12px">
+            <div class="progress-bar-fill <?= $bar_class ?>" style="width:<?= $target_pct ?>%"></div>
+        </div>
+        <?php
+        $days_left = (int)((strtotime($to) - time()) / 86400);
+        $remaining = max(0, $target_amount - $achieved);
+        if ($days_left > 0 && $remaining > 0): ?>
+            <div class="text-muted text-xs mt-4"><?= $days_left ?> days left &mdash; pace needed: <?= number_format($remaining/$days_left, 0) ?>/day</div>
+        <?php endif; ?>
+    </div>
+</div>
+<?php endif; ?>
+
+<div class="grid-layout md-2">
+    <!-- My Truck Loads -->
+    <div class="card">
+        <div class="card-header">
+            <span class="card-title"><i class="fa-solid fa-truck" style="color:var(--primary)"></i> My Truck Loads</span>
+            <a href="truck_loads.php" class="btn btn-ghost btn-sm">All</a>
+        </div>
+        <div class="table-wrap">
+            <table>
+                <thead><tr><th>Load</th><th>Status</th><th>Orders</th><th>Value</th></tr></thead>
+                <tbody>
+                    <?php if ($my_loads_res->num_rows > 0): ?>
+                        <?php while ($ld = $my_loads_res->fetch_assoc()): ?>
+                        <tr>
+                            <td><a href="truck_loads.php?view=<?= $ld['id'] ?>" style="color:var(--primary);font-weight:600"><?= htmlspecialchars($ld['load_name']) ?></a></td>
+                            <td><span class="badge ts-<?= $ld['status'] ?>"><?= ucfirst(str_replace('_',' ',$ld['status'])) ?></span></td>
+                            <td><?= $ld['total_orders'] ?></td>
+                            <td class="text-sm"><?= number_format($ld['total_value'],0) ?></td>
+                        </tr>
+                        <?php endwhile; ?>
+                    <?php else: ?>
+                        <tr><td colspan="4" class="text-center text-muted" style="padding:20px">No truck loads yet. <a href="truck_loads.php">Create one &rarr;</a></td></tr>
+                    <?php endif; ?>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- My Recent Orders -->
+    <div class="card">
+        <div class="card-header">
+            <span class="card-title"><i class="fa-solid fa-clipboard-list" style="color:var(--info)"></i> Recent Orders</span>
+            <a href="orders.php" class="btn btn-ghost btn-sm">All</a>
+        </div>
+        <div class="table-wrap">
+            <table>
+                <thead><tr><th>Shop</th><th>Date</th><th>Status</th><th>Value</th></tr></thead>
+                <tbody>
+                    <?php if ($my_orders_res->num_rows > 0): ?>
+                        <?php while ($ord = $my_orders_res->fetch_assoc()): ?>
+                        <tr>
+                            <td>
+                                <span class="text-sm fw-600"><?= htmlspecialchars($ord['shop_name']) ?></span>
+                                <div class="text-muted text-xs"><?= htmlspecialchars($ord['route_name']) ?></div>
+                            </td>
+                            <td class="text-sm"><?= date('d M', strtotime($ord['order_date'])) ?></td>
+                            <td><span class="badge <?= $ord['order_status'] ? 'badge-green' : 'badge-yellow' ?>"><?= $ord['order_status'] ? 'Confirmed' : 'Draft' ?></span></td>
+                            <td class="text-sm"><?= number_format($ord['total'],0) ?></td>
+                        </tr>
+                        <?php endwhile; ?>
+                    <?php else: ?>
+                        <tr><td colspan="4" class="text-center text-muted" style="padding:20px">No orders yet.</td></tr>
+                    <?php endif; ?>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<?php $my_loads->close(); $my_orders->close();
+endif; ?>
 
 <?php include 'footer.php'; ?>
-
-
-
