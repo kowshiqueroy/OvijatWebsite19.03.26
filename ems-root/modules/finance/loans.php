@@ -55,7 +55,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && has_permission('fees.collect')) {
 
                 // Write transaction log
                 $tx = $pdo->prepare("INSERT INTO account_transactions (account_id, amount, transaction_type, description, reference_table, reference_id, created_by) VALUES (?, ?, 'withdrawal', ?, 'staff_loans', ?, ?)");
-                $tx->execute([$account_id, -$amount, "Disbursed staff loan #$id (Amount: $amount)", 'staff_loans', $id, current_user_id()]);
+                $tx->execute([$account_id, -$amount, "Disbursed staff loan #$id (Amount: $amount)", $id, current_user_id()]);
 
                 $pdo->commit();
                 log_activity('disburse_staff_loan', 'finance', $id, '', "Amount:$amount, Repayable:$total_repayable");
@@ -118,7 +118,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && has_permission('fees.collect')) {
 
                     // Write transaction log
                     $tx = $pdo->prepare("INSERT INTO account_transactions (account_id, amount, transaction_type, description, reference_table, reference_id, created_by) VALUES (?, ?, 'deposit', ?, 'incomes', ?, ?)");
-                    $tx->execute([$account_id, $repay_amount, "Staff Loan Repayment (Loan #$loan_id)", 'incomes', $income_id, current_user_id()]);
+                    $tx->execute([$account_id, $repay_amount, "Staff Loan Repayment (Loan #$loan_id)", $income_id, current_user_id()]);
 
                     $pdo->commit();
                     log_activity('repay_staff_loan', 'finance', $loan_id, '', "Repaid:$repay_amount, NewTotal:$new_repaid");

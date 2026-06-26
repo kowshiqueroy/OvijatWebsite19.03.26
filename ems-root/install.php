@@ -213,6 +213,9 @@ CREATE TABLE IF NOT EXISTS rooms (
     room_number VARCHAR(20),
     floor INT DEFAULT 1,
     capacity INT DEFAULT 30,
+    benches_count INT DEFAULT 10 COMMENT 'Simple mode: number of bench rows',
+    bench_capacity INT DEFAULT 2  COMMENT 'Simple mode: seats per bench',
+    layout_json LONGTEXT DEFAULT NULL COMMENT 'Custom layout: JSON {cols:[[seats,seats,...],[...],...]}',
     room_type ENUM('classroom','lab','office','exam_hall','library','other') DEFAULT 'classroom',
     status TINYINT(1) DEFAULT 1
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
@@ -412,9 +415,10 @@ CREATE TABLE IF NOT EXISTS exam_seats (
     exam_id INT NOT NULL,
     room_id INT NOT NULL,
     student_id INT NOT NULL,
-    seat_number VARCHAR(10),
+    seat_number VARCHAR(20),
     row_no INT,
     col_no INT,
+    col_block INT DEFAULT 1 COMMENT 'Column-of-benches index for multi-column room layouts',
     FOREIGN KEY (exam_id) REFERENCES exams(id) ON DELETE CASCADE,
     FOREIGN KEY (room_id) REFERENCES rooms(id),
     FOREIGN KEY (student_id) REFERENCES users(id)

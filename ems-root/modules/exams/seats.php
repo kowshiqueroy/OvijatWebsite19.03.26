@@ -56,41 +56,74 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
 
                 $assignedCount = 0;
-                $stmt = $pdo->prepare('INSERT INTO exam_seats (exam_id, room_id, student_id, seat_number, row_no, col_no) VALUES (?, ?, ?, ?, ?, ?)');
 
                 // Assign students to chosen rooms
                 foreach ($room_ids as $rid) {
                     $rid = (int)$rid;
                     if (empty($interleaved)) break;
 
-                    // Get room defaults
-                    $roomStmt = $pdo->prepare('SELECT benches_count, bench_capacity FROM rooms WHERE id=?');
+                    // Get room layout (supports custom JSON or simple benches×bench_capacity)
+                    $roomStmt = $pdo->prepare('SELECT benches_count, bench_capacity, layout_json FROM rooms WHERE id=?');
                     $roomStmt->execute([$rid]);
-                    $roomData = $roomStmt->fetch() ?: ['benches_count' => 10, 'bench_capacity' => 2];
+                    $roomData = $roomStmt->fetch() ?: ['benches_count' => 10, 'bench_capacity' => 2, 'layout_json' => null];
 
-                    $benches = max(1, int_param('benches_' . $rid, (int)$roomData['benches_count'], $_POST));
-                    $capacityPerBench = max(1, int_param('bench_capacity_' . $rid, (int)$roomData['bench_capacity'], $_POST));
-                    $totalCapacity = $benches * $capacityPerBench;
+                    // Build ordered seat list from layout
+                    $seatPositions = [];
+                    if (!empty($roomData['layout_json'])) {
+                        $lj = json_decode($roomData['layout_json'], true);
+                        if (isset($lj['cols']) && is_array($lj['cols'])) {
+                            // Interleave across columns for anti-cheat:
+                            // seat order = col1-b1-s1, col2-b1-s1, col3-b1-s1, col1-b1-s2, col2-b1-s2...
+                            // Actually: fill column by column (natural order), anti-cheat already done by class mixing
+                            foreach ($lj['cols'] as $colIdx => $benches) {
+                                foreach ($benches as $benchIdx => $seatsInBench) {
+                                    for ($si = 0; $si < $seatsInBench; $si++) {
+                                        $seatPositions[] = [
+                                            'col_block' => $colIdx + 1,
+                                            'row_no'    => $benchIdx + 1,
+                                            'col_no'    => $si + 1,
+                                            'label'     => 'C'.($colIdx+1).'-B'.($benchIdx+1).'-S'.($si+1),
+                                        ];
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if (empty($seatPositions)) {
+                        // Simple mode fallback
+                        $benches = max(1, int_param('benches_' . $rid, (int)($roomData['benches_count'] ?? 10), $_POST));
+                        $benchCap = max(1, int_param('bench_capacity_' . $rid, (int)($roomData['bench_capacity'] ?? 2), $_POST));
+                        for ($b = 0; $b < $benches; $b++) {
+                            for ($s = 0; $s < $benchCap; $s++) {
+                                $seatPositions[] = [
+                                    'col_block' => 1,
+                                    'row_no'    => $b + 1,
+                                    'col_no'    => $s + 1,
+                                    'label'     => 'B'.str_pad($b+1,2,'0',STR_PAD_LEFT).'-S'.($s+1),
+                                ];
+                            }
+                        }
+                    }
+
+                    $totalCapacity = count($seatPositions);
 
                     // Find how many are already assigned to this room
                     $exCountStmt = $pdo->prepare('SELECT COUNT(*) FROM exam_seats WHERE exam_id=? AND room_id=?');
                     $exCountStmt->execute([$eid, $rid]);
                     $alreadyAssigned = (int)$exCountStmt->fetchColumn();
 
-                    $availableSeats = $totalCapacity - $alreadyAssigned;
-                    if ($availableSeats <= 0) continue;
+                    // Skip already-used positions
+                    $availablePositions = array_slice($seatPositions, $alreadyAssigned);
+                    if (empty($availablePositions)) continue;
 
-                    // Slice students to fit this room
-                    $toAssign = array_slice($interleaved, 0, $availableSeats);
-                    $interleaved = array_slice($interleaved, $availableSeats); // remove assigned from pool
+                    // Slice students to fit available seats
+                    $toAssign = array_slice($interleaved, 0, count($availablePositions));
+                    $interleaved = array_slice($interleaved, count($toAssign));
 
-                    $seatNum = $alreadyAssigned + 1;
-                    foreach ($toAssign as $s) {
-                        $row = ceil($seatNum / $capacityPerBench);
-                        $col = (($seatNum - 1) % $capacityPerBench) + 1;
-                        $seatLabel = 'R' . str_pad($rid, 2, '0', STR_PAD_LEFT) . '-B' . str_pad($row, 2, '0', STR_PAD_LEFT) . '-S' . $col;
-                        $stmt->execute([$eid, $rid, $s['student_id'], $seatLabel, $row, $col]);
-                        $seatNum++;
+                    $stmt = $pdo->prepare('INSERT INTO exam_seats (exam_id, room_id, student_id, seat_number, row_no, col_no, col_block) VALUES (?, ?, ?, ?, ?, ?, ?)');
+                    foreach ($toAssign as $i => $s) {
+                        $pos = $availablePositions[$i];
+                        $stmt->execute([$eid, $rid, $s['student_id'], $pos['label'], $pos['row_no'], $pos['col_no'], $pos['col_block']]);
                         $assignedCount++;
                     }
                 }
@@ -123,7 +156,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 // Load dropdowns
 $allExams = $pdo->query('SELECT id, exam_name FROM exams ORDER BY id DESC LIMIT 20')->fetchAll();
-$rooms    = $pdo->query('SELECT id, room_name, capacity, benches_count, bench_capacity FROM rooms WHERE status=1 ORDER BY room_name')->fetchAll();
+$rooms    = $pdo->query('SELECT id, room_name, capacity, benches_count, bench_capacity, layout_json FROM rooms WHERE status=1 ORDER BY room_name')->fetchAll();
+
+// Helper: compute total capacity and seat list from a room
+function room_seat_capacity(array $r): int {
+    if (!empty($r['layout_json'])) {
+        $lj = json_decode($r['layout_json'], true);
+        if (isset($lj['cols'])) {
+            $total = 0;
+            foreach ($lj['cols'] as $col) $total += array_sum($col);
+            return $total;
+        }
+    }
+    return max(1, (int)$r['benches_count']) * max(1, (int)$r['bench_capacity']);
+}
+function room_layout_label(array $r): string {
+    if (!empty($r['layout_json'])) {
+        $lj = json_decode($r['layout_json'], true);
+        if (isset($lj['cols'])) {
+            $numCols  = count($lj['cols']);
+            $colSizes = array_map(fn($c) => count($c) . 'B', $lj['cols']);
+            return "$numCols cols (" . implode(', ', $colSizes) . ")";
+        }
+    }
+    return ($r['benches_count'] ?? 10) . ' rows × ' . ($r['bench_capacity'] ?? 2) . ' seats';
+}
 
 $exam = null;
 if ($exam_id) {
@@ -213,18 +270,21 @@ require_once EMS_ROOT . '/includes/header.php';
   <!-- Overview of Rooms -->
   <div class="row g-3">
     <?php foreach ($rooms as $r):
-      $rs = $roomSummary[$r['id']] ?? null;
-      $cap = $r['benches_count'] * $r['bench_capacity'];
+      $rs  = $roomSummary[$r['id']] ?? null;
+      $cap = room_seat_capacity($r);
+      $layoutLabel = room_layout_label($r);
     ?>
       <div class="col-md-4">
         <div class="card h-100 <?= $rs ? 'border-primary' : '' ?>">
           <div class="card-body d-flex flex-column justify-content-between">
             <div>
               <div class="fw-700 fs-5"><?= e($r['room_name']) ?></div>
-              <div class="small text-muted mb-2">Benches: <?= $r['benches_count'] ?> (<?= $r['bench_capacity'] ?> seats/bench) &bull; Capacity: <?= $cap ?></div>
+              <div class="small text-muted mb-2">
+                Layout: <?= e($layoutLabel) ?> &bull; <strong><?= $cap ?> seats</strong>
+              </div>
               <?php if ($rs): ?>
                 <div class="progress mb-2" style="height: 6px;">
-                  <div class="progress-bar" role="progressbar" style="width: <?= ($rs['assigned']/$cap)*100 ?>%;"></div>
+                  <div class="progress-bar" role="progressbar" style="width: <?= $cap > 0 ? round(($rs['assigned']/$cap)*100) : 0 ?>%;"></div>
                 </div>
                 <span class="badge bg-success"><?= $rs['assigned'] ?> / <?= $cap ?> Seats Assigned</span>
               <?php else: ?>
@@ -250,38 +310,108 @@ require_once EMS_ROOT . '/includes/header.php';
   </div>
 
 <?php elseif ($exam_id && $room_id && !empty($seatPlan)): ?>
-  <!-- View Specific Room Bench Grid Layout -->
+  <?php
+    // Detect current room data for layout-aware display
+    $currentRoomIdx = array_search($room_id, array_column($rooms, 'id'));
+    $currentRoom    = $currentRoomIdx !== false ? $rooms[$currentRoomIdx] : null;
+    $hasCustomLayout = $currentRoom && !empty($currentRoom['layout_json']);
+    $currentRoomName = $currentRoom['room_name'] ?? 'Room';
+
+    // Rebuild seatPlan indexed by col_block, then row_no, then col_no
+    $seatPlanByBlock = [];
+    if ($exam_id && $room_id) {
+        $sp2 = $pdo->query(
+            "SELECT es.*, es.seat_number, es.row_no, es.col_no,
+                    COALESCE(es.col_block, 1) as col_block,
+                    sp.first_name, sp.last_name, c.class_name, se.roll_number
+             FROM exam_seats es
+             JOIN student_profiles sp ON sp.user_id=es.student_id
+             JOIN student_enrollments se ON se.student_id=es.student_id AND se.status='active'
+             JOIN classes c ON c.id=se.class_id
+             WHERE es.exam_id=$exam_id AND es.room_id=$room_id
+             ORDER BY es.col_block, es.row_no, es.col_no"
+        )->fetchAll();
+        foreach ($sp2 as $s) {
+            $seatPlanByBlock[$s['col_block']][$s['row_no']][$s['col_no']] = $s;
+        }
+    }
+    $numCols = count($seatPlanByBlock);
+  ?>
+  <!-- Seat Layout Display -->
   <div class="card">
-    <div class="card-header py-3 px-4 d-flex align-items-center justify-content-between bg-light">
-      <span class="card-title mb-0"><i class="bi bi-border-all me-2"></i>Bench Layout: <?= e($exam['exam_name']) ?> — <?= e($rooms[array_search($room_id, array_column($rooms, 'id'))]['room_name']) ?></span>
+    <div class="card-header py-3 px-4 d-flex align-items-center justify-content-between bg-light no-print">
+      <span class="card-title mb-0">
+        <i class="bi bi-border-all me-2"></i>
+        <?= e($exam['exam_name']) ?> — <?= e($currentRoomName) ?>
+        <?php if ($hasCustomLayout): ?>
+          <span class="badge bg-primary ms-2" style="font-size:.7rem;">Custom Layout</span>
+        <?php endif; ?>
+      </span>
       <div class="d-flex gap-2">
-        <a href="seat_tokens.php?exam_id=<?= $exam_id ?>&room_id=<?= $room_id ?>" class="btn btn-sm btn-success"><i class="bi bi-ticket-perforated me-1"></i>Print Tokens</a>
-        <button onclick="window.print()" class="btn btn-sm btn-outline-secondary"><i class="bi bi-printer me-1"></i>Print Layout</button>
+        <a href="seat_tokens.php?exam_id=<?= $exam_id ?>&room_id=<?= $room_id ?>" class="btn btn-sm btn-success">
+          <i class="bi bi-ticket-perforated me-1"></i>Print Tokens
+        </a>
+        <button onclick="EMS.printTable('seat-layout-tbl')" class="btn btn-sm btn-outline-secondary no-print">
+          <i class="bi bi-printer me-1"></i>Print Layout
+        </button>
       </div>
     </div>
-    <div class="card-body">
-      <div class="text-center mb-4"><div class="px-4 py-2 bg-dark text-white rounded d-inline-block fw-bold shadow-sm">📋 BOARD / TEACHER DESK</div></div>
-      
-      <?php 
-      ksort($seatPlan);
-      foreach ($seatPlan as $rowNo => $cols): 
-      ?>
-        <div class="d-flex justify-content-center align-items-center gap-3 mb-4 flex-wrap">
-          <div class="fw-700 text-muted me-2 border-end pe-3" style="min-width: 80px;">Bench <?= $rowNo ?></div>
-          <div class="d-flex gap-2">
-            <?php 
-            ksort($cols);
-            foreach ($cols as $colNo => $seat): 
-            ?>
-              <div class="border rounded text-center p-3 shadow-sm" style="min-width:160px; background:#fff; border-top: 3px solid var(--ems-primary) !important;">
-                <div class="fw-bold text-primary small mb-1"><?= e($seat['seat_number']) ?></div>
-                <div class="fw-bold"><?= e($seat['first_name'] . ' ' . $seat['last_name']) ?></div>
-                <div class="text-muted small">Roll: <?= e($seat['roll_number']) ?> &bull; <?= e($seat['class_name']) ?></div>
+    <div class="card-body overflow-auto">
+      <!-- Board indicator -->
+      <div class="text-center mb-4">
+        <div class="px-4 py-2 bg-dark text-white rounded d-inline-block fw-bold shadow-sm small">
+          📋 BOARD / INVIGILATOR DESK
+        </div>
+      </div>
+
+      <?php if ($numCols > 1): ?>
+        <!-- Multi-column layout: show columns side by side -->
+        <div class="d-flex gap-4 justify-content-center flex-wrap" id="seat-layout-tbl">
+          <?php foreach ($seatPlanByBlock as $colBlock => $benches): ?>
+          <div style="flex:1;min-width:160px;max-width:220px;">
+            <div class="text-center fw-700 text-primary border-bottom pb-1 mb-2 small">
+              Column <?= $colBlock ?>
+            </div>
+            <?php ksort($benches); foreach ($benches as $benchNo => $seats): ?>
+            <div class="mb-2">
+              <div class="text-center text-muted mb-1" style="font-size:.7rem;">Bench <?= $benchNo ?></div>
+              <div class="d-flex gap-1 justify-content-center flex-wrap">
+                <?php ksort($seats); foreach ($seats as $s): ?>
+                <div class="border rounded text-center p-1 shadow-sm" style="min-width:100px;border-top:3px solid #1a56db !important;background:#fff;">
+                  <div class="fw-700 text-primary" style="font-size:.65rem;"><?= e($s['seat_number']) ?></div>
+                  <div class="fw-700 small"><?= e($s['first_name'][0].'. '.$s['last_name']) ?></div>
+                  <div class="text-muted" style="font-size:.65rem;">R:<?= $s['roll_number'] ?> · <?= e($s['class_name']) ?></div>
+                </div>
+                <?php endforeach; ?>
               </div>
+            </div>
             <?php endforeach; ?>
           </div>
+          <?php endforeach; ?>
         </div>
-      <?php endforeach; ?>
+
+      <?php else: ?>
+        <!-- Simple single-column layout: rows of benches -->
+        <div id="seat-layout-tbl">
+          <?php foreach (($seatPlanByBlock[1] ?? []) as $benchNo => $seats): ?>
+          <div class="d-flex align-items-center gap-3 mb-3 flex-wrap">
+            <div class="fw-700 text-muted border-end pe-3 text-end" style="min-width:80px;font-size:.85rem;">
+              Bench <?= $benchNo ?>
+            </div>
+            <div class="d-flex gap-2 flex-wrap">
+              <?php ksort($seats); foreach ($seats as $s): ?>
+              <div class="border rounded text-center p-2 shadow-sm" style="min-width:150px;border-top:3px solid #1a56db !important;background:#fff;">
+                <div class="fw-700 text-primary small mb-1"><?= e($s['seat_number']) ?></div>
+                <div class="fw-700"><?= e($s['first_name'].' '.$s['last_name']) ?></div>
+                <div class="text-muted small">Roll: <?= e($s['roll_number']) ?> &bull; <?= e($s['class_name']) ?></div>
+              </div>
+              <?php endforeach; ?>
+            </div>
+          </div>
+          <?php endforeach; ?>
+        </div>
+      <?php endif; ?>
+
     </div>
   </div>
 
@@ -305,41 +435,67 @@ require_once EMS_ROOT . '/includes/header.php';
           <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
         </div>
         <div class="modal-body">
-          <div class="alert alert-info small mb-3">
-            <i class="bi bi-info-circle me-1"></i>Select which rooms to use. You can customize the number of benches and capacity per bench for each room dynamically. Students will be interleaved by class for anti-cheating protocols.
+          <div class="alert alert-info small mb-3 d-flex gap-2">
+            <i class="bi bi-info-circle-fill fs-5 flex-shrink-0"></i>
+            <div>
+              Select rooms to use. Seat capacity is taken from each room's configured layout
+              (set in <strong>Academic → Rooms → Edit Layout</strong>). Students from different
+              classes are interleaved for anti-cheat seating.
+            </div>
           </div>
-          
+
           <div class="table-responsive">
             <table class="table table-bordered align-middle small">
-              <thead class="table-light">
+              <thead class="table-dark">
                 <tr>
-                  <th style="width: 50px;" class="text-center">Use</th>
-                  <th>Room Name</th>
-                  <th style="width: 140px;">Benches Count</th>
-                  <th style="width: 140px;">Bench Capacity</th>
-                  <th>Calculated Seats</th>
+                  <th class="text-center" style="width:50px;">Use</th>
+                  <th>Room</th>
+                  <th>Layout</th>
+                  <th class="text-center">Exam Capacity</th>
+                  <th class="text-center">Already Assigned</th>
                 </tr>
               </thead>
               <tbody>
-                <?php foreach ($rooms as $r): 
-                  $cap = $r['benches_count'] * $r['bench_capacity'];
+                <?php foreach ($rooms as $r):
+                  $cap = room_seat_capacity($r);
+                  $alreadyInRoom = (int)$pdo->prepare('SELECT COUNT(*) FROM exam_seats WHERE exam_id=? AND room_id=?')
+                                              ->execute([$exam_id, $r['id']]) ? 0 : 0;
+                  $aStmt = $pdo->prepare('SELECT COUNT(*) FROM exam_seats WHERE exam_id=? AND room_id=?');
+                  $aStmt->execute([$exam_id, $r['id']]);
+                  $alreadyInRoom = (int)$aStmt->fetchColumn();
+                  $available     = $cap - $alreadyInRoom;
+                  $isCustom      = !empty($r['layout_json']);
                 ?>
-                <tr>
+                <tr <?= $alreadyInRoom > 0 ? 'class="table-warning-subtle"' : '' ?>>
                   <td class="text-center">
-                    <input type="checkbox" name="room_ids[]" value="<?= $r['id'] ?>" class="form-check-input room-checkbox" id="chk-rm-<?= $r['id'] ?>">
+                    <input type="checkbox" name="room_ids[]" value="<?= $r['id'] ?>"
+                           class="form-check-input" id="chk-<?= $r['id'] ?>"
+                           <?= $available <= 0 ? 'disabled' : '' ?>>
                   </td>
                   <td>
-                    <label for="chk-rm-<?= $r['id'] ?>" class="fw-bold d-block pointer"><?= e($r['room_name']) ?></label>
-                    <span class="text-muted text-xs">Default capacity: <?= $cap ?></span>
+                    <label for="chk-<?= $r['id'] ?>" class="fw-700 mb-0 d-block"><?= e($r['room_name']) ?></label>
+                    <small class="text-muted">Floor <?= $r['floor'] ?></small>
                   </td>
                   <td>
-                    <input type="number" name="benches_<?= $r['id'] ?>" value="<?= $r['benches_count'] ?: 10 ?>" class="form-control form-control-sm bench-input" min="1" max="50" oninput="recalcCapacity(<?= $r['id'] ?>)">
+                    <span class="badge bg-<?= $isCustom ? 'primary' : 'secondary' ?> me-1">
+                      <?= $isCustom ? 'Custom' : 'Simple' ?>
+                    </span>
+                    <span class="text-muted small"><?= e(room_layout_label($r)) ?></span>
+                    <?php if (!$isCustom): ?>
+                      <a href="<?= $MOD ?? '../' ?>modules/academic/rooms.php" class="ms-1 small text-warning"
+                         title="Set custom layout in Rooms" target="_blank">
+                        <i class="bi bi-pencil-square"></i>
+                      </a>
+                    <?php endif; ?>
                   </td>
-                  <td>
-                    <input type="number" name="bench_capacity_<?= $r['id'] ?>" value="<?= $r['bench_capacity'] ?: 2 ?>" class="form-control form-control-sm cap-input" min="1" max="10" oninput="recalcCapacity(<?= $r['id'] ?>)">
-                  </td>
-                  <td>
-                    <span class="fw-bold text-success" id="calc-cap-<?= $r['id'] ?>"><?= $cap ?></span> seats
+                  <td class="text-center fw-700 text-success"><?= $cap ?></td>
+                  <td class="text-center">
+                    <?php if ($alreadyInRoom > 0): ?>
+                      <span class="badge bg-warning text-dark"><?= $alreadyInRoom ?> assigned</span>
+                      <span class="text-muted small d-block"><?= $available ?> free</span>
+                    <?php else: ?>
+                      <span class="text-muted">—</span>
+                    <?php endif; ?>
                   </td>
                 </tr>
                 <?php endforeach; ?>
@@ -355,13 +511,6 @@ require_once EMS_ROOT . '/includes/header.php';
     </div>
   </div>
 </div>
-<script>
-function recalcCapacity(id) {
-  const benches = parseInt(document.getElementsByName('benches_' + id)[0].value) || 0;
-  const capacity = parseInt(document.getElementsByName('bench_capacity_' + id)[0].value) || 0;
-  document.getElementById('calc-cap-' + id).innerText = benches * capacity;
-}
-</script>
 <?php endif; ?>
 
 <?php require_once EMS_ROOT . '/includes/footer.php'; ?>

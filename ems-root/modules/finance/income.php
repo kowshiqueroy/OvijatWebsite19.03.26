@@ -57,7 +57,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 // Insert transaction log
                 $tx = $pdo->prepare("INSERT INTO account_transactions (account_id, amount, transaction_type, description, reference_table, reference_id, created_by) VALUES (?, ?, 'deposit', ?, 'incomes', ?, ?)");
-                $tx->execute([$acc_id, $amt, "Non-fee income: " . ($desc ?: "Received income"), 'incomes', $id, current_user_id()]);
+                $tx->execute([$acc_id, $amt, "Non-fee income: " . ($desc ?: "Received income"), $id, current_user_id()]);
 
                 $pdo->commit();
             } catch (Exception $e) {

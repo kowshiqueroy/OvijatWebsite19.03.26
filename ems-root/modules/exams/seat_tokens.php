@@ -10,13 +10,64 @@ $exam_id = int_param('exam_id', 0, $_GET);
 $room_id = int_param('room_id', 0, $_GET);
 
 if (!$exam_id) {
-    die("Please select an exam first.");
+    // Render selection page using the standard admin wrapper
+    $page_title = 'Print Seat Tokens';
+    $breadcrumbs = ['Examinations' => 'seats.php', 'Print Seat Tokens' => null];
+    
+    // Fetch all active/recent exams
+    $allExams = $pdo->query('SELECT id, exam_name FROM exams ORDER BY id DESC LIMIT 20')->fetchAll();
+    
+    require_once EMS_ROOT . '/includes/header.php';
+    ?>
+    <div class="row justify-content-center">
+      <div class="col-md-6">
+        <div class="card shadow-sm border-0">
+          <div class="card-header py-3 px-4 bg-light">
+            <h5 class="card-title mb-0"><i class="bi bi-ticket-perforated me-2 text-primary"></i>Print Seat Tokens</h5>
+          </div>
+          <div class="card-body p-4">
+            <form method="GET" action="seat_tokens.php" target="_blank">
+              <div class="mb-3">
+                <label class="form-label fw-600">Select Exam <span class="text-danger">*</span></label>
+                <select name="exam_id" class="form-select" required>
+                  <option value="">— Select Exam —</option>
+                  <?php foreach ($allExams as $e): ?>
+                    <option value="<?= $e['id'] ?>"><?= e($e['exam_name']) ?></option>
+                  <?php endforeach; ?>
+                </select>
+              </div>
+              <div class="mb-3">
+                <label class="form-label fw-600">Select Room <small class="text-muted">(Optional)</small></label>
+                <select name="room_id" class="form-select">
+                  <option value="0">All Rooms</option>
+                  <?php 
+                  $rooms = $pdo->query('SELECT id, room_name FROM rooms ORDER BY room_name')->fetchAll();
+                  foreach ($rooms as $r): ?>
+                    <option value="<?= $r['id'] ?>"><?= e($r['room_name']) ?></option>
+                  <?php endforeach; ?>
+                </select>
+              </div>
+              <button type="submit" class="btn btn-primary w-100 py-2">
+                <i class="bi bi-printer me-2"></i>Generate Seat Tokens
+              </button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+    <?php
+    require_once EMS_ROOT . '/includes/footer.php';
+    exit;
 }
 
 // Fetch exam
 $exStmt = $pdo->prepare('SELECT exam_name FROM exams WHERE id = ?');
 $exStmt->execute([$exam_id]);
 $examName = $exStmt->fetchColumn();
+
+if (!$examName) {
+    die("Exam not found.");
+}
 
 // Fetch seat tokens
 $where = "es.exam_id = :eid";
@@ -39,6 +90,32 @@ $stmt = $pdo->prepare(
 );
 $stmt->execute($params);
 $tokens = $stmt->fetchAll();
+
+if (empty($tokens)) {
+    // If no tokens found, show a clean message using the admin layout
+    $page_title = 'Print Seat Tokens';
+    $breadcrumbs = ['Examinations' => 'seats.php', 'Print Seat Tokens' => null];
+    require_once EMS_ROOT . '/includes/header.php';
+    ?>
+    <div class="row justify-content-center">
+      <div class="col-md-6">
+        <div class="card shadow-sm border-0">
+          <div class="card-body text-center p-5">
+            <div class="mb-3 text-warning"><i class="bi bi-exclamation-triangle" style="font-size: 3rem;"></i></div>
+            <h4>No Seat Assignments Found</h4>
+            <p class="text-muted">No students have been assigned to rooms for the exam <strong><?= e($examName) ?></strong> yet.</p>
+            <div class="d-flex gap-2 justify-content-center mt-4">
+              <a href="seats.php?exam_id=<?= $exam_id ?>" class="btn btn-primary"><i class="bi bi-gear me-2"></i>Generate Seat Plan</a>
+              <a href="seat_tokens.php" class="btn btn-outline-secondary">Select Another Exam</a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <?php
+    require_once EMS_ROOT . '/includes/footer.php';
+    exit;
+}
 
 $school_name = setting('school_name', 'EMS');
 ?>

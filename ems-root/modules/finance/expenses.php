@@ -83,7 +83,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 // Write transaction log
                 $tx = $pdo->prepare("INSERT INTO account_transactions (account_id, amount, transaction_type, description, reference_table, reference_id, created_by) VALUES (?, ?, 'withdrawal', ?, 'expenses', ?, ?)");
-                $tx->execute([$acc_id, -$amt, "Expense: " . ($desc ?: "Paid expense") . " (Vendor: $vend)", 'expenses', $id, current_user_id()]);
+                $tx->execute([$acc_id, -$amt, "Expense: " . ($desc ?: "Paid expense") . " (Vendor: $vend)", $id, current_user_id()]);
 
                 $pdo->commit();
             } catch (Exception $e) {

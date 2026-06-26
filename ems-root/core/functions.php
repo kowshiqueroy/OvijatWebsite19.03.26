@@ -35,9 +35,11 @@ function setting(string $key, string $default = ''): string {
         try {
             $stmt = db()->prepare('SELECT meta_value FROM system_settings WHERE meta_key = :k');
             $stmt->execute([':k' => $key]);
-            $cache[$key] = $stmt->fetchColumn() ?: $default;
+            $raw = $stmt->fetchColumn();
+            // Use strict false check so '0' and other falsy-but-valid values are preserved
+            $cache[$key] = ($raw !== false) ? (string)$raw : (string)$default;
         } catch (Exception $e) {
-            $cache[$key] = $default;
+            $cache[$key] = (string)$default;
         }
     }
     return $cache[$key];
@@ -141,6 +143,12 @@ function log_activity(string $action, string $module = '', int $recordId = 0, st
 // Format currency
 function money(float $amount): string {
     return setting('currency_symbol', '৳') . ' ' . number_format($amount, 2);
+}
+
+// Truncate a string to $length chars, appending ellipsis if cut — null-safe
+function str_cutoff(?string $s, int $length = 50, string $ellipsis = '…'): string {
+    if ($s === null || $s === '') return '';
+    return mb_strlen($s) > $length ? mb_substr($s, 0, $length) . $ellipsis : $s;
 }
 
 // Date formatting

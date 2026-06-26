@@ -82,26 +82,36 @@ $MOD    = $rel;
     </div>
   </div>
 
-  <nav class="sidebar-nav">
+  <!-- Accordion: data-bs-parent makes Bootstrap collapse all others when one opens -->
+  <nav class="sidebar-nav" id="sidebarAccordion">
     <?php foreach ($menu as $item): ?>
       <?php
         $hasChildren = !empty($item['children']);
         $collapseId  = 'nav-' . preg_replace('/\W/', '', strtolower($item['label']));
         $isActive    = !$hasChildren && !empty($item['url']) && is_active_url($item['url']);
-        $childActive = $hasChildren && array_reduce($item['children'], fn($c, $ch) => $c || (!empty($ch['url']) && is_active_url($ch['url'])), false);
+        $childActive = $hasChildren && array_reduce(
+            $item['children'],
+            fn($c, $ch) => $c || (!empty($ch['url']) && is_active_url($ch['url'])),
+            false
+        );
       ?>
       <?php if ($hasChildren): ?>
         <a class="nav-link <?= $childActive ? 'active' : '' ?>"
            data-bs-toggle="collapse"
            data-bs-target="#<?= $collapseId ?>"
-           aria-expanded="<?= $childActive ? 'true' : 'false' ?>">
+           aria-expanded="<?= $childActive ? 'true' : 'false' ?>"
+           aria-controls="<?= $collapseId ?>">
           <i class="bi bi-<?= e($item['icon']) ?> nav-icon"></i>
           <span><?= e($item['label']) ?></span>
           <i class="bi bi-chevron-right nav-arrow"></i>
         </a>
-        <div id="<?= $collapseId ?>" class="collapse <?= $childActive ? 'show' : '' ?> sidebar-submenu">
+        <!-- data-bs-parent="#sidebarAccordion" = close all siblings when this one opens -->
+        <div id="<?= $collapseId ?>"
+             class="collapse <?= $childActive ? 'show' : '' ?> sidebar-submenu"
+             data-bs-parent="#sidebarAccordion">
           <?php foreach ($item['children'] as $child): ?>
-            <a class="nav-link <?= (!empty($child['url']) && is_active_url($child['url'])) ? 'active' : '' ?>"
+            <?php $childIsActive = !empty($child['url']) && is_active_url($child['url']); ?>
+            <a class="nav-link <?= $childIsActive ? 'active' : '' ?>"
                href="<?= $MOD . e($child['url']) ?>">
               <?= e($child['label']) ?>
             </a>

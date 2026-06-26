@@ -164,7 +164,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && has_permission('payroll.manage')) {
 
             // Write transaction log
             $tx = $pdo->prepare("INSERT INTO account_transactions (account_id, amount, transaction_type, description, reference_table, reference_id, created_by) VALUES (?, ?, 'withdrawal', ?, 'payroll_runs', ?, ?)");
-            $tx->execute([$account_id, -$total_net, "Disbursed payroll for run #$runId", 'payroll_runs', $runId, current_user_id()]);
+            $tx->execute([$account_id, -$total_net, "Disbursed payroll for run #$runId", $runId, current_user_id()]);
 
             $pdo->commit();
             flash('success', 'Payroll finalized, disbursal account updated, and loan outstanding balances adjusted.');
@@ -230,7 +230,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && has_permission('payroll.manage')) {
 
                 // Write transaction log
                 $tx = $pdo->prepare("INSERT INTO account_transactions (account_id, amount, transaction_type, description, reference_table, reference_id, created_by) VALUES (?, ?, 'withdrawal', ?, 'payroll_runs', ?, ?)");
-                $tx->execute([$acc_id, -$amount, "One-time payout: $desc", 'payroll_runs', $runId, current_user_id()]);
+                $tx->execute([$acc_id, -$amount, "One-time payout: $desc", $runId, current_user_id()]);
 
                 $pdo->commit();
                 flash('success', 'One-time payout of '.money($amount).' processed successfully.');

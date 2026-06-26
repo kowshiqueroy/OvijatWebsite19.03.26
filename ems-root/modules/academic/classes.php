@@ -110,8 +110,8 @@ require_once EMS_ROOT . '/includes/header.php';
     </div></div>
   </div>
   <?php else: foreach ($classes as $cls): ?>
-  <div class="col-md-6 col-xl-4">
-    <div class="card h-100">
+  <div class="col-12">
+    <div class="card mb-3">
       <div class="card-header d-flex align-items-center justify-content-between py-3 px-3">
         <div>
           <span class="fw-700"><?= e($cls['class_name']) ?></span>
@@ -138,42 +138,56 @@ require_once EMS_ROOT . '/includes/header.php';
         <?php if (empty($clsSections)): ?>
           <div class="text-center py-3 text-muted small">No sections yet</div>
         <?php else: ?>
-        <table class="table table-sm mb-0">
-          <thead><tr><th>Section</th><th>Shift</th><th>Cap</th><th>Class Teacher</th><th></th></tr></thead>
-          <tbody>
-          <?php foreach ($clsSections as $sec): ?>
-          <tr>
-            <td class="fw-600"><?= e($sec['section_name']) ?></td>
-            <td class="text-capitalize"><?= e($sec['shift']) ?></td>
-            <td><?= $sec['capacity'] ?></td>
-            <td>
-              <div class="fw-600 text-dark" style="font-size:0.8rem;"><?= e($sec['teacher_name'] ?? '— Unassigned —') ?></div>
-              <?php if ($sec['class_teacher_first_period_days']): ?>
-                <div class="text-muted" style="font-size: 0.65rem;" title="Days class teacher takes 1st period"><i class="bi bi-clock me-1"></i>1st Period: <?= e($sec['class_teacher_first_period_days']) ?></div>
-              <?php endif; ?>
-            </td>
-            <td>
-              <div class="d-flex gap-1">
-                <button class="btn btn-xs btn-outline-primary" style="padding:.1rem .4rem;font-size:.7rem;"
-                        data-bs-toggle="modal" data-bs-target="#classSectionModal"
-                        onclick="setSectionForm(<?= htmlspecialchars(json_encode($sec), ENT_QUOTES) ?>)">
-                  <i class="bi bi-pencil"></i>
-                </button>
-                <form method="POST" class="d-inline">
-                  <?= csrf_field() ?>
-                  <input type="hidden" name="action" value="delete_section">
-                  <input type="hidden" name="id" value="<?= $sec['id'] ?>">
-                  <button type="submit" class="btn btn-xs btn-outline-danger" style="padding:.1rem .4rem;font-size:.7rem;"
-                          data-confirm="Delete section '<?= e($sec['section_name']) ?>'?">
-                    <i class="bi bi-x"></i>
+        <div class="table-responsive">
+          <table class="table table-sm mb-0 align-middle">
+            <thead>
+              <tr>
+                <th class="ps-3" style="white-space: nowrap;">Section</th>
+                <th style="white-space: nowrap;">Shift</th>
+                <th style="white-space: nowrap;">Cap</th>
+                <th>Class Teacher</th>
+                <th class="pe-3"></th>
+              </tr>
+            </thead>
+            <tbody>
+            <?php foreach ($clsSections as $sec): ?>
+            <tr>
+              <td class="fw-600 ps-3" style="white-space: nowrap;"><?= e($sec['section_name']) ?></td>
+              <td class="text-capitalize" style="white-space: nowrap;"><?= e($sec['shift']) ?></td>
+              <td style="white-space: nowrap;"><?= $sec['capacity'] ?></td>
+              <td>
+                <div class="fw-600 text-dark text-truncate" style="font-size:0.8rem; max-width: 300px;" title="<?= e($sec['teacher_name'] ?? '— Unassigned —') ?>">
+                  <?= e($sec['teacher_name'] ?? '— Unassigned —') ?>
+                </div>
+                <?php if ($sec['class_teacher_first_period_days']): ?>
+                  <div class="text-muted text-truncate" style="font-size: 0.65rem; max-width: 300px;" title="1st Period: <?= e($sec['class_teacher_first_period_days']) ?>">
+                    <i class="bi bi-clock me-1"></i>1st Period: <?= e($sec['class_teacher_first_period_days']) ?>
+                  </div>
+                <?php endif; ?>
+              </td>
+              <td class="pe-3">
+                <div class="d-flex gap-1 justify-content-end" style="white-space: nowrap;">
+                  <button class="btn btn-xs btn-outline-primary" style="padding:.1rem .4rem;font-size:.7rem;"
+                          data-bs-toggle="modal" data-bs-target="#classSectionModal"
+                          onclick="setSectionForm(<?= htmlspecialchars(json_encode($sec), ENT_QUOTES) ?>)">
+                    <i class="bi bi-pencil"></i>
                   </button>
-                </form>
-              </div>
-            </td>
-          </tr>
-          <?php endforeach; ?>
-          </tbody>
-        </table>
+                  <form method="POST" class="d-inline">
+                    <?= csrf_field() ?>
+                    <input type="hidden" name="action" value="delete_section">
+                    <input type="hidden" name="id" value="<?= $sec['id'] ?>">
+                    <button type="submit" class="btn btn-xs btn-outline-danger" style="padding:.1rem .4rem;font-size:.7rem;"
+                            data-confirm="Delete section '<?= e($sec['section_name']) ?>'?">
+                      <i class="bi bi-x"></i>
+                    </button>
+                  </form>
+                </div>
+              </td>
+            </tr>
+            <?php endforeach; ?>
+            </tbody>
+          </table>
+        </div>
         <?php endif; ?>
       </div>
       <div class="card-footer p-2">

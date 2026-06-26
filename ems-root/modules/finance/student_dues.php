@@ -119,7 +119,7 @@ if ($class_id || !$class_id) {
     if ($fee_cat_id) { $fbWhere .= ' AND fl.fee_category_id=?'; $fbPrams[] = $fee_cat_id; }
 
     $fb = $pdo->prepare("
-        SELECT fc.category_name, fc.category_type,
+        SELECT fc.id AS fee_category_id, fc.category_name, fc.category_type,
                SUM(fl.amount_due) AS total_due,
                SUM(fl.amount_paid) AS total_paid,
                SUM(fl.waiver_amount) AS total_waiver,
@@ -308,7 +308,7 @@ require_once EMS_ROOT . '/includes/header.php';
             ?>
             <tr>
               <td style="font-size:.8rem;">
-                <?php if ($fee_cat_id == $fb['fee_category_id'] ?? 0): ?>
+                <?php if ($fee_cat_id == ($fb['fee_category_id'] ?? 0)): ?>
                   <strong><?= e($fb['category_name']) ?></strong>
                 <?php else: ?>
                   <?= e($fb['category_name']) ?>
