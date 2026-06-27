@@ -1,0 +1,17 @@
+# Block direct access to sensitive files
+<FilesMatch "\.(sql|log|bak|sh|env)$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# Block access to setup panel from outside (comment out if needed locally)
+<Files "setup.php">
+    Order allow,deny
+    Deny from all
+</Files>
+
+# Block backups directory
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteRule ^backups/ - [F,L]
+</IfModule>
