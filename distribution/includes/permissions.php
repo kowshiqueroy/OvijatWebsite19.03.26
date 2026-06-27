@@ -12,7 +12,7 @@ function get_view_permissions($user_id = null) {
     
     // Cache in session
     if (!isset($_SESSION['view_perms_' . $user_id])) {
-        $perms = fetch_one("SELECT * FROM user_view_permissions WHERE user_id = ?", [$user_id]);
+        $perms = fetch_one("SELECT * FROM user_view_permissions WHERE user_id = ? SKIP_ISDELETE_FILTER", [$user_id]);
         if (!$perms) {
             // Default: show everything
             $perms = [
@@ -226,7 +226,10 @@ function post_journal($date, $narration, $reference_type, $reference_id, $lines)
         
         foreach ($lines as $line) {
             $stmt2 = $conn->prepare("INSERT INTO journal_lines (journal_id, account_id, dr_amount, cr_amount, narration) VALUES (?,?,?,?,?)");
-            $stmt2->bind_param("iidds", $journal_id, $line['account_id'], $line['dr'], $line['cr'], $line['note'] ?? '');
+            $line_dr   = $line['dr'];
+            $line_cr   = $line['cr'];
+            $line_note = $line['note'] ?? '';
+            $stmt2->bind_param("iidds", $journal_id, $line['account_id'], $line_dr, $line_cr, $line_note);
             $stmt2->execute();
         }
         

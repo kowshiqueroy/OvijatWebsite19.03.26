@@ -14,6 +14,32 @@ $pdo = db();
 // [tab_id, label, table, cols_to_manage, extra_cols_schema]
 // extra_cols_schema: array of [name, label, type, options/default]
 $CATEGORIES = [
+    'designation' => [
+        'label'   => 'Designations',
+        'icon'    => 'person-badge-fill',
+        'table'   => 'designation_types',
+        'cols'    => [
+            ['name'=>'designation_name', 'label'=>'Designation Name', 'type'=>'text', 'required'=>true],
+            ['name'=>'designation_role', 'label'=>'Category',         'type'=>'select',
+             'options'=>['head'=>'Head / Principal','academic'=>'Academic / Teaching','admin'=>'Administration','support'=>'Support Staff','other'=>'Other']],
+            ['name'=>'display_order',    'label'=>'Sort Order',       'type'=>'number','required'=>false],
+            ['name'=>'status',           'label'=>'Active?',          'type'=>'bool'],
+        ],
+        'pk' => 'id',
+    ],
+    'groups_stream' => [
+        'label'   => 'Groups / Streams',
+        'icon'    => 'diagram-3-fill',
+        'table'   => 'groups_stream',
+        'cols'    => [
+            ['name'=>'group_name',  'label'=>'Group Name', 'type'=>'text', 'required'=>true],
+            ['name'=>'group_code',  'label'=>'Code',       'type'=>'text', 'required'=>true],
+            ['name'=>'applicable_from_class_level', 'label'=>'Applicable From', 'type'=>'select',
+             'options'=>['secondary'=>'Secondary (Class 9-10)','higher_secondary'=>'Higher Secondary (11-12)','both'=>'Both']],
+            ['name'=>'status',      'label'=>'Active?',    'type'=>'bool'],
+        ],
+        'pk' => 'id',
+    ],
     'fee_cat' => [
         'label'   => 'Fee Categories',
         'icon'    => 'cash-coin',
@@ -90,9 +116,23 @@ $CATEGORIES = [
             ['name'=>'template_name',  'label'=>'Template Name', 'type'=>'text', 'required'=>true],
             ['name'=>'template_body',  'label'=>'Message Body',  'type'=>'textarea', 'required'=>true],
             ['name'=>'trigger_type',   'label'=>'Trigger',       'type'=>'select',
-             'options'=>['custom'=>'Custom/Manual','attendance'=>'Attendance Alert',
-                         'fee_due'=>'Fee Due Reminder','result'=>'Result Published','emergency'=>'Emergency']],
+             'options'=>['custom'=>'Custom/Manual','attendance'=>'Attendance Alert','absent_student'=>'Student Absent',
+                         'absent_staff'=>'Staff Absent','fee_due'=>'Fee Due Reminder',
+                         'fee_collection'=>'Fee Collection Receipt','result'=>'Result Published',
+                         'money_transaction'=>'Money Transaction','emergency'=>'Emergency']],
             ['name'=>'status',         'label'=>'Active?',       'type'=>'bool'],
+        ],
+        'pk' => 'id',
+    ],
+    'institute_level' => [
+        'label'   => 'Institute Levels',
+        'icon'    => 'layers-fill',
+        'table'   => 'institute_levels',
+        'cols'    => [
+            ['name'=>'level_name',    'label'=>'Level Name',  'type'=>'text',   'required'=>true],
+            ['name'=>'level_code',    'label'=>'Code',        'type'=>'text',   'required'=>true],
+            ['name'=>'display_order', 'label'=>'Sort Order',  'type'=>'number', 'required'=>false],
+            ['name'=>'status',        'label'=>'Active?',     'type'=>'bool'],
         ],
         'pk' => 'id',
     ],

@@ -45,7 +45,6 @@ body {
 #wrapper {
   display: flex;
   min-height: 100vh;
-  overflow-x: hidden;
 }
 
 /* ── Sidebar ──────────────────────────────────────────────────── */
@@ -55,16 +54,15 @@ body {
 
 #sidebar-wrapper {
   width: var(--sidebar-w);
-  min-width: var(--sidebar-w);
   background: var(--sidebar-bg);
   height: 100vh;
-  position: sticky;
+  position: fixed;
+  left: 0;
   top: 0;
   display: flex;
   flex-direction: column;
-  flex-shrink: 0;
   z-index: 100;
-  transition: width var(--transition), min-width var(--transition), transform var(--transition);
+  transition: width var(--transition), transform var(--transition);
   overflow: hidden;
 }
 
@@ -301,7 +299,9 @@ body {
 /* ── Desktop mini mode (icon only) ── */
 #wrapper.mini #sidebar-wrapper {
   width: var(--sidebar-mini-w);
-  min-width: var(--sidebar-mini-w);
+}
+#wrapper.mini #page-content-wrapper {
+  margin-left: var(--sidebar-mini-w);
 }
 #wrapper.mini .sidebar-brand-text,
 #wrapper.mini .sl-label,
@@ -360,6 +360,8 @@ body {
   min-width: 0;
   display: flex;
   flex-direction: column;
+  margin-left: var(--sidebar-w);
+  transition: margin-left var(--transition);
 }
 
 .top-navbar {
@@ -696,9 +698,10 @@ h3.page-title, .page-header h3, .row h3, .col-12 h3, h3 {
 
 /* ── Desktop toggled = hide sidebar completely ────────────────── */
 #wrapper.toggled #sidebar-wrapper {
-  width: 0;
-  min-width: 0;
-  overflow: hidden;
+  transform: translateX(-100%);
+}
+#wrapper.toggled #page-content-wrapper {
+  margin-left: 0;
 }
 
 /* ── Mobile / Responsive ──────────────────────────────────────── */
@@ -729,7 +732,7 @@ h3.page-title, .page-header h3, .row h3, .col-12 h3, h3 {
     overflow: visible;
   }
   #sidebar-backdrop.open { display: block; }
-  #page-content-wrapper { width: 100%; }
+  #page-content-wrapper { width: 100%; margin-left: 0; }
   .top-navbar-brand { display: block; }
   .main-content { padding: 16px 14px; }
   h3 { font-size: 17px !important; }

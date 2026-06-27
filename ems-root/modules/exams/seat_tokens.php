@@ -78,10 +78,10 @@ if ($room_id) {
 }
 
 $stmt = $pdo->prepare(
-    "SELECT es.*, sp.first_name, sp.last_name, sp.student_id_no, c.class_name, sec.section_name, r.room_name
+    "SELECT es.*, sp.first_name, sp.last_name, sp.student_id_no, c.class_name, sec.section_name, r.room_name, se.roll_number
      FROM exam_seats es
      JOIN student_profiles sp ON sp.user_id = es.student_id
-     JOIN student_enrollments se ON se.student_id = es.student_id AND se.status = 'active'
+     JOIN student_enrollments se ON se.student_id = es.student_id AND se.status = 'active' AND se.session_id = (SELECT session_id FROM exams WHERE id = es.exam_id)
      JOIN classes c ON c.id = se.class_id
      JOIN sections sec ON sec.id = se.section_id
      JOIN rooms r ON r.id = es.room_id
@@ -254,7 +254,7 @@ $school_name = setting('school_name', 'EMS');
           </tr>
           <tr>
             <td class="lbl">Class / Sec:</td>
-            <td><?= e($t['class_name']) ?> — <?= e($t['section_name']) ?> (Roll: <?= e($t['roll_no'] ?? $t['seat_number']) ?>)</td>
+            <td><?= e($t['class_name']) ?> — <?= e($t['section_name']) ?> (Roll: <?= e($t['roll_number'] ?? $t['seat_number']) ?>)</td>
           </tr>
         </table>
         

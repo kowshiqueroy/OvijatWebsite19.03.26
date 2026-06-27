@@ -11,7 +11,7 @@ $action = $_GET['action'] ?? $_POST['action'] ?? '';
 
 if ($action === 'get') {
     $user_id = intval($_GET['user_id'] ?? 0);
-    $perms = fetch_one("SELECT * FROM user_view_permissions WHERE user_id = ?", [$user_id]);
+    $perms = fetch_one("SELECT * FROM user_view_permissions WHERE user_id = ? SKIP_ISDELETE_FILTER", [$user_id]);
     if (!$perms) {
         // Return defaults
         $perms = [
@@ -57,7 +57,7 @@ if ($action === 'save' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     ];
 
     // Check if exists
-    $exists = fetch_one("SELECT id FROM user_view_permissions WHERE user_id = ?", [$user_id]);
+    $exists = fetch_one("SELECT id FROM user_view_permissions WHERE user_id = ? SKIP_ISDELETE_FILTER", [$user_id]);
 
     if ($exists) {
         $sets = implode(', ', array_map(fn($f) => "`$f` = ?", $fields));

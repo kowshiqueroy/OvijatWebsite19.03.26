@@ -50,39 +50,49 @@
         a.addEventListener('click', function () { if (isMobile()) closeMobile(); });
     });
 
-    /* ── Collapsible sections ── */
+    /* ── Collapsible sections (accordion) ── */
     function initSections() {
+        const sections = [];
+
         document.querySelectorAll('.sb-section-toggle').forEach(function (btn) {
             const targetId = btn.getAttribute('data-target');
             const body     = document.getElementById(targetId);
             if (!body) return;
 
-            // Restore collapse state (default = open)
-            const stored = localStorage.getItem('sb-' + targetId);
-            if (stored === '0') {
-                body.classList.add('collapsed');
-                btn.classList.add('collapsed');
-            }
+            // Start everything collapsed
+            body.classList.add('collapsed');
+            btn.classList.add('collapsed');
 
-            btn.addEventListener('click', function () {
-                const isCollapsed = body.classList.toggle('collapsed');
-                btn.classList.toggle('collapsed', isCollapsed);
-                localStorage.setItem('sb-' + targetId, isCollapsed ? '0' : '1');
+            sections.push({ btn: btn, body: body });
+        });
+
+        // Open only the section that contains the active page link
+        const activeLink = sidebar && sidebar.querySelector('.sidebar-link.active');
+        if (activeLink) {
+            const activeBody = activeLink.closest('.sb-section-body');
+            if (activeBody) {
+                activeBody.classList.remove('collapsed');
+                const activeBtn = activeBody.closest('.sb-section').querySelector('.sb-section-toggle');
+                if (activeBtn) activeBtn.classList.remove('collapsed');
+            }
+        }
+
+        // Accordion click: open clicked section, close all others
+        sections.forEach(function (sec) {
+            sec.btn.addEventListener('click', function () {
+                const willOpen = sec.body.classList.contains('collapsed');
+                sections.forEach(function (s) {
+                    s.body.classList.add('collapsed');
+                    s.btn.classList.add('collapsed');
+                });
+                if (willOpen) {
+                    sec.body.classList.remove('collapsed');
+                    sec.btn.classList.remove('collapsed');
+                }
             });
         });
     }
     initSections();
-
-    /* Auto-expand section containing the active link */
-    const activeLink = sidebar && sidebar.querySelector('.sidebar-link.active');
-    if (activeLink) {
-        const sectionBody = activeLink.closest('.sb-section-body');
-        if (sectionBody && sectionBody.classList.contains('collapsed')) {
-            sectionBody.classList.remove('collapsed');
-            const btn = sectionBody.closest('.sb-section')?.querySelector('.sb-section-toggle');
-            if (btn) btn.classList.remove('collapsed');
-        }
-    }
 
     // ── Select2 init ────────────────────────────────────────────
     if (typeof $ !== 'undefined' && $.fn.select2) {

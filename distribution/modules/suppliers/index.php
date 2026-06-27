@@ -22,7 +22,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } else {
             db_query("INSERT INTO suppliers (name,phone,email,address,opening_balance,balance) VALUES (?,?,?,?,?,?)",
                 [$name,$phone,$email,$address,$ob,$ob]);
-            $sid = fetch_one("SELECT LAST_INSERT_ID() as id")['id'];
+            $sid = get_db_connection()->insert_id;
             // Create AP account for the supplier
             $ap_group = fetch_one("SELECT id FROM account_groups WHERE name='Accounts Payable' AND isDelete=0 LIMIT 1");
             if ($ap_group) {

@@ -37,29 +37,80 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $pdo->prepare('DELETE FROM holiday_calendar WHERE id=:id')->execute([':id' => $id]);
         flash('success', 'Holiday removed.');
     } elseif ($action === 'seed_bd_holidays') {
-        // Seed common Bangladesh national holidays for the current year
-        $year = date('Y');
+        $year    = (int)($_POST['seed_year'] ?? date('Y'));
+        $sess_id = int_param('session_id', 0, $_POST) ?: null;
+
+        // Delete existing govt holidays for this year first (idempotent re-seed)
+        $delStmt = $sess_id
+            ? $pdo->prepare("DELETE FROM holiday_calendar WHERE holiday_type='govt' AND YEAR(holiday_date)=? AND session_id=?")
+            : $pdo->prepare("DELETE FROM holiday_calendar WHERE holiday_type='govt' AND YEAR(holiday_date)=? AND session_id IS NULL");
+        $sess_id ? $delStmt->execute([$year, $sess_id]) : $delStmt->execute([$year]);
+
         $holidays = [
-            ["$year-02-21", 'Language Martyrs Day / Shaheed Dibosh', 'govt'],
-            ["$year-03-17", 'Birthday of Father of Nation Bangabandhu Sheikh Mujibur Rahman', 'govt'],
-            ["$year-03-25", 'Genocide Remembrance Day', 'govt'],
-            ["$year-03-26", 'Independence Day / Shadhinota Dibosh', 'govt'],
-            ["$year-04-14", 'Bengali New Year / Pohela Boishakh', 'govt'],
-            ["$year-05-01", 'May Day / International Workers Day', 'govt'],
-            ["$year-08-15", 'National Mourning Day', 'govt'],
-            ["$year-12-16", 'Victory Day / Bijoy Dibosh', 'govt'],
+            ["$year-01-01", "New Year's Day",                          'govt'],
+            ["$year-02-21", 'Language Martyrs Day (Shaheed Dibosh)',   'govt'],
+            ["$year-03-17", 'Birthday of Father of Nation',            'govt'],
+            ["$year-03-25", 'Genocide Remembrance Day',                'govt'],
+            ["$year-03-26", 'Independence Day (Shadhinota Dibosh)',    'govt'],
+            ["$year-04-14", 'Bengali New Year (Pohela Boishakh)',      'govt'],
+            ["$year-04-17", 'Mujibnagar Day',                         'govt'],
+            ["$year-05-01", 'International Workers Day (May Day)',     'govt'],
+            ["$year-08-15", 'National Mourning Day',                   'govt'],
+            ["$year-12-16", 'Victory Day (Bijoy Dibosh)',              'govt'],
         ];
-        $stmt = $pdo->prepare('INSERT IGNORE INTO holiday_calendar (holiday_date,holiday_name,holiday_type) VALUES (?,?,?)');
+        $ins = $pdo->prepare('INSERT INTO holiday_calendar (session_id,holiday_date,holiday_name,holiday_type) VALUES (?,?,?,?)');
+        foreach ($holidays as $h) $ins->execute([$sess_id, $h[0], $h[1], $h[2]]);
+        flash('success', count($holidays) . ' BD national holidays set for ' . $year . '.');
+        header('Location: holidays.php?session_id=' . (int)$_POST['session_id'] . '&year=' . $year);
+        exit;
+
+    } elseif ($action === 'seed_fridays') {
+        $year    = (int)($_POST['seed_year'] ?? date('Y'));
+        $sess_id = int_param('session_id', 0, $_POST) ?: null;
+
+        // Delete existing weekend-type holidays for this year first (idempotent)
+        $delStmt = $sess_id
+            ? $pdo->prepare("DELETE FROM holiday_calendar WHERE holiday_type='weekend' AND YEAR(holiday_date)=? AND session_id=?")
+            : $pdo->prepare("DELETE FROM holiday_calendar WHERE holiday_type='weekend' AND YEAR(holiday_date)=? AND session_id IS NULL");
+        $sess_id ? $delStmt->execute([$year, $sess_id]) : $delStmt->execute([$year]);
+
+        $ins   = $pdo->prepare('INSERT INTO holiday_calendar (session_id,holiday_date,holiday_name,holiday_type) VALUES (?,?,?,?)');
         $count = 0;
-        foreach ($holidays as $h) { $stmt->execute($h); $count++; }
-        flash('success', "$count national holidays seeded for $year.");
+        $date  = new DateTime("$year-01-01");
+        $end   = new DateTime("$year-12-31");
+        while ((int)$date->format('N') !== 5) $date->modify('+1 day'); // advance to first Friday
+        while ($date <= $end) {
+            $ins->execute([$sess_id, $date->format('Y-m-d'), 'Friday (Weekly Holiday)', 'weekend']);
+            $date->modify('+7 days');
+            $count++;
+        }
+        flash('success', "$count Fridays set as weekend holidays for $year.");
+        header('Location: holidays.php?session_id=' . (int)$_POST['session_id'] . '&year=' . $year);
+        exit;
+
+    } elseif ($action === 'seed_saturdays') {
+        $year    = (int)($_POST['seed_year'] ?? date('Y'));
+        $sess_id = int_param('session_id', 0, $_POST) ?: null;
+        $ins   = $pdo->prepare('INSERT INTO holiday_calendar (session_id,holiday_date,holiday_name,holiday_type) VALUES (?,?,?,?)');
+        $count = 0;
+        $date  = new DateTime("$year-01-01");
+        $end   = new DateTime("$year-12-31");
+        while ((int)$date->format('N') !== 6) $date->modify('+1 day');
+        while ($date <= $end) {
+            $ins->execute([$sess_id, $date->format('Y-m-d'), 'Saturday (Half-Day / Off)', 'weekend']);
+            $date->modify('+7 days');
+            $count++;
+        }
+        flash('success', "$count Saturdays added for $year.");
+        header('Location: holidays.php?session_id=' . (int)$_POST['session_id'] . '&year=' . $year);
+        exit;
     }
     header('Location: holidays.php');
     exit;
 }
 
 $session_id = int_param('session_id', (int)setting('current_session_id',0), $_GET);
-$year_f     = int_param('year', date('Y'), $_GET);
+$year_f     = int_param('year', (int)date('Y'), $_GET);
 
 $holidays = $pdo->prepare(
     "SELECT * FROM holiday_calendar
@@ -77,14 +128,25 @@ require_once EMS_ROOT . '/includes/header.php';
 
 <div class="d-flex align-items-center justify-content-between mb-4">
   <h1 class="page-title mb-0"><i class="bi bi-calendar-event-fill me-2 text-primary"></i>Holiday Calendar</h1>
-  <div class="d-flex gap-2">
-    <form method="POST" class="d-inline">
+  <div class="d-flex flex-wrap gap-2">
+
+    <!-- Quick seed form -->
+    <form method="POST" class="d-flex gap-2 align-items-center flex-wrap" id="seedForm">
       <?= csrf_field() ?>
-      <button type="submit" name="action" value="seed_bd_holidays" class="btn btn-outline-success btn-sm"
-              data-confirm="Seed <?= date('Y') ?> Bangladesh national holidays?">
-        <i class="bi bi-flag me-1"></i>Seed BD Holidays
+      <input type="hidden" name="session_id" value="<?= $session_id ?>">
+      <select name="seed_year" class="form-select form-select-sm" style="width:100px;">
+        <?php for ($y = date('Y')+1; $y >= date('Y')-2; $y--): ?>
+          <option value="<?= $y ?>" <?= $y == $year_f ? 'selected' : '' ?>><?= $y ?></option>
+        <?php endfor; ?>
+      </select>
+      <button type="submit" name="action" value="seed_fridays" class="btn btn-outline-secondary btn-sm">
+        <i class="bi bi-calendar3 me-1"></i>All Fridays
+      </button>
+      <button type="submit" name="action" value="seed_bd_holidays" class="btn btn-outline-success btn-sm">
+        <i class="bi bi-flag me-1"></i>BD Holidays
       </button>
     </form>
+
     <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#holidayModal" onclick="setHolidayForm(null)">
       <i class="bi bi-plus-lg me-1"></i>Add Holiday
     </button>
@@ -162,18 +224,31 @@ require_once EMS_ROOT . '/includes/header.php';
         <?php
         $byType = [];
         foreach ($holidays as $h) $byType[$h['holiday_type']][] = $h;
-        foreach (['govt'=>'Government Holidays','institutional'=>'Institutional Holidays','custom'=>'Custom Holidays'] as $k=>$label):
-          if (empty($byType[$k])) continue;
+        $typeLabels = [
+            'govt'        => ['Government / National', 'danger'],
+            'weekend'     => ['Weekly Holidays (Fri)', 'secondary'],
+            'institutional'=> ['Institutional',        'primary'],
+            'custom'      => ['Custom / Other',        'info'],
+        ];
+        foreach ($typeLabels as $k => [$label, $color]):
+            if (empty($byType[$k])) continue;
         ?>
         <div class="mb-3">
-          <div class="fw-600 mb-1"><?= $label ?> (<?= count($byType[$k]) ?>)</div>
-          <?php foreach ($byType[$k] as $h): ?>
-            <div class="small text-muted ms-2">• <?= fmt_date($h['holiday_date'], 'd M') ?> — <?= e($h['holiday_name']) ?></div>
-          <?php endforeach; ?>
+          <div class="fw-600 mb-1">
+            <span class="badge bg-<?= $color ?> me-1"><?= count($byType[$k]) ?></span>
+            <?= $label ?>
+          </div>
+          <?php if ($k !== 'weekend'): // Don't list all 52 Fridays individually ?>
+            <?php foreach ($byType[$k] as $h): ?>
+              <div class="small text-muted ms-2">• <?= fmt_date($h['holiday_date'], 'd M') ?> — <?= e($h['holiday_name']) ?></div>
+            <?php endforeach; ?>
+          <?php else: ?>
+            <div class="small text-muted ms-2">Every Friday of <?= $year_f ?></div>
+          <?php endif; ?>
         </div>
         <?php endforeach; ?>
         <hr>
-        <div class="small fw-700">Total: <?= count($holidays) ?> holidays in <?= $year_f ?></div>
+        <div class="small fw-700">Total: <?= count($holidays) ?> entries in <?= $year_f ?></div>
       </div>
     </div>
   </div>

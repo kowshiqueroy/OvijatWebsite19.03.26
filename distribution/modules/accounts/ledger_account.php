@@ -14,7 +14,7 @@ $all_accounts = fetch_all(
      ORDER BY ag.nature, a.name"
 );
 
-$account = $account_id ? fetch_one("SELECT a.*, ag.name as group_name, ag.nature FROM accounts a JOIN account_groups ag ON a.group_id=ag.id WHERE a.id=?", [$account_id]) : null;
+$account = $account_id ? fetch_one("SELECT a.*, ag.name as group_name, ag.nature FROM accounts a JOIN account_groups ag ON a.group_id=ag.id WHERE a.id=? AND a.isDelete=0", [$account_id]) : null;
 
 $lines = [];
 $running = 0;

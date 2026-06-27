@@ -138,7 +138,11 @@ function load_results(PDO $pdo, int $exam_id, int $class_id, int $section_id, in
         } else {
             $pct          = $row['full']>0?round($row['total']/$row['full']*100,1):0;
             $row['pct']   = $pct;
-            $row['grade'] = calculate_grade($pct);
+            $g            = calculate_grade($pct);
+            if ($row['failed'] > 0) {
+                $g = ['grade' => 'F', 'gpa' => 0.00, 'label' => 'Fail'];
+            }
+            $row['grade'] = $g;
             $row['pass']  = $row['failed']===0;
         }
         $results[]    = $row;

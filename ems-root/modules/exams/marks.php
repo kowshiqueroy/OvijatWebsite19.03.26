@@ -17,9 +17,30 @@ $class_id   = int_param('class_id', 0, $_GET);
 $section_id = int_param('section_id', 0, $_GET);
 $subject_id = int_param('subject_id', 0, $_GET);
 
+// Load exam info first — needed to check published status before save
+$exam = null;
+if ($exam_id) {
+    $s = $pdo->prepare('SELECT e.*, ass.session_name FROM exams e JOIN academic_sessions ass ON ass.id=e.session_id WHERE e.id=:id AND e.deleted_at IS NULL');
+    $s->execute([':id' => $exam_id]);
+    $exam = $s->fetch();
+}
+
+// Block all access for results_published exams
+if ($exam && $exam['status'] === 'results_published') {
+    flash('warning', 'Mark entry is locked for "' . $exam['exam_name'] . '" because results have been published.');
+    header('Location: index.php');
+    exit;
+}
+
 // Handle save
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'save_marks') {
     csrf_check();
+    // Double-check exam is not published
+    if ($exam && $exam['status'] === 'results_published') {
+        flash('error', 'Cannot save marks — results for this exam are already published.');
+        header('Location: marks.php?exam_id=' . $exam_id);
+        exit;
+    }
     $marksData = $_POST['marks'] ?? [];
     $stmt = $pdo->prepare(
         'INSERT INTO marks_entry
@@ -43,16 +64,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'save_
     }
     log_activity('marks_entered', 'exams', $exam_id);
     flash('success', "$saved student marks saved.");
-    header('Location: marks.php?exam_id=$exam_id&class_id=$class_id&section_id=$section_id&subject_id=$subject_id');
+    header("Location: marks.php?exam_id=$exam_id&class_id=$class_id&section_id=$section_id&subject_id=$subject_id");
     exit;
-}
-
-// Load exam info
-$exam = null;
-if ($exam_id) {
-    $s = $pdo->prepare('SELECT e.*, ass.session_name FROM exams e JOIN academic_sessions ass ON ass.id=e.session_id WHERE e.id=:id');
-    $s->execute([':id' => $exam_id]);
-    $exam = $s->fetch();
 }
 
 // Classes for this exam

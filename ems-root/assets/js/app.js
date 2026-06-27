@@ -16,21 +16,36 @@
   }));
   overlay?.addEventListener('click', closeSidebar);
 
-  // ── Mark active sidebar link ──────────────────────────────
-  const currentPath = window.location.pathname;
-  document.querySelectorAll('#sidebar .nav-link[href]').forEach(link => {
-    const href = link.getAttribute('href');
-    if (href && currentPath.endsWith(href.replace(/^.*\//, ''))) {
-      link.classList.add('active');
-      // Open parent collapse
-      const parent = link.closest('.collapse');
-      if (parent) {
-        parent.classList.add('show');
-        const trigger = document.querySelector(`[data-bs-target="#${parent.id}"]`);
-        trigger?.setAttribute('aria-expanded', 'true');
+  // ── Sidebar accordion: close all, then open only the active one ─
+  // PHP already renders the correct show/active state server-side.
+  // This block just ensures Bootstrap's collapse instances are in sync
+  // and that clicking a parent link closes all siblings (accordion).
+  (function initSidebarAccordion() {
+    const accordion = document.getElementById('sidebarAccordion');
+    if (!accordion) return;
+
+    // On page load: collapse every submenu that PHP didn't mark as .show
+    // (Bootstrap sometimes keeps them open from a previous navigation).
+    accordion.querySelectorAll('.collapse.sidebar-submenu').forEach(el => {
+      if (!el.classList.contains('show')) {
+        // Ensure Bootstrap collapse instance is collapsed
+        const bsc = bootstrap.Collapse.getOrCreateInstance(el, { toggle: false });
+        bsc.hide();
       }
-    }
-  });
+    });
+
+    // Clicking a parent nav-link → close every OTHER submenu first
+    accordion.querySelectorAll('[data-bs-toggle="collapse"]').forEach(trigger => {
+      trigger.addEventListener('click', () => {
+        const targetId = trigger.getAttribute('data-bs-target');
+        accordion.querySelectorAll('.collapse.sidebar-submenu').forEach(el => {
+          if ('#' + el.id !== targetId && el.classList.contains('show')) {
+            bootstrap.Collapse.getOrCreateInstance(el, { toggle: false }).hide();
+          }
+        });
+      });
+    });
+  })();
 
   // ── Auto-dismiss alerts ───────────────────────────────────
   document.querySelectorAll('.alert[data-auto-dismiss]').forEach(alert => {
@@ -52,11 +67,92 @@
     };
   }
 
-  // ── Confirm delete buttons ────────────────────────────────
+  // ── Soft-delete warning modal (data-soft-delete) ────────────
+  // Usage: <button data-soft-delete="Item Name" data-soft-delete-warn="3 related records will be affected"
+  //                data-form-id="myFormId">Delete</button>
+  // If data-soft-delete-warn is present, show modal first; else submit immediately.
+  document.addEventListener('click', e => {
+    const btn = e.target.closest('[data-soft-delete]');
+    if (!btn) return;
+    e.preventDefault();
+    const name    = btn.dataset.softDelete    || 'this record';
+    const warn    = btn.dataset.softDeleteWarn || '';
+    const formId  = btn.dataset.formId;
+    const form    = formId ? document.getElementById(formId) : btn.closest('form');
+
+    // If no warning context, just confirm with a simple dialog
+    if (!warn) {
+      if (confirm(`Soft delete "${name}"?\n\nThis will hide it from all views but can be restored from the Deleted Items page.`)) {
+        form?.submit();
+      }
+      return;
+    }
+
+    // Show rich modal
+    let modal = document.getElementById('softDeleteModal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'softDeleteModal';
+      modal.className = 'modal fade';
+      modal.setAttribute('tabindex', '-1');
+      modal.innerHTML = `
+        <div class="modal-dialog">
+          <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+              <h5 class="modal-title"><i class="bi bi-trash3 me-2"></i>Confirm Delete</h5>
+              <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+              <p class="mb-2">You are about to soft-delete: <strong id="sdModalName"></strong></p>
+              <div class="alert alert-warning mb-3" id="sdModalWarn"></div>
+              <p class="small text-muted mb-0">
+                <i class="bi bi-info-circle me-1"></i>
+                Soft delete hides this record from all views. It can be restored from
+                <strong>Setup → Deleted Items</strong>.
+              </p>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+              <button type="button" class="btn btn-danger" id="sdModalConfirm">
+                <i class="bi bi-trash3 me-1"></i>Delete
+              </button>
+            </div>
+          </div>
+        </div>`;
+      document.body.appendChild(modal);
+    }
+
+    document.getElementById('sdModalName').textContent = name;
+    document.getElementById('sdModalWarn').innerHTML   = `<i class="bi bi-exclamation-triangle me-2"></i>${warn}`;
+
+    const bsModal = new bootstrap.Modal(modal);
+    bsModal.show();
+
+    document.getElementById('sdModalConfirm').onclick = () => {
+      bsModal.hide();
+      form?.submit();
+    };
+  });
+
+  // ── Simple confirm for non-soft-delete buttons ──────────────
+  // We always preventDefault first, then manually submit with the button's name/value
+  // preserved so PHP receives the correct action value.
   document.addEventListener('click', e => {
     const btn = e.target.closest('[data-confirm]');
-    if (!btn) return;
-    if (!confirm(btn.dataset.confirm || 'Are you sure?')) e.preventDefault();
+    if (!btn || btn.dataset.softDelete) return;
+    e.preventDefault();
+    if (!confirm(btn.dataset.confirm || 'Are you sure?')) return;
+
+    const form = btn.form || btn.closest('form');
+    if (!form) return;
+
+    // Preserve button name/value (lost when using form.submit())
+    if (btn.name) {
+      const h = document.createElement('input');
+      h.type = 'hidden'; h.name = btn.name; h.value = btn.value;
+      form.appendChild(h);
+    }
+    form.submit();
   });
 
   // ── Search table (client-side filter) ────────────────────

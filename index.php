@@ -5,7 +5,7 @@
 <?php
 
 
-// header("Location: /bolakausa/");
+header("Location: /ems-root/");
 /**
  * Modern Project Dashboard
  * Enhanced with metadata tracking and dark mode UI.

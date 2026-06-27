@@ -103,6 +103,9 @@ if ($exam_id && $class_id && $section_id) {
 
         $pct   = $row['full_total'] > 0 ? ($row['total'] / $row['full_total']) * 100 : 0;
         $grade = calculate_grade($pct);
+        if ($row['failed'] > 0) {
+            $grade = ['grade' => 'F', 'gpa' => 0.00, 'label' => 'Fail'];
+        }
         $row['percentage'] = $pct;
         $row['grade']      = $grade;
         $row['passed']     = $row['failed'] === 0;

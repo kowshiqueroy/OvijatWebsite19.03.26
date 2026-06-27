@@ -66,9 +66,16 @@ function csrf_token(): string {
     return $_SESSION['csrf_token'];
 }
 function csrf_check(): void {
-    $token = $_POST['_csrf'] ?? $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '';
+    $token = $_POST['_csrf'] ?? $_POST['csrf_token'] ?? $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '';
     if (!hash_equals($_SESSION['csrf_token'] ?? '', $token)) {
         http_response_code(403);
+        // If the request expects JSON, respond with JSON error instead of plain text
+        $isJson = !empty($_SERVER['HTTP_ACCEPT']) && str_contains($_SERVER['HTTP_ACCEPT'], 'application/json');
+        $isAjax = !empty($_SERVER['HTTP_X_REQUESTED_WITH']);
+        if ($isJson || $isAjax) {
+            header('Content-Type: application/json');
+            die(json_encode(['error' => 'CSRF token invalid. Refresh the page and try again.']));
+        }
         die('Invalid CSRF token. Please go back and try again.');
     }
 }
@@ -204,6 +211,60 @@ function render_flash(): void {
             <div>' . e($f['msg']) . '</div>
             <button type="button" class="btn-close ms-auto" data-bs-dismiss="alert"></button>
           </div>';
+}
+
+// ── Soft-delete helpers ───────────────────────────────────────
+// Tables that support soft deletes: deleted_at / deleted_by columns
+// Usage: soft_delete('classes', 3)
+function soft_delete(string $table, int $id): bool {
+    $allowed = ['classes','sections','subjects','exams','rooms','special_batches',
+                'notices','document_templates','fee_categories','fee_structures',
+                'assets','academic_sessions'];
+    if (!in_array($table, $allowed, true)) return false;
+    try {
+        db()->prepare("UPDATE `{$table}` SET deleted_at=NOW(), deleted_by=:by WHERE id=:id")
+           ->execute([':by' => $_SESSION['user_id'] ?? null, ':id' => $id]);
+        log_activity('soft_delete', $table, $id);
+        return true;
+    } catch (Exception $e) { return false; }
+}
+
+function restore_record(string $table, int $id): bool {
+    $allowed = ['classes','sections','subjects','exams','rooms','special_batches',
+                'notices','document_templates','fee_categories','fee_structures',
+                'assets','academic_sessions'];
+    if (!in_array($table, $allowed, true)) return false;
+    try {
+        db()->prepare("UPDATE `{$table}` SET deleted_at=NULL, deleted_by=NULL WHERE id=:id")
+           ->execute([':id' => $id]);
+        log_activity('restore', $table, $id);
+        return true;
+    } catch (Exception $e) { return false; }
+}
+
+// Verify developer PIN for hard deletes
+function verify_dev_pin(string $pin): bool {
+    return hash_equals('5877', $pin);
+}
+
+// Hard delete + audit log (PIN-protected, admin-only)
+function hard_delete(string $table, int $id, string $reason = ''): bool {
+    $allowed = ['classes','sections','subjects','exams','rooms','special_batches',
+                'notices','document_templates','fee_categories','fee_structures',
+                'assets','academic_sessions'];
+    if (!in_array($table, $allowed, true)) return false;
+    try {
+        $stmt = db()->prepare("SELECT * FROM `{$table}` WHERE id=:id");
+        $stmt->execute([':id'=>$id]);
+        $row  = $stmt->fetch();
+        $data = json_encode($row ?: []);
+        db()->prepare("DELETE FROM `{$table}` WHERE id=:id")->execute([':id'=>$id]);
+        db()->prepare('INSERT INTO developer_actions_log (action_type,table_name,record_id,record_data,performed_by,reason)
+                       VALUES ("hard_delete",:t,:id,:data,:by,:reason)')
+           ->execute([':t'=>$table,':id'=>$id,':data'=>$data,
+                      ':by'=>$_SESSION['user_id']??null,':reason'=>$reason]);
+        return true;
+    } catch (Exception $e) { return false; }
 }
 
 // Current user's enrolled session/class etc (students)

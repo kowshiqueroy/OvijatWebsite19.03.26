@@ -1,4 +1,8 @@
   </main><!-- /page-content -->
+  <footer class="ems-footer">
+    <?= e(setting('school_name','EMS')) ?> &mdash; Education Management System &nbsp;|&nbsp;
+    Powered by <a href="https://sohojweb.com" target="_blank">SohojWeb</a>
+  </footer>
 </div><!-- /main-content -->
 </div><!-- /wrapper -->
 

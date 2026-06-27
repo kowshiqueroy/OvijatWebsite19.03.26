@@ -26,15 +26,33 @@ if (file_exists(EMS_ROOT . '/config/db.php') && file_exists(EMS_ROOT . '/config/
 
 $isCli = (php_sapi_name() === 'cli');
 if (!$isCli) {
-    session_name('EMS_SEED_SESS');
+    session_name('EMS_SESS');
     session_start();
 
-    // PIN auth
+    $has_users = false;
+    if ($dbOk) {
+        try {
+            $stmt = db()->query("SELECT COUNT(*) FROM users");
+            if ($stmt) {
+                $has_users = ((int)$stmt->fetchColumn() > 0);
+            }
+        } catch (Exception $e) {}
+    }
+
+    if ($has_users) {
+        require_once EMS_ROOT . '/core/auth.php';
+        if (empty($_SESSION['user_id']) || !has_role('super_admin')) {
+            http_response_code(403);
+            die('Access Denied: You must be logged in as a Super Admin to access this page.');
+        }
+    }
+
+    // PIN auth using EMS_SESS instead of separate session name to avoid session clutter
     if (isset($_POST['pin'])) {
         if ($_POST['pin'] === '5877') $_SESSION['seed_auth'] = true;
         else { $_SESSION['seed_err'] = true; header('Location: seed.php'); exit; }
     }
-    if (isset($_GET['logout'])) { session_destroy(); header('Location: seed.php'); exit; }
+    if (isset($_GET['logout'])) { unset($_SESSION['seed_auth']); header('Location: seed.php'); exit; }
 
     $auth = $_SESSION['seed_auth'] ?? false;
 } else {
@@ -46,6 +64,7 @@ if (!$isCli) {
         }
     }
 }
+
 
 // ─── Execute action ────────────────────────────────────────────────────────
 $messages = []; $errors = [];
@@ -135,7 +154,7 @@ function do_migrate_schema(PDO $pdo): void {
     // Uses IF NOT EXISTS so it's safe to run on any DB version.
     $alters = [
         // class_subjects
-        "ALTER TABLE class_subjects ADD COLUMN IF NOT EXISTS periods_per_week INT DEFAULT 1",
+        "ALTER TABLE class_subjects ADD COLUMN IF NOT EXISTS classes_per_week INT DEFAULT 1",
         // sections
         "ALTER TABLE sections ADD COLUMN IF NOT EXISTS class_teacher_id INT DEFAULT NULL",
         "ALTER TABLE sections ADD COLUMN IF NOT EXISTS class_teacher_first_period_days VARCHAR(255) DEFAULT NULL",
@@ -626,7 +645,7 @@ function do_seed_session(PDO $pdo, int $session_id, string $year, array $options
             foreach ($forThis as $sn) {
                 $sid = $subjectIds[$sn] ?? null;
                 if (!$sid) continue;
-                $pdo->prepare('INSERT IGNORE INTO class_subjects (class_id,session_id,subject_id,full_marks_written,pass_marks_written,periods_per_week) VALUES (?,?,?,100,33,5)')
+                $pdo->prepare('INSERT IGNORE INTO class_subjects (class_id,session_id,subject_id,full_marks_written,pass_marks_written,classes_per_week) VALUES (?,?,?,100,33,5)')
                     ->execute([$cid, $session_id, $sid]);
             }
         }

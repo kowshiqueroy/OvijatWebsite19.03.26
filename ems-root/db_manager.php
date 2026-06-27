@@ -11,8 +11,25 @@ require_once EMS_ROOT . '/core/functions.php';
 session_name('EMS_SESS');
 session_start();
 
+$has_users = false;
+try {
+    $stmt = db()->query("SELECT COUNT(*) FROM users");
+    if ($stmt) {
+        $has_users = ((int)$stmt->fetchColumn() > 0);
+    }
+} catch (Exception $e) {}
+
+if ($has_users) {
+    require_once EMS_ROOT . '/core/auth.php';
+    if (empty($_SESSION['user_id']) || !has_role('super_admin')) {
+        http_response_code(403);
+        die('Access Denied: You must be logged in as a Super Admin to access the Database Manager.');
+    }
+}
+
 $pin_error = false;
 $pin_success = false;
+
 
 // Handle PIN Verification
 if (isset($_POST['pin_submit'])) {

@@ -8,31 +8,69 @@ if (isset($_POST['add_user'])) {
         redirect('modules/users/index.php', 'CSRF Token Validation Failed.', 'danger');
     }
     $username = sanitize($_POST['username']);
-    $phone = sanitize($_POST['phone']);
+    $phone    = sanitize($_POST['phone']);
     $password = password_hash($_POST['password'], PASSWORD_DEFAULT);
-    $role = sanitize($_POST['role']);
+    $role     = sanitize($_POST['role']);
 
     db_query("INSERT INTO users (username, password, phone, role) VALUES (?, ?, ?, ?)", [$username, $password, $phone, $role]);
     log_activity($_SESSION['user_id'], "Created new user: $username");
     redirect('modules/users/index.php', 'User created successfully.');
 }
 
-$users = fetch_all("SELECT * FROM users WHERE isDelete = 0 ORDER BY created_at DESC");
+// Sort: most recently active first, never-active at the bottom
+$users = fetch_all("SELECT * FROM users WHERE isDelete = 0 ORDER BY ISNULL(last_active) ASC, last_active DESC, username ASC");
+
+$role_order = [ROLE_ADMIN, ROLE_MANAGER, ROLE_ACCOUNTANT, ROLE_SR, ROLE_VIEWER, ROLE_CUSTOMER];
+$role_meta  = [
+    ROLE_ADMIN      => ['label' => 'Admin',       'badge' => 'bg-dark'],
+    ROLE_MANAGER    => ['label' => 'Manager',      'badge' => 'bg-primary'],
+    ROLE_ACCOUNTANT => ['label' => 'Accountant',   'badge' => 'bg-success'],
+    ROLE_SR         => ['label' => 'Sales Rep',    'badge' => 'bg-info text-dark'],
+    ROLE_VIEWER     => ['label' => 'Viewer',       'badge' => 'bg-warning text-dark'],
+    ROLE_CUSTOMER   => ['label' => 'Customer',     'badge' => 'bg-secondary'],
+];
 ?>
 
-<div class="row">
-    <div class="col-12 d-flex justify-content-between align-items-center mb-4">
-        <h3>User Management</h3>
-        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addUserModal">
-            <i class="fas fa-user-plus me-2"></i> Add New User
-        </button>
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h3>User Management</h3>
+    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addUserModal">
+        <i class="fas fa-user-plus me-2"></i>Add New User
+    </button>
+</div>
+
+<!-- Search -->
+<div class="mb-3">
+    <div class="input-group" style="max-width:320px;">
+        <span class="input-group-text bg-white"><i class="fas fa-search text-muted"></i></span>
+        <input type="text" id="user-search" class="form-control border-start-0" placeholder="Search username or phone…">
     </div>
 </div>
 
-<div class="card shadow-sm">
-    <div class="card-body">
+<!-- Role tabs -->
+<ul class="nav nav-tabs" id="roleTabs" role="tablist">
+    <li class="nav-item">
+        <button class="nav-link active" data-role="all">
+            All <span class="badge bg-secondary ms-1"><?php echo count($users); ?></span>
+        </button>
+    </li>
+    <?php foreach ($role_order as $r):
+        $cnt = count(array_filter($users, fn($u) => $u['role'] === $r));
+        if (!$cnt) continue;
+        $meta = $role_meta[$r];
+    ?>
+    <li class="nav-item">
+        <button class="nav-link" data-role="<?php echo htmlspecialchars($r); ?>">
+            <?php echo $meta['label']; ?>
+            <span class="badge <?php echo $meta['badge']; ?> ms-1"><?php echo $cnt; ?></span>
+        </button>
+    </li>
+    <?php endforeach; ?>
+</ul>
+
+<div class="card" style="border-top-left-radius:0;border-top-right-radius:0;border-top:none;">
+    <div class="card-body p-0">
         <div class="table-responsive">
-            <table class="table table-hover align-middle">
+            <table class="table table-hover align-middle mb-0" id="users-table">
                 <thead class="table-light">
                     <tr>
                         <th>Username</th>
@@ -44,40 +82,56 @@ $users = fetch_all("SELECT * FROM users WHERE isDelete = 0 ORDER BY created_at D
                     </tr>
                 </thead>
                 <tbody>
-                    <?php foreach ($users as $u): ?>
-                    <tr>
-                        <td><strong><?php echo $u['username']; ?></strong></td>
-                        <td><?php echo $u['phone']; ?></td>
-                        <td><span class="badge bg-info"><?php echo $u['role']; ?></span></td>
-                        <td><?php echo $u['last_active'] ? date('d M, h:i A', strtotime($u['last_active'])) : 'Never'; ?></td>
-                        <td>
-                            <?php if ($u['is_active']): ?>
-                                <span class="badge bg-success">Active</span>
-                            <?php else: ?>
-                                <span class="badge bg-danger">Blocked</span>
-                            <?php endif; ?>
-                        </td>
-                        <td>
-                            <a href="toggle_status.php?id=<?php echo $u['id']; ?>" class="btn btn-sm <?php echo $u['is_active'] ? 'btn-outline-danger' : 'btn-outline-success'; ?>" title="Toggle Status">
-                                <i class="fas fa-power-off"></i>
-                            </a>
-                            <a href="logs.php?id=<?php echo $u['id']; ?>" class="btn btn-sm btn-outline-secondary" title="Activity Logs">
-                                <i class="fas fa-list"></i>
-                            </a>
-                            <?php if ($u['role'] === ROLE_VIEWER): ?>
-                            <button class="btn btn-sm btn-outline-warning configure-view-btn"
-                                    data-user-id="<?php echo $u['id']; ?>"
-                                    data-username="<?php echo htmlspecialchars($u['username']); ?>"
-                                    title="Configure View Permissions"
-                                    data-bs-toggle="modal" data-bs-target="#viewPermModal">
-                                ⚙️ Configure View
-                            </button>
-                            <?php endif; ?>
-                        </td>
-                    </tr>
-                    <?php endforeach; ?>
+                <?php foreach ($users as $u):
+                    $meta = $role_meta[$u['role']] ?? ['label' => $u['role'], 'badge' => 'bg-secondary'];
+                ?>
+                <tr data-role="<?php echo htmlspecialchars($u['role']); ?>"
+                    data-search="<?php echo strtolower(htmlspecialchars($u['username'] . ' ' . $u['phone'])); ?>">
+                    <td><strong><?php echo htmlspecialchars($u['username']); ?></strong></td>
+                    <td><?php echo htmlspecialchars($u['phone']); ?></td>
+                    <td><span class="badge <?php echo $meta['badge']; ?>"><?php echo $meta['label']; ?></span></td>
+                    <td>
+                        <?php if ($u['last_active']): ?>
+                            <span title="<?php echo date('Y-m-d H:i:s', strtotime($u['last_active'])); ?>">
+                                <?php echo date('d M, h:i A', strtotime($u['last_active'])); ?>
+                            </span>
+                        <?php else: ?>
+                            <span class="text-muted small">Never</span>
+                        <?php endif; ?>
+                    </td>
+                    <td>
+                        <span class="badge <?php echo $u['is_active'] ? 'bg-success' : 'bg-danger'; ?>">
+                            <?php echo $u['is_active'] ? 'Active' : 'Blocked'; ?>
+                        </span>
+                    </td>
+                    <td class="text-nowrap">
+                        <a href="toggle_status.php?id=<?php echo $u['id']; ?>"
+                           class="btn btn-sm <?php echo $u['is_active'] ? 'btn-outline-danger' : 'btn-outline-success'; ?>"
+                           title="<?php echo $u['is_active'] ? 'Block User' : 'Activate User'; ?>">
+                            <i class="fas fa-power-off"></i>
+                        </a>
+                        <a href="logs.php?id=<?php echo $u['id']; ?>"
+                           class="btn btn-sm btn-outline-secondary" title="Activity Logs">
+                            <i class="fas fa-list"></i>
+                        </a>
+                        <?php if ($u['role'] === ROLE_VIEWER): ?>
+                        <button class="btn btn-sm btn-outline-warning configure-view-btn"
+                                data-user-id="<?php echo $u['id']; ?>"
+                                data-username="<?php echo htmlspecialchars($u['username']); ?>"
+                                title="Configure View Permissions"
+                                data-bs-toggle="modal" data-bs-target="#viewPermModal">
+                            <i class="fas fa-sliders me-1"></i>Configure View
+                        </button>
+                        <?php endif; ?>
+                    </td>
+                </tr>
+                <?php endforeach; ?>
                 </tbody>
             </table>
+        </div>
+        <div id="no-results" class="text-center text-muted py-5 d-none">
+            <i class="fas fa-user-slash fa-2x mb-2 d-block opacity-25"></i>
+            No users found.
         </div>
     </div>
 </div>
@@ -88,7 +142,7 @@ $users = fetch_all("SELECT * FROM users WHERE isDelete = 0 ORDER BY created_at D
         <form method="POST" class="modal-content">
             <?php csrf_field(); ?>
             <div class="modal-header">
-                <h5 class="modal-title">Create System User</h5>
+                <h5 class="modal-title"><i class="fas fa-user-plus me-2"></i>Create System User</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
@@ -106,7 +160,7 @@ $users = fetch_all("SELECT * FROM users WHERE isDelete = 0 ORDER BY created_at D
                 </div>
                 <div class="mb-3">
                     <label class="form-label">Role</label>
-                    <select name="role" class="form-control" required>
+                    <select name="role" class="form-select" required>
                         <option value="<?php echo ROLE_MANAGER; ?>"><?php echo ROLE_MANAGER; ?></option>
                         <option value="<?php echo ROLE_ACCOUNTANT; ?>"><?php echo ROLE_ACCOUNTANT; ?></option>
                         <option value="<?php echo ROLE_SR; ?>"><?php echo ROLE_SR; ?></option>
@@ -127,16 +181,24 @@ $users = fetch_all("SELECT * FROM users WHERE isDelete = 0 ORDER BY created_at D
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header bg-warning text-dark">
-                <h5 class="modal-title">⚙️ Configure View — <span id="vpm-username"></span></h5>
+                <h5 class="modal-title"><i class="fas fa-sliders me-2"></i>Configure View — <span id="vpm-username"></span></h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body" id="vpm-body">
-                <div class="text-center py-4"><div class="spinner-border text-warning"></div><p class="mt-2 text-muted small">Loading permissions…</p></div>
+                <div class="text-center py-4">
+                    <div class="spinner-border text-warning"></div>
+                    <p class="mt-2 text-muted small">Loading permissions…</p>
+                </div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-info text-white me-auto" id="vpm-dmd-preset" title="Grant full DMD access — sees all order types and all sections">📡 Set DMD Preset</button>
-                <button type="button" class="btn btn-warning" id="vpm-save-btn">💾 Save Permissions</button>
+                <button type="button" class="btn btn-info text-white me-auto" id="vpm-dmd-preset"
+                        title="Grant full DMD access — sees all order types and all sections">
+                    <i class="fas fa-satellite-dish me-1"></i>Set DMD Preset
+                </button>
+                <button type="button" class="btn btn-warning" id="vpm-save-btn">
+                    <i class="fas fa-save me-1"></i>Save Permissions
+                </button>
             </div>
         </div>
     </div>
@@ -144,32 +206,60 @@ $users = fetch_all("SELECT * FROM users WHERE isDelete = 0 ORDER BY created_at D
 
 <script>
 (function () {
+    /* ── Role tabs + search ───────────────────────────────────── */
+    let activeRole = 'all';
+    let searchTerm = '';
+
+    function applyFilter() {
+        let visible = 0;
+        document.querySelectorAll('#users-table tbody tr').forEach(function (row) {
+            const matchRole   = activeRole === 'all' || row.dataset.role === activeRole;
+            const matchSearch = !searchTerm || row.dataset.search.includes(searchTerm);
+            const show = matchRole && matchSearch;
+            row.style.display = show ? '' : 'none';
+            if (show) visible++;
+        });
+        document.getElementById('no-results').classList.toggle('d-none', visible > 0);
+    }
+
+    document.querySelectorAll('#roleTabs .nav-link').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            document.querySelectorAll('#roleTabs .nav-link').forEach(b => b.classList.remove('active'));
+            this.classList.add('active');
+            activeRole = this.dataset.role;
+            applyFilter();
+        });
+    });
+
+    document.getElementById('user-search').addEventListener('input', function () {
+        searchTerm = this.value.toLowerCase().trim();
+        applyFilter();
+    });
+
+    /* ── Configure View Permissions ───────────────────────────── */
     const CSRF = <?php echo json_encode(get_csrf_token()); ?>;
     let currentUserId = null;
 
-    // Permission fields configuration
     const PERMS = [
-        { key: 'show_local',                   label: '🟦 Show Local Market Products' },
-        { key: 'show_export',                  label: '🟩 Show Export Market Products' },
-        { key: 'show_custom',                  label: '🟧 Show Custom Market Products' },
-        { key: 'show_sales_kpis',              label: '📊 Show Sales KPIs on Dashboard' },
-        { key: 'show_inventory_section',       label: '📦 Show Inventory Section' },
-        { key: 'show_delivery_section',        label: '🚚 Show Delivery Section' },
-        { key: 'show_accounts_section',        label: '💰 Show Accounts Section' },
-        { key: 'can_see_stock_report',         label: '📋 Can See Stock Report' },
-        { key: 'can_see_inventory_report',     label: '📋 Can See Inventory Report' },
-        { key: 'can_see_comprehensive_report', label: '📋 Can See Comprehensive Report' },
-        { key: 'can_see_transactions',         label: '💳 Can See Transactions' },
-        { key: 'can_see_dmd_dashboard',        label: '📡 Can See DMD Dashboard' },
-        { key: 'show_rates',                   label: '💲 Show TP/DP/Retail Rates' },
-        { key: 'show_customer_balances',       label: '👤 Show Customer Balances' },
+        { key: 'show_local',                   label: 'Show Local Market Products' },
+        { key: 'show_export',                  label: 'Show Export Market Products' },
+        { key: 'show_custom',                  label: 'Show Custom Market Products' },
+        { key: 'show_sales_kpis',              label: 'Show Sales KPIs on Dashboard' },
+        { key: 'show_inventory_section',       label: 'Show Inventory Section' },
+        { key: 'show_delivery_section',        label: 'Show Delivery Section' },
+        { key: 'show_accounts_section',        label: 'Show Accounts Section' },
+        { key: 'can_see_stock_report',         label: 'Can See Stock Report' },
+        { key: 'can_see_inventory_report',     label: 'Can See Inventory Report' },
+        { key: 'can_see_comprehensive_report', label: 'Can See Comprehensive Report' },
+        { key: 'can_see_transactions',         label: 'Can See Transactions' },
+        { key: 'can_see_dmd_dashboard',        label: 'Can See DMD Dashboard' },
+        { key: 'show_rates',                   label: 'Show TP/DP/Retail Rates' },
+        { key: 'show_customer_balances',       label: 'Show Customer Balances' },
     ];
 
     function buildForm(data) {
         let html = '<div class="row g-3">';
-        const half = Math.ceil(PERMS.length / 2);
-        PERMS.forEach((p, i) => {
-            if (i === half) html += '</div><div class="row g-3 mt-1">';
+        PERMS.forEach(function (p) {
             const checked = data[p.key] == 1 ? 'checked' : '';
             html += `
                 <div class="col-md-6">
@@ -184,7 +274,6 @@ $users = fetch_all("SELECT * FROM users WHERE isDelete = 0 ORDER BY created_at D
         return html;
     }
 
-    // Triggered when modal button clicked
     document.addEventListener('click', function (e) {
         const btn = e.target.closest('.configure-view-btn');
         if (!btn) return;
@@ -205,58 +294,53 @@ $users = fetch_all("SELECT * FROM users WHERE isDelete = 0 ORDER BY created_at D
             })
             .catch(() => {
                 document.getElementById('vpm-body').innerHTML =
-                    '<div class="alert alert-danger">Failed to load permissions.</div>';
+                    '<div class="alert alert-danger">Failed to load permissions. Check server logs.</div>';
             });
     });
 
-    // DMD Preset — check all toggles
     document.getElementById('vpm-dmd-preset').addEventListener('click', function () {
-        const body = document.getElementById('vpm-body');
-        PERMS.forEach(p => {
-            const el = body.querySelector(`#vpm_${p.key}`);
+        PERMS.forEach(function (p) {
+            const el = document.getElementById('vpm-body').querySelector(`#vpm_${p.key}`);
             if (el) el.checked = true;
         });
     });
 
-    // Save button
     document.getElementById('vpm-save-btn').addEventListener('click', function () {
         if (!currentUserId) return;
 
         const body = document.getElementById('vpm-body');
-        const fd = new FormData();
-        fd.append('action', 'save');
-        fd.append('user_id', currentUserId);
+        const fd   = new FormData();
+        fd.append('action',     'save');
+        fd.append('user_id',    currentUserId);
         fd.append('csrf_token', CSRF);
-
-        PERMS.forEach(p => {
+        PERMS.forEach(function (p) {
             const el = body.querySelector(`#vpm_${p.key}`);
             if (el && el.checked) fd.append(p.key, '1');
         });
 
-        this.disabled = true;
+        this.disabled    = true;
         this.textContent = 'Saving…';
 
         fetch('save_view_permissions.php', { method: 'POST', body: fd })
             .then(r => r.json())
             .then(res => {
-                this.disabled = false;
-                this.textContent = '💾 Save Permissions';
+                this.disabled    = false;
+                this.innerHTML   = '<i class="fas fa-save me-1"></i>Save Permissions';
                 if (res.success) {
                     bootstrap.Modal.getInstance(document.getElementById('viewPermModal')).hide();
-                    // Show a quick toast / flash
-                    const alert = document.createElement('div');
-                    alert.className = 'alert alert-success alert-dismissible fade show position-fixed top-0 end-0 m-3';
-                    alert.style.zIndex = 9999;
-                    alert.innerHTML = `✅ ${res.message} <button type="button" class="btn-close" data-bs-dismiss="alert"></button>`;
-                    document.body.appendChild(alert);
-                    setTimeout(() => alert.remove(), 4000);
+                    const toast = document.createElement('div');
+                    toast.className = 'alert alert-success alert-dismissible fade show position-fixed top-0 end-0 m-3';
+                    toast.style.zIndex = 9999;
+                    toast.innerHTML = `<i class="fas fa-check-circle me-2"></i>${res.message} <button type="button" class="btn-close" data-bs-dismiss="alert"></button>`;
+                    document.body.appendChild(toast);
+                    setTimeout(() => toast.remove(), 4000);
                 } else {
                     alert('Error: ' + res.message);
                 }
             })
             .catch(() => {
-                this.disabled = false;
-                this.textContent = '💾 Save Permissions';
+                this.disabled  = false;
+                this.innerHTML = '<i class="fas fa-save me-1"></i>Save Permissions';
                 alert('Network error, please try again.');
             });
     });

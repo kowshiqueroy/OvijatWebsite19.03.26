@@ -85,7 +85,7 @@ if ($exam_id && $class_id && $section_id) {
 // Subject schedule for the exam + class
 $schedule = [];
 if ($exam_id && $class_id) {
-    $sch = $pdo->prepare('SELECT s.subject_name, esc.exam_date, esc.exam_time, esc.full_marks_written+esc.full_marks_mcq+esc.full_marks_practical as full_marks FROM exam_subject_config esc JOIN subjects s ON s.id=esc.subject_id WHERE esc.exam_id=:eid AND esc.class_id=:cls AND esc.exam_date IS NOT NULL ORDER BY esc.exam_date');
+    $sch = $pdo->prepare('SELECT s.subject_name, esc.exam_date, esc.exam_start_time AS exam_time, esc.full_marks_written+esc.full_marks_mcq+esc.full_marks_practical as full_marks FROM exam_subject_config esc JOIN subjects s ON s.id=esc.subject_id WHERE esc.exam_id=:eid AND esc.class_id=:cls AND esc.exam_date IS NOT NULL ORDER BY esc.exam_date');
     $sch->execute([':eid' => $exam_id, ':cls' => $class_id]);
     $schedule = $sch->fetchAll();
 }

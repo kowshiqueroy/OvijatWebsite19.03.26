@@ -8,10 +8,11 @@ require_once EMS_ROOT . '/core/functions.php';
 require_once EMS_ROOT . '/core/auth.php';
 require_once EMS_ROOT . '/core/rbac.php';
 
-$school_name = setting('school_name', 'EMS');
-$page_title  = $page_title ?? 'Dashboard';
-$breadcrumbs = $breadcrumbs ?? [];
-$school_logo = setting('school_logo');
+$school_name    = setting('school_name', 'EMS');
+$page_title     = $page_title ?? 'Dashboard';
+$breadcrumbs    = $breadcrumbs ?? [];
+$school_logo    = setting('school_logo');
+$school_favicon = setting('school_favicon');
 $current_session_id = (int)setting('current_session_id', 0);
 $current_session_name = '';
 if ($current_session_id) {
@@ -57,6 +58,12 @@ $MOD    = $rel;
 <!-- Google Fonts (Bangla-compatible) -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;500;600;700&display=swap" rel="stylesheet">
+<!-- Favicon -->
+<?php if ($school_favicon && file_exists(EMS_ROOT . '/uploads/logos/' . $school_favicon)): ?>
+<link rel="icon" type="image/x-icon" href="<?= $ASSET ?>/../uploads/logos/<?= e($school_favicon) ?>">
+<?php else: ?>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎓</text></svg>">
+<?php endif; ?>
 <!-- EMS Custom CSS -->
 <link rel="stylesheet" href="<?= $ASSET ?>/css/style.css">
 <?php if (!empty($extra_css)) foreach ((array)$extra_css as $css): ?>
@@ -131,6 +138,9 @@ $MOD    = $rel;
     <a href="<?= $MOD ?>logout.php" class="nav-link text-danger d-flex align-items-center gap-2" style="padding:.5rem 0;">
       <i class="bi bi-box-arrow-left nav-icon"></i> Logout
     </a>
+  </div>
+  <div class="sidebar-poweredby">
+    Powered by <a href="https://sohojweb.com" target="_blank">SohojWeb</a>
   </div>
 </nav>
 

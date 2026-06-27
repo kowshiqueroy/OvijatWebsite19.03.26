@@ -6,7 +6,7 @@ check_role([ROLE_ADMIN, ROLE_ACCOUNTANT]);
 
 if (isset($_GET['id'])) {
     $draft_id = $_GET['id'];
-    $draft = fetch_one("SELECT s.*, c.name as customer_name FROM sales_drafts s JOIN customers c ON s.customer_id = c.id WHERE s.id = ? AND s.status = 'Draft'", [$draft_id]);
+    $draft = fetch_one("SELECT s.*, c.name as customer_name FROM sales_drafts s JOIN customers c ON s.customer_id = c.id WHERE s.id = ? AND s.isDelete = 0 AND s.status = 'Draft'", [$draft_id]);
 
     if (!$draft) {
         redirect('modules/sales/index.php', 'Invalid or already confirmed draft.', 'danger');

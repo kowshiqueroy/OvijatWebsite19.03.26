@@ -22,6 +22,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $is_current = isset($_POST['is_current']) ? 1 : 0;
         $status     = $_POST['status'] ?? 'upcoming';
 
+        // Guard: completed sessions cannot be edited or set as current
+        if ($id) {
+            $existingStatus = $pdo->prepare('SELECT status FROM academic_sessions WHERE id=?');
+            $existingStatus->execute([$id]);
+            $existingStatus = $existingStatus->fetchColumn();
+            if ($existingStatus === 'completed') {
+                flash('error', 'Completed sessions cannot be edited. Please re-open the session first if changes are needed.');
+                header('Location: sessions.php'); exit;
+            }
+        }
+        if ($is_current && $status === 'completed') {
+            flash('error', 'A completed session cannot be set as the current session.');
+            header('Location: sessions.php'); exit;
+        }
+
         if ($name && $start_date && $end_date) {
             if ($is_current) {
                 $pdo->exec("UPDATE academic_sessions SET is_current=0");
@@ -42,15 +57,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     } elseif ($action === 'delete') {
         $id = int_param('id', 0, $_POST);
-        // Safety check — don't delete if students enrolled
-        $enrolled = (int)$pdo->prepare('SELECT COUNT(*) FROM student_enrollments WHERE session_id=?')->execute([$id]) ? 0 : 0;
-        $ec = $pdo->prepare('SELECT COUNT(*) FROM student_enrollments WHERE session_id=?');
-        $ec->execute([$id]);
-        if ((int)$ec->fetchColumn() > 0) {
-            flash('error', 'Cannot delete session with enrolled students. Archive it instead.');
+        // Completed sessions cannot be deleted
+        $sess = $pdo->prepare('SELECT status FROM academic_sessions WHERE id=?');
+        $sess->execute([$id]);
+        $sesStatus = $sess->fetchColumn();
+        if ($sesStatus === 'completed') {
+            flash('error', 'Cannot delete a completed session. Soft-delete is only available for active/upcoming sessions.');
         } else {
-            $pdo->prepare('DELETE FROM academic_sessions WHERE id=?')->execute([$id]);
-            flash('success', 'Session deleted.');
+            $ec = $pdo->prepare('SELECT COUNT(*) FROM student_enrollments WHERE session_id=?');
+            $ec->execute([$id]);
+            if ((int)$ec->fetchColumn() > 0) {
+                flash('error', 'Cannot delete session with enrolled students — archive/complete it instead.');
+            } else {
+                // Soft delete
+                $pdo->prepare('UPDATE academic_sessions SET deleted_at=NOW(), deleted_by=? WHERE id=?')
+                    ->execute([$_SESSION['user_id']??null, $id]);
+                flash('success', 'Session moved to deleted items.');
+            }
         }
 
     } elseif ($action === 'clone_session') {
@@ -85,12 +108,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 // Clone class-subject mappings (marks config + periods/week)
                 if (in_array('class_subjects', $clone_opts)) {
-                    $cs = $pdo->prepare('SELECT class_id,subject_id,group_id,full_marks_written,full_marks_mcq,full_marks_practical,pass_marks_written,pass_marks_mcq,pass_marks_practical,periods_per_week FROM class_subjects WHERE session_id=?');
+                    $cs = $pdo->prepare('SELECT class_id,subject_id,group_id,full_marks_written,full_marks_mcq,full_marks_practical,pass_marks_written,pass_marks_mcq,pass_marks_practical,classes_per_week FROM class_subjects WHERE session_id=?');
                     $cs->execute([$from_id]);
-                    $ins2 = $pdo->prepare('INSERT IGNORE INTO class_subjects (session_id,class_id,subject_id,group_id,full_marks_written,full_marks_mcq,full_marks_practical,pass_marks_written,pass_marks_mcq,pass_marks_practical,periods_per_week) VALUES (?,?,?,?,?,?,?,?,?,?,?)');
+                    $ins2 = $pdo->prepare('INSERT IGNORE INTO class_subjects (session_id,class_id,subject_id,group_id,full_marks_written,full_marks_mcq,full_marks_practical,pass_marks_written,pass_marks_mcq,pass_marks_practical,classes_per_week) VALUES (?,?,?,?,?,?,?,?,?,?,?)');
                     $count = 0;
                     foreach ($cs->fetchAll() as $r) {
-                        $ins2->execute([$new_id,$r['class_id'],$r['subject_id'],$r['group_id'],$r['full_marks_written'],$r['full_marks_mcq'],$r['full_marks_practical'],$r['pass_marks_written'],$r['pass_marks_mcq'],$r['pass_marks_practical'],$r['periods_per_week']]);
+                        $ins2->execute([$new_id,$r['class_id'],$r['subject_id'],$r['group_id'],$r['full_marks_written'],$r['full_marks_mcq'],$r['full_marks_practical'],$r['pass_marks_written'],$r['pass_marks_mcq'],$r['pass_marks_practical'],$r['classes_per_week']]);
                         $count++;
                     }
                     $cloned['class_subjects'] = $count;

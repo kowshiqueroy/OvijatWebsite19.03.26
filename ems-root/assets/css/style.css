@@ -337,11 +337,131 @@ a:hover { color: var(--ems-primary-d); }
   display: block;
 }
 
-@media (max-width: 575.98px) {
-  .page-content { padding: 1rem; }
-  .stat-card { padding: 1rem; }
-  .stat-card .stat-value { font-size: 1.5rem; }
+/* ── Global Table Overflow Fix ───────────────────────── */
+/* Every table is wrapped in a scroll container so it never
+   breaks the layout on any screen size */
+.table-responsive-always,
+.card-body .table-responsive,
+.page-content .table-responsive {
+  overflow-x: auto;
+  overflow-scrolling: touch;
+  min-height: 0.01%;
 }
+
+/* Ensure tables inside cards never escape their card */
+.card-body > .table,
+.card > .table {
+  min-width: 0;
+}
+
+/* Auto-wrap any .table that is a direct child of a container */
+.page-content > .table,
+.container > .table,
+.container-fluid > .table {
+  display: block;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+
+/* ── Better Mobile Breakpoints ───────────────────────── */
+@media (max-width: 767.98px) {
+  .page-content { padding: .85rem; }
+  .page-title   { font-size: 1.1rem; margin-bottom: 1rem; }
+  .stat-card    { padding: 1rem; }
+  .stat-card .stat-value { font-size: 1.5rem; }
+
+  /* Stack row cols on mobile */
+  .row-xs-stack > [class*="col-"] {
+    width: 100% !important;
+    flex: 0 0 100% !important;
+    max-width: 100%;
+  }
+
+  /* Compress table actions on mobile */
+  .table-actions { flex-wrap: wrap; gap: .2rem; }
+  .table-actions .btn { font-size: .72rem; padding: .2rem .45rem; }
+
+  /* Nav tabs scroll on mobile */
+  .nav-tabs { flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .nav-tabs .nav-link { white-space: nowrap; }
+
+  /* Card headers stacked on mobile */
+  .card-header.d-flex { flex-wrap: wrap; gap: .5rem; }
+
+  /* Hide some topbar items on small screens */
+  .topbar-right .btn-light { display: none; }
+}
+
+@media (max-width: 575.98px) {
+  .page-content { padding: .65rem; }
+  .stat-card { padding: .85rem; }
+  .stat-card .stat-value { font-size: 1.4rem; }
+  .modal-dialog { margin: .5rem; }
+  .modal-content { border-radius: 10px; }
+}
+
+/* ── Sidebar on desktop ──────────────────────────────── */
+@media (min-width: 992px) {
+  #sidebar { transform: translateX(0); }
+  #main-content { margin-left: var(--ems-sidebar-w); }
+  .topbar-toggle { display: none !important; }
+  #sidebar-overlay { display: none !important; }
+}
+
+/* ── Footer powered-by branding ──────────────────────── */
+.ems-footer {
+  padding: .65rem 1.5rem;
+  font-size: .75rem;
+  color: #94a3b8;
+  border-top: 1px solid #e2e8f0;
+  background: #f8fafc;
+  text-align: right;
+}
+.ems-footer a { color: #64748b; font-weight: 600; }
+.ems-footer a:hover { color: var(--ems-primary); }
+
+/* ── Sidebar bottom branding ─────────────────────────── */
+.sidebar-poweredby {
+  padding: .4rem 1.25rem;
+  font-size: .65rem;
+  color: rgba(255,255,255,.25);
+  border-top: 1px solid rgba(255,255,255,.06);
+  text-align: center;
+  flex-shrink: 0;
+}
+.sidebar-poweredby a { color: rgba(255,255,255,.35); }
+.sidebar-poweredby a:hover { color: rgba(255,255,255,.6); }
+
+/* ── Soft-delete warning badge ───────────────────────── */
+.soft-delete-btn { position: relative; }
+.restore-badge {
+  display: inline-flex; align-items: center; gap: .3rem;
+  background: #fff3cd; color: #856404;
+  border: 1px solid #ffc107;
+  border-radius: 20px; font-size: .72rem; font-weight: 700;
+  padding: .15rem .55rem;
+}
+
+/* ── Helper: suggestion box ──────────────────────────── */
+.suggestion-box {
+  background: #f0fdf4; border: 1px solid #86efac;
+  border-radius: 8px; padding: .6rem .9rem;
+  font-size: .82rem; color: #15803d;
+}
+.suggestion-box i { color: #16a34a; }
+
+/* ── Sticky table header ─────────────────────────────── */
+.table-sticky-head thead th {
+  position: sticky; top: 0; z-index: 2;
+  background: #f8fafc;
+  box-shadow: 0 1px 0 #e2e8f0;
+}
+
+/* ── Level badge colors ──────────────────────────────── */
+.level-badge-pre_primary    { background: #fce7f3; color: #9d174d; }
+.level-badge-primary        { background: #ede9fe; color: #5b21b6; }
+.level-badge-secondary      { background: #dbeafe; color: #1e40af; }
+.level-badge-higher_secondary { background: #dcfce7; color: #15803d; }
 
 /* ── Utility ─────────────────────────────────────────── */
 .text-bd-primary { color: var(--ems-primary) !important; }

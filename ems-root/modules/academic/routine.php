@@ -6,6 +6,24 @@ $breadcrumbs = ['Academic' => null, 'Routine' => null];
 require_once EMS_ROOT . '/core/auth.php';
 require_once EMS_ROOT . '/core/functions.php';
 require_once EMS_ROOT . '/core/rbac.php';
+
+// Initialize session so $_SESSION is populated for AJAX checks
+if (session_status() === PHP_SESSION_NONE) {
+    session_name(defined('EMS_SESSION_NAME') ? EMS_SESSION_NAME : 'EMS_SESS');
+    session_start();
+}
+
+// For AJAX requests, return JSON errors instead of HTML redirects
+$isAjax = (
+    !empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest'
+) || in_array($_POST['action'] ?? '', ['suggest_teachers','save_working_days','save_slot','delete_slot','get_slots']);
+
+if ($isAjax && empty($_SESSION['user_id'])) {
+    header('Content-Type: application/json');
+    echo json_encode(['error' => 'Session expired. Please refresh and log in again.']);
+    exit;
+}
+
 require_auth(['routine.view']);
 
 $pdo = db();

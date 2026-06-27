@@ -1,13 +1,34 @@
 <?php
 // AJAX endpoint for academic module
+// Suppress PHP warnings/notices so they don't corrupt JSON responses
+ini_set('display_errors', 0);
+error_reporting(0);
+
 define('EMS_ROOT', dirname(dirname(__DIR__)));
 require_once EMS_ROOT . '/core/auth.php';
 require_once EMS_ROOT . '/core/functions.php';
 require_once EMS_ROOT . '/core/rbac.php';
+
+// Initialize session so $_SESSION is populated for checking auth status
+if (session_status() === PHP_SESSION_NONE) {
+    session_name(defined('EMS_SESSION_NAME') ? EMS_SESSION_NAME : 'EMS_SESS');
+    session_start();
+}
+
+// Return JSON for any auth failure instead of HTML redirect
+if (empty($_SESSION['user_id'])) {
+    header('Content-Type: application/json');
+    echo json_encode(['error' => 'Session expired. Please refresh the page and log in again.']);
+    exit;
+}
 require_auth();
 
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    csrf_check();
+}
+
 header('Content-Type: application/json');
-$action = $_GET['action'] ?? '';
+$action = $_GET['action'] ?? $_POST['action'] ?? '';
 $pdo = db();
 
 if ($action === 'sections') {
@@ -490,25 +511,37 @@ if ($action === 'auto_generate') {
         
         $class_periods = array_values(array_filter($periods, fn($p) => empty($p['is_break'])));
         
-        // Load active working days
-        $working_days_raw = setting('working_days', 'Sat,Sun,Mon,Tue,Wed');
-        $working_days = [];
-        $day_map = [
-            'Sat' => 'Saturday', 'Sun' => 'Sunday', 'Mon' => 'Monday',
-            'Tue' => 'Tuesday', 'Wed' => 'Wednesday', 'Thu' => 'Thursday', 'Fri' => 'Friday'
+        // Normalise working_days — setting may store full names OR 3-letter codes
+        $_day_norm = [
+            'Sat'=>'Saturday','Sun'=>'Sunday','Mon'=>'Monday','Tue'=>'Tuesday',
+            'Wed'=>'Wednesday','Thu'=>'Thursday','Fri'=>'Friday',
+            'Saturday'=>'Saturday','Sunday'=>'Sunday','Monday'=>'Monday','Tuesday'=>'Tuesday',
+            'Wednesday'=>'Wednesday','Thursday'=>'Thursday','Friday'=>'Friday',
         ];
-        foreach (explode(',', $working_days_raw) as $d) {
-            if (isset($day_map[trim($d)])) $working_days[] = $day_map[trim($d)];
-        }
+        $working_days = array_values(array_filter(array_map(
+            fn($d) => $_day_norm[trim($d)] ?? null,
+            explode(',', setting('working_days', 'Saturday,Sunday,Monday,Tuesday,Wednesday,Thursday'))
+        )));
         if (empty($working_days)) {
-            $working_days = ['Saturday', 'Sunday', 'Monday', 'Tuesday', 'Wednesday'];
+            $working_days = ['Saturday','Sunday','Monday','Tuesday','Wednesday','Thursday'];
         }
         
-        // Load all classes and sections
-        $sections = $pdo->query("SELECT s.id as section_id, s.class_id, c.class_name, s.section_name FROM sections s JOIN classes c ON c.id=s.class_id WHERE s.status=1 ORDER BY c.display_order, s.section_name")->fetchAll();
-        
-        // Load class-subjects for this session
-        $class_subjects = $pdo->prepare("SELECT cs.class_id, cs.subject_id, cs.classes_per_week, s.subject_name FROM class_subjects cs JOIN subjects s ON s.id=cs.subject_id WHERE cs.session_id = ?");
+        // Load all active sections (excluding soft-deleted)
+        $sections = $pdo->query("
+            SELECT s.id as section_id, s.class_id, c.class_name, s.section_name
+            FROM sections s
+            JOIN classes c ON c.id = s.class_id
+            WHERE s.status = 1 AND s.deleted_at IS NULL AND c.deleted_at IS NULL
+            ORDER BY c.display_order, c.class_numeric, s.section_name
+        ")->fetchAll();
+
+        // Load class-subjects for this session (excluding soft-deleted subjects)
+        $class_subjects = $pdo->prepare("
+            SELECT cs.class_id, cs.subject_id, cs.classes_per_week, sub.subject_name
+            FROM class_subjects cs
+            JOIN subjects sub ON sub.id = cs.subject_id
+            WHERE cs.session_id = ? AND sub.deleted_at IS NULL AND sub.status = 1
+        ");
         $class_subjects->execute([$session_id]);
         $subjects_by_class = [];
         foreach ($class_subjects->fetchAll() as $row) {

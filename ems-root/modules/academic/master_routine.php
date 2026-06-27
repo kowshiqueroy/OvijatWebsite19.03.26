@@ -63,10 +63,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && has_permission('routine.manage')) {
             flash('success', 'Period schedule saved. All class routines will now use this schedule.');
         }
 
-    } elseif ($action === 'set_subject_periods_per_week') {
-        // Bulk-update periods_per_week in class_subjects
-        $updates = $_POST['ppw'] ?? []; // [class_subject_id => periods_per_week]
-        $stmt = $pdo->prepare('UPDATE class_subjects SET periods_per_week=? WHERE id=?');
+    } elseif ($action === 'set_subject_classes_per_week') {
+        // Bulk-update classes_per_week in class_subjects
+        $updates = $_POST['ppw'] ?? []; // [class_subject_id => classes_per_week]
+        $stmt = $pdo->prepare('UPDATE class_subjects SET classes_per_week=? WHERE id=?');
         foreach ($updates as $csid => $ppw) {
             $stmt->execute([(int)$ppw, (int)$csid]);
         }
@@ -291,12 +291,19 @@ foreach ($exp_stmt as $r) {
     $expertise[$r['teacher_id']][] = $r;
 }
 
-$working_days_raw = setting('working_days', 'Sat,Sun,Mon,Tue,Wed');
-$working_days = explode(',', $working_days_raw);
-$day_full_names = [
-    'Sat' => 'Saturday', 'Sun' => 'Sunday', 'Mon' => 'Monday',
-    'Tue' => 'Tuesday', 'Wed' => 'Wednesday', 'Thu' => 'Thursday', 'Fri' => 'Friday'
+// Normalise working_days setting — stored as full names ("Saturday,...") OR abbrevs ("Sat,...")
+$_day_norm = [
+    'Sat'=>'Saturday','Sun'=>'Sunday','Mon'=>'Monday','Tue'=>'Tuesday',
+    'Wed'=>'Wednesday','Thu'=>'Thursday','Fri'=>'Friday',
+    'Saturday'=>'Saturday','Sunday'=>'Sunday','Monday'=>'Monday','Tuesday'=>'Tuesday',
+    'Wednesday'=>'Wednesday','Thursday'=>'Thursday','Friday'=>'Friday',
 ];
+$working_days = array_values(array_filter(array_map(
+    fn($d) => $_day_norm[trim($d)] ?? null,
+    explode(',', setting('working_days', 'Saturday,Sunday,Monday,Tuesday,Wednesday,Thursday'))
+)));
+// Maps both 3-letter codes AND full names → full names (used in template lookups)
+$day_full_names = $_day_norm;
 
 $selected_day = $_GET['day'] ?? 'all';
 
@@ -304,7 +311,7 @@ $selected_day = $_GET['day'] ?? 'all';
 $coverageData = [];
 if ($session_id) {
     $cvStmt = $pdo->prepare("
-        SELECT cs.id AS cs_id, cs.class_id, cs.subject_id, cs.periods_per_week AS target,
+        SELECT cs.id AS cs_id, cs.class_id, cs.subject_id, cs.classes_per_week AS target,
                c.class_name, sub.subject_name,
                COUNT(DISTINCT CONCAT(rs.section_id,'|',rs.day_of_week,'|',rs.start_time)) AS actual
         FROM class_subjects cs
@@ -313,7 +320,7 @@ if ($session_id) {
         LEFT JOIN routine_slots rs ON rs.class_id=cs.class_id AND rs.subject_id=cs.subject_id
              AND rs.session_id=cs.session_id AND rs.status=1 AND rs.is_substitute=0
         WHERE cs.session_id = ?
-        GROUP BY cs.id, cs.class_id, cs.subject_id, cs.periods_per_week, c.class_name, sub.subject_name
+        GROUP BY cs.id, cs.class_id, cs.subject_id, cs.classes_per_week, c.class_name, sub.subject_name
         ORDER BY c.display_order, c.class_name, sub.subject_name
     ");
     $cvStmt->execute([$session_id]);
@@ -640,7 +647,7 @@ require_once EMS_ROOT . '/includes/header.php';
     <?php else: ?>
     <form method="POST">
       <?= csrf_field() ?>
-      <input type="hidden" name="action" value="set_subject_periods_per_week">
+      <input type="hidden" name="action" value="set_subject_classes_per_week">
       <input type="hidden" name="session_id" value="<?= $session_id ?>">
       <input type="hidden" name="current_tab" value="coverage">
       <?php foreach ($coverageData as $className => $subjects): ?>
@@ -1242,13 +1249,15 @@ require_once EMS_ROOT . '/includes/header.php';
 </div>
 
 <script>
-const workingDays = <?= json_encode($working_days) ?>;
-const dayFullNames = <?= json_encode($day_full_names) ?>;
-const subjectsList = <?= json_encode($allSubjects) ?>;
-const teachersList = <?= json_encode($teachers) ?>;
-const roomsList = <?= json_encode($rooms) ?>;
-const defaultPeriods = <?= json_encode($default_periods) ?>;
-const currentSessionId = <?= $session_id ?>;
+const workingDays     = <?= json_encode($working_days) ?>;
+const dayFullNames    = <?= json_encode($day_full_names) ?>;
+const subjectsList    = <?= json_encode($allSubjects) ?>;
+const teachersList    = <?= json_encode($teachers) ?>;
+const roomsList       = <?= json_encode($rooms) ?>;
+const defaultPeriods  = <?= json_encode($default_periods) ?>;
+const currentSessionId = <?= (int)$session_id ?>;
+// Section map: sectionId → {class_id, class_name, section_name}
+const sectionMeta = <?= json_encode(array_column($sections, null, 'section_id')) ?>;
 
 // Auto-activate tab from URL hash (e.g. after reassignment redirect)
 document.addEventListener('DOMContentLoaded', function() {
@@ -1263,14 +1272,16 @@ document.addEventListener('DOMContentLoaded', function() {
 
 
 let currentSectionId = null;
+let currentClassId   = null;
 let currentPeriodStart = '';
-let currentPeriodEnd = '';
+let currentPeriodEnd   = '';
 
 // Load data and open Planner Cell Modal
 function openPlannerCellModal(sectionId, sectionName, periodName, startTime, endTime) {
   currentSectionId = sectionId;
+  currentClassId   = (sectionMeta[sectionId] || {}).class_id || 0;
   currentPeriodStart = startTime;
-  currentPeriodEnd = endTime;
+  currentPeriodEnd   = endTime;
 
   document.getElementById('cell-class-name').innerText = sectionName;
   document.getElementById('cell-period-name').innerText = periodName;
@@ -1413,7 +1424,8 @@ function loadSuggestions(subjSelect, preSelectedTeacherId = 0, preSelectedRoomId
   }
 
   fetch(`ajax.php?action=get_suggestions&subject_id=${subId}&session_id=${currentSessionId}&day=${dayName}&start=${currentPeriodStart}&end=${currentPeriodEnd}&section_id=${currentSectionId}`)
-    .then(r => r.json())
+    .then(r => r.text())
+    .then(t => { try { return JSON.parse(t); } catch(e) { return {experts:[], free_rooms:[], class_teacher_rec:null}; } })
     .then(data => {
       // 1. Populate Teachers Dropdown
       let teacherHtml = '<option value="0">— No Teacher Assigned —</option>';
@@ -1481,7 +1493,8 @@ function saveCellSchedule() {
     const fd = new FormData();
     fd.append('id', id);
     promises.push(
-      fetch('ajax.php?action=delete_slot', { method: 'POST', body: fd }).then(r => r.json())
+      fetch('ajax.php?action=delete_slot', { method: 'POST', body: fd })
+        .then(r => r.text()).then(t => { try { return JSON.parse(t); } catch(e) { return {success:false,error:t.substring(0,100)}; } })
     );
   });
 
@@ -1503,14 +1516,15 @@ function saveCellSchedule() {
           const fd = new FormData();
           fd.append('id', slotId);
           promises.push(
-            fetch('ajax.php?action=delete_slot', { method: 'POST', body: fd }).then(r => r.json())
+            fetch('ajax.php?action=delete_slot', { method: 'POST', body: fd })
+              .then(r => r.text()).then(t => { try { return JSON.parse(t); } catch(e) { return {success:false,error:t.substring(0,100)}; } })
           );
         }
       } else {
         const fd = new FormData();
         fd.append('id', slotId);
         fd.append('session_id', currentSessionId);
-        fd.append('class_id', <?= $sections[0]['class_id'] ?? 0 ?>); // placeholder base
+        fd.append('class_id', currentClassId); // resolved from sectionMeta at modal open
         fd.append('section_id', currentSectionId);
         fd.append('subject_id', subId);
         fd.append('teacher_id', teacherId === '0' ? '' : teacherId);
@@ -1521,20 +1535,25 @@ function saveCellSchedule() {
         fd.append('force', '1'); // Force save overrides conflicts
 
         promises.push(
-          fetch('ajax.php?action=save_slot', { method: 'POST', body: fd }).then(r => r.json())
+          fetch('ajax.php?action=save_slot', { method: 'POST', body: fd })
+            .then(r => r.text()).then(t => { try { return JSON.parse(t); } catch(e) { return {success:false,error:t.substring(0,100)}; } })
         );
       }
     });
   });
 
-  Promise.all(promises).then(results => {
-    window.deletedSlotIds = [];
-    const errors = results.filter(r => !r.success).map(r => r.error || 'Conflict error');
-    if (errors.length > 0) {
-      alert('Errors saving slots:\n' + errors.join('\n'));
-    }
-    window.location.reload();
-  });
+  Promise.all(promises)
+    .then(results => {
+      window.deletedSlotIds = [];
+      const errors = results.filter(r => r && !r.success).map(r => r.error || 'Unknown error');
+      if (errors.length > 0) {
+        alert('Some slots could not be saved:\n' + errors.join('\n'));
+      }
+      window.location.reload();
+    })
+    .catch(err => {
+      alert('Error saving timetable: ' + err.message);
+    });
 }
 
 // Section Periods Override functions
@@ -1548,9 +1567,7 @@ function openSectionPeriodsModal(secId, secName) {
 
   new bootstrap.Modal(document.getElementById('sectionPeriodsModal')).show();
 
-  // Load custom periods or global template
-  fetch(`ajax.php?action=subjects_by_class_session&class_id=0`) // dummy fetch to execute settings check
-  // Actually, we can fetch via direct settings endpoint or inline php variables
+  // Section-specific period overrides are inlined from PHP at page-load time
   const allSectionPeriods = {
     <?php foreach ($sections as $s): 
       $k = "section_periods_" . $s['section_id'];
@@ -1705,16 +1722,25 @@ function triggerAutoGenerate() {
     btn.disabled = true;
 
     fetch('ajax.php?action=auto_generate', { method: 'POST', body: fd })
-      .then(r => r.json())
-      .then(res => {
+      .then(r => r.text())
+      .then(text => {
+        let res;
+        try { res = JSON.parse(text); }
+        catch (e) {
+          // PHP printed something before JSON (warning/error) — show first 300 chars
+          throw new Error('Server error: ' + text.replace(/<[^>]+>/g, '').trim().substring(0, 300));
+        }
         if (res.success) {
-          alert('Master Timetable draft auto-generated successfully!');
+          alert('✓ Timetable auto-generated! The page will reload.');
           window.location.reload();
         } else {
-          alert('Error generating routine: ' + res.error);
-          btn.innerHTML = '<i class="bi bi-cpu me-1"></i>Auto-Generate Timetable';
-          btn.disabled = false;
+          throw new Error(res.error || 'Unknown error from server');
         }
+      })
+      .catch(err => {
+        alert('Auto-generate failed:\n\n' + err.message);
+        btn.innerHTML = '<i class="bi bi-cpu me-1"></i>Auto-Generate Timetable';
+        btn.disabled = false;
       });
   }
 }

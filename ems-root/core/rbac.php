@@ -14,6 +14,7 @@ function get_nav_menu(): array {
             ['label' => 'Dropdown Options',  'url' => 'modules/setup/categories.php',  'perm' => 'setup.edit'],
             ['label' => 'Academic Sessions', 'url' => 'modules/academic/sessions.php', 'perm' => 'academic.manage'],
             ['label' => 'Holiday Calendar',  'url' => 'modules/setup/holidays.php',    'perm' => 'setup.edit'],
+            ['label' => 'Deleted Items',     'url' => 'modules/setup/deleted.php',     'perm' => 'deleted.view'],
             ['label' => 'Activity Log',      'url' => 'modules/setup/audit.php',       'perm' => 'setup.view'],
         ]],
 
@@ -28,43 +29,42 @@ function get_nav_menu(): array {
 
         // ── Academic ───────────────────────────────────────────────────────────
         ['label' => 'Academic', 'icon' => 'book-half', 'url' => null, 'perm' => 'academic.view', 'children' => [
-            // Setup & Structure
-            ['label' => 'Classes & Sections',   'url' => 'modules/academic/classes.php',       'perm' => 'academic.manage'],
-            ['label' => 'Subjects',             'url' => 'modules/academic/subjects.php',      'perm' => 'academic.manage'],
-            ['label' => 'Subject-Class Mapping','url' => 'modules/academic/class_subjects.php','perm' => 'academic.manage'],
-            ['label' => 'Groups / Streams',     'url' => 'modules/academic/groups.php',        'perm' => 'academic.manage'],
-            ['label' => 'Rooms',                'url' => 'modules/academic/rooms.php',         'perm' => 'academic.manage'],
-            // Timetable
-            ['label' => 'Class Routine',        'url' => 'modules/academic/routine.php',        'perm' => 'routine.view'],
-            ['label' => 'Routine Planner',      'url' => 'modules/academic/master_routine.php', 'perm' => 'routine.manage'],
-            ['label' => 'Substitutions',        'url' => 'modules/academic/substitution.php',   'perm' => 'routine.manage'],
-            ['label' => 'Class Tracker',        'url' => 'modules/academic/class_tracker.php',  'perm' => 'routine.view'],
+            ['label' => 'Classes & Sections',    'url' => 'modules/academic/classes.php',       'perm' => 'academic.manage'],
+            ['label' => 'Subjects',              'url' => 'modules/academic/subjects.php',      'perm' => 'academic.manage'],
+            ['label' => 'Class Subject Mapping', 'url' => 'modules/academic/class_subjects.php','perm' => 'academic.manage'],
+            ['label' => 'Groups / Streams',      'url' => 'modules/academic/groups.php',        'perm' => 'academic.manage'],
+            ['label' => 'Rooms',                 'url' => 'modules/academic/rooms.php',         'perm' => 'academic.manage'],
+            ['label' => 'Class Routine',         'url' => 'modules/academic/routine.php',        'perm' => 'routine.view'],
+            ['label' => 'Routine Planner',       'url' => 'modules/academic/master_routine.php', 'perm' => 'routine.manage'],
+            ['label' => 'Substitutions',         'url' => 'modules/academic/substitution.php',   'perm' => 'routine.manage'],
+            ['label' => 'Class Tracker',         'url' => 'modules/academic/class_tracker.php',  'perm' => 'routine.view'],
         ]],
 
         // ── Students ───────────────────────────────────────────────────────────
         ['label' => 'Students', 'icon' => 'person-badge-fill', 'url' => null, 'perm' => 'students.view', 'children' => [
-            ['label' => 'Student List',    'url' => 'modules/students/index.php',     'perm' => 'students.view'],
-            ['label' => 'New Admission',   'url' => 'modules/students/create.php',    'perm' => 'students.create'],
-            ['label' => 'Enrollments',     'url' => 'modules/students/enroll.php',    'perm' => 'students.create'],
-            ['label' => 'Special Batches', 'url' => 'modules/students/batches.php',   'perm' => 'students.create'],
-            ['label' => 'Attendance',      'url' => 'modules/students/attendance.php','perm' => 'attendance.mark'],
-            ['label' => 'Promotions',      'url' => 'modules/students/promote.php',   'perm' => 'students.promote'],
-            ['label' => 'Roll Adjustment', 'url' => 'modules/students/roll_adjust.php','perm'=> 'students.edit'],
-            ['label' => 'Transfer (TC)',   'url' => 'modules/students/tc.php',         'perm' => 'students.tc'],
-            ['label' => 'Alumni',          'url' => 'modules/alumni/index.php',        'perm' => 'students.view'],
+            ['label' => 'Student List',       'url' => 'modules/students/index.php',          'perm' => 'students.view'],
+            ['label' => 'New Admission',       'url' => 'modules/students/create.php',         'perm' => 'students.create'],
+            ['label' => 'Enrollment Manager', 'url' => 'modules/students/enroll.php',          'perm' => 'students.create'],
+            ['label' => 'Subject Choices',    'url' => 'modules/students/subject_choices.php', 'perm' => 'students.edit'],
+            ['label' => 'Special Batches',    'url' => 'modules/students/batches.php',         'perm' => 'batches.manage'],
+            ['label' => 'Attendance',         'url' => 'modules/students/attendance.php',      'perm' => 'attendance.mark'],
+            ['label' => 'Promotions',         'url' => 'modules/students/promote.php',         'perm' => 'students.promote'],
+            ['label' => 'Roll Adjustment',    'url' => 'modules/students/roll_adjust.php',     'perm' => 'students.edit'],
+            ['label' => 'Transfer (TC)',       'url' => 'modules/students/tc.php',              'perm' => 'students.tc'],
+            ['label' => 'Alumni',             'url' => 'modules/alumni/index.php',             'perm' => 'students.view'],
         ]],
 
         // ── Examinations ───────────────────────────────────────────────────────
         ['label' => 'Examinations', 'icon' => 'clipboard2-check-fill', 'url' => null, 'perm' => 'exams.view', 'children' => [
-            ['label' => 'Exam List',     'url' => 'modules/exams/index.php',       'perm' => 'exams.view'],
-            ['label' => 'Schedule',      'url' => 'modules/exams/schedule.php',    'perm' => 'exams.manage'],
-            ['label' => 'Seat Plans',    'url' => 'modules/exams/seats.php',       'perm' => 'seats.manage'],
-            ['label' => 'Seat Tokens',   'url' => 'modules/exams/seat_tokens.php', 'perm' => 'seats.manage'],
-            ['label' => 'Admit Cards',   'url' => 'modules/exams/admits.php',      'perm' => 'exams.view'],
-            ['label' => 'Invigilators',  'url' => 'modules/exams/invigilators.php','perm' => 'exams.manage'],
-            ['label' => 'Mark Entry',    'url' => 'modules/exams/marks.php',       'perm' => 'marks.enter'],
-            ['label' => 'Results',       'url' => 'modules/exams/results.php',     'perm' => 'marks.approve'],
-            ['label' => 'Question Vault','url' => 'modules/exams/questions.php',   'perm' => 'exams.manage'],
+            ['label' => 'Exam List',       'url' => 'modules/exams/index.php',         'perm' => 'exams.view'],
+            ['label' => 'Exam Routine',    'url' => 'modules/exams/schedule.php',       'perm' => 'exams.manage'],
+            ['label' => 'Mark Entry',      'url' => 'modules/exams/marks.php',          'perm' => 'marks.enter'],
+            ['label' => 'Results',         'url' => 'modules/exams/results.php',        'perm' => 'marks.approve'],
+            ['label' => 'Seat Plans',      'url' => 'modules/exams/seats.php',          'perm' => 'seats.manage'],
+            ['label' => 'Seat Tokens',     'url' => 'modules/exams/seat_tokens.php',    'perm' => 'seats.manage'],
+            ['label' => 'Admit Cards',     'url' => 'modules/exams/admits.php',         'perm' => 'exams.view'],
+            ['label' => 'Invigilators',    'url' => 'modules/exams/invigilators.php',   'perm' => 'exams.manage'],
+            ['label' => 'Question Vault',  'url' => 'modules/exams/questions.php',      'perm' => 'exams.manage'],
         ]],
 
         // ── Finance ────────────────────────────────────────────────────────────
@@ -89,12 +89,13 @@ function get_nav_menu(): array {
 
         // ── HR & Payroll ───────────────────────────────────────────────────────
         ['label' => 'HR & Payroll', 'icon' => 'person-workspace', 'url' => null, 'perm' => 'hr.view', 'children' => [
-            ['label' => 'Staff List',    'url' => 'modules/hr/staff.php',       'perm' => 'hr.view'],
-            ['label' => 'Add Staff',     'url' => 'modules/hr/create.php',      'perm' => 'hr.manage'],
-            ['label' => 'Attendance',    'url' => 'modules/hr/attendance.php',  'perm' => 'attendance.mark'],
-            ['label' => 'Leave',         'url' => 'modules/hr/leave.php',       'perm' => 'leave.approve'],
-            ['label' => 'Payroll',       'url' => 'modules/hr/payroll.php',     'perm' => 'payroll.view'],
-            ['label' => 'Performance',   'url' => 'modules/hr/performance.php', 'perm' => 'hr.manage'],
+            ['label' => 'Staff List',      'url' => 'modules/hr/staff.php',          'perm' => 'hr.view'],
+            ['label' => 'Add Staff',       'url' => 'modules/hr/create.php',         'perm' => 'hr.manage'],
+            ['label' => 'Teacher Groups',  'url' => 'modules/hr/teacher_groups.php', 'perm' => 'teacher.level'],
+            ['label' => 'Attendance',      'url' => 'modules/hr/attendance.php',     'perm' => 'attendance.mark'],
+            ['label' => 'Leave',           'url' => 'modules/hr/leave.php',          'perm' => 'leave.approve'],
+            ['label' => 'Payroll',         'url' => 'modules/hr/payroll.php',        'perm' => 'payroll.view'],
+            ['label' => 'Performance',     'url' => 'modules/hr/performance.php',    'perm' => 'hr.manage'],
         ]],
 
         // ── Inventory ──────────────────────────────────────────────────────────
@@ -153,10 +154,16 @@ function filter_menu(array $menu): array {
 }
 
 // Is the given URL currently active?
+// Menu URLs are like 'modules/setup/holidays.php'.
+// REQUEST_URI might be '/ems-root/modules/setup/holidays.php'.
+// We check that REQUEST_URI ends with '/<url>' to handle any install subfolder.
 function is_active_url(string $url): bool {
-    $current = ltrim($_SERVER['REQUEST_URI'] ?? '', '/');
-    $base    = ltrim(defined('EMS_URL') ? parse_url(EMS_URL, PHP_URL_PATH) ?? '' : '', '/');
-    $rel     = ltrim(str_replace($base, '', $current), '/');
-    $rel     = strtok($rel, '?');
-    return $url === $rel || str_starts_with($rel, dirname($url));
+    $uri = strtok($_SERVER['REQUEST_URI'] ?? '/', '?');
+    // Direct match: URI ends with the menu URL (handles /ems-root/ prefix automatically)
+    if (str_ends_with($uri, '/' . $url)) return true;
+    // Parent match: current URL is inside the same directory as the menu URL
+    // e.g. url='modules/academic/classes.php' matches '/ems-root/modules/academic/subjects.php'
+    $dir = dirname($url);
+    if ($dir && $dir !== '.' && str_contains($uri, '/' . $dir . '/')) return true;
+    return false;
 }

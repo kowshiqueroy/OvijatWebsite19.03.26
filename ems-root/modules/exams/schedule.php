@@ -49,9 +49,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if ($class_id && $subject_id) {
             $pdo->prepare(
-                'INSERT INTO exam_subject_config (exam_id,class_id,subject_id,full_marks_written,full_marks_mcq,full_marks_practical,pass_marks_written,pass_marks_mcq,pass_marks_practical,exam_date,exam_time)
+                'INSERT INTO exam_subject_config (exam_id,class_id,subject_id,full_marks_written,full_marks_mcq,full_marks_practical,pass_marks_written,pass_marks_mcq,pass_marks_practical,exam_date,exam_start_time)
                  VALUES (?,?,?,?,?,?,?,?,?,?,?)
-                 ON DUPLICATE KEY UPDATE full_marks_written=VALUES(full_marks_written),full_marks_mcq=VALUES(full_marks_mcq),full_marks_practical=VALUES(full_marks_practical),pass_marks_written=VALUES(pass_marks_written),pass_marks_mcq=VALUES(pass_marks_mcq),pass_marks_practical=VALUES(pass_marks_practical),exam_date=VALUES(exam_date),exam_time=VALUES(exam_time)'
+                 ON DUPLICATE KEY UPDATE full_marks_written=VALUES(full_marks_written),full_marks_mcq=VALUES(full_marks_mcq),full_marks_practical=VALUES(full_marks_practical),pass_marks_written=VALUES(pass_marks_written),pass_marks_mcq=VALUES(pass_marks_mcq),pass_marks_practical=VALUES(pass_marks_practical),exam_date=VALUES(exam_date),exam_start_time=VALUES(exam_start_time)'
             )->execute([$exam_id,$class_id,$subject_id,$fm_w,$fm_m,$fm_p,$pm_w,$pm_m,$pm_p,$e_date,$e_time]);
             flash('success', 'Subject config saved.');
         }
@@ -68,7 +68,7 @@ $examClassIds = array_column($examClasses, 'id');
 
 $subjectConfigs = [];
 if (!empty($examClassIds)) {
-    $esc = $pdo->query("SELECT esc.*, s.subject_name FROM exam_subject_config esc JOIN subjects s ON s.id=esc.subject_id WHERE esc.exam_id=$exam_id ORDER BY s.subject_name");
+    $esc = $pdo->query("SELECT esc.*, esc.exam_start_time AS exam_time, s.subject_name FROM exam_subject_config esc JOIN subjects s ON s.id=esc.subject_id WHERE esc.exam_id=$exam_id ORDER BY s.subject_name");
     foreach ($esc->fetchAll() as $row) $subjectConfigs[$row['class_id']][] = $row;
 }
 

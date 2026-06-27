@@ -31,10 +31,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!empty($cids)) {
                 // Get unassigned students, mixing classes for anti-cheat
                 $inClause = implode(',', array_map('intval', $cids));
+                $examSessionId = (int)$pdo->query("SELECT session_id FROM exams WHERE id = $eid")->fetchColumn();
                 $students = $pdo->query(
                     "SELECT se.student_id, se.class_id, se.roll_number 
                      FROM student_enrollments se
-                     WHERE se.class_id IN ($inClause) AND se.status='active'
+                     WHERE se.class_id IN ($inClause) AND se.status='active' AND se.session_id = $examSessionId
                      AND se.student_id NOT IN (SELECT student_id FROM exam_seats WHERE exam_id=$eid)
                      ORDER BY se.roll_number"
                 )->fetchAll();
@@ -458,8 +459,6 @@ require_once EMS_ROOT . '/includes/header.php';
               <tbody>
                 <?php foreach ($rooms as $r):
                   $cap = room_seat_capacity($r);
-                  $alreadyInRoom = (int)$pdo->prepare('SELECT COUNT(*) FROM exam_seats WHERE exam_id=? AND room_id=?')
-                                              ->execute([$exam_id, $r['id']]) ? 0 : 0;
                   $aStmt = $pdo->prepare('SELECT COUNT(*) FROM exam_seats WHERE exam_id=? AND room_id=?');
                   $aStmt->execute([$exam_id, $r['id']]);
                   $alreadyInRoom = (int)$aStmt->fetchColumn();
