@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-label="Kotha">
+  <title>Kotha</title>
+  <defs>
+    <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00f2fe"/>
+      <stop offset="100%" stop-color="#4facfe"/>
+    </linearGradient>
+    <!-- Subtle inner shadow for depth -->
+    <filter id="inner">
+      <feOffset dx="0" dy="2"/>
+      <feGaussianBlur stdDeviation="3" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+  </defs>
+
+  <!--
+    Speech bubble: rounded rectangle body + tail at bottom-left.
+    The tail represents the "other person" side of a conversation,
+    reinforcing the messaging identity.
+    Path traces clockwise starting from top-left post-corner.
+  -->
+  <path d="
+    M 20,6
+    L 80,6
+    Q 94,6 94,20
+    L 94,62
+    Q 94,76 80,76
+    L 42,76
+    L 18,96
+    L 26,76
+    L 20,76
+    Q 6,76 6,62
+    L 6,20
+    Q 6,6 20,6
+    Z
+  " fill="url(#g)"/>
+
+  <!-- Highlight gloss on upper portion -->
+  <path d="
+    M 20,6
+    L 80,6
+    Q 94,6 94,20
+    L 94,38
+    Q 50,50 6,38
+    L 6,20
+    Q 6,6 20,6
+    Z
+  " fill="rgba(255,255,255,0.18)"/>
+
+  <!--
+    Letter K — three strokes: vertical bar + two diagonal arms.
+    Vertical bar centred left; arms meet at exact midpoint (x=37, y=41).
+  -->
+  <!-- Vertical bar -->
+  <rect x="30" y="22" width="8.5" height="37" rx="4.25" fill="white"/>
+  <!-- Upper arm: midpoint → upper-right -->
+  <line x1="34.25" y1="40.5"
+        x2="62"    y2="22"
+        stroke="white" stroke-width="8" stroke-linecap="round"/>
+  <!-- Lower arm: midpoint → lower-right -->
+  <line x1="34.25" y1="40.5"
+        x2="62"    y2="59"
+        stroke="white" stroke-width="8" stroke-linecap="round"/>
+</svg>

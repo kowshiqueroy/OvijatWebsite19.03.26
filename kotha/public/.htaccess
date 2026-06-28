@@ -1,0 +1,5 @@
+# Block direct execution of test/debug PHP files in public/
+<FilesMatch "^(create_mock\.php|test_write\.php)$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>

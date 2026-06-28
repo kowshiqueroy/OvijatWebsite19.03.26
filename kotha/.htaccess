@@ -1,0 +1,18 @@
+# Enable Rewrite Engine
+RewriteEngine On
+
+# Disable Directory Browsing
+Options -Indexes
+
+# Block direct access to dev/debug/seed files
+<FilesMatch "^(seed\.php|verify_debug\.php)$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# If the file or directory exists, serve it directly
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+
+# Route all other URLs to index.php
+RewriteRule ^(.*)$ index.php [QSA,L]

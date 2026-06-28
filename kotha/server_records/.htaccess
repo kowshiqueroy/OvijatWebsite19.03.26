@@ -1,0 +1,9 @@
+# Prevent script execution inside this folder
+RemoveHandler .php .phtml .php3 .php4 .php5 .php7 .phps .pl .py .pyc .pyo .jsp .asp .htm .html .shtml .sh .cgi
+RemoveType .php .phtml .php3 .php4 .php5 .php7 .phps .pl .py .pyc .pyo .jsp .asp .htm .html .shtml .sh .cgi
+php_flag engine off
+
+# Force download or direct binary streaming for recording files
+<FilesMatch "\.(webm)$">
+    ForceType video/webm
+</FilesMatch>

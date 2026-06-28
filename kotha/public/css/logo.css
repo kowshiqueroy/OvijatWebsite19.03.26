@@ -1,0 +1,153 @@
+/* public/css/logo.css */
+
+.kotha-logo-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    margin: 20px auto;
+}
+
+.kotha-logo {
+    position: relative;
+    width: 100px;
+    height: 100px;
+    background: linear-gradient(135deg, #00f2fe 0%, #4facfe 100%);
+    border-radius: 30% 70% 70% 30% / 30% 30% 70% 70%;
+    box-shadow: 0 10px 30px rgba(79, 172, 254, 0.4), 
+                inset 0 4px 10px rgba(255, 255, 255, 0.4);
+    animation: liquid-morph 8s ease-in-out infinite, logo-pulse 2s infinite alternate;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.kotha-logo::after {
+    content: '';
+    position: absolute;
+    bottom: -10px;
+    right: 10px;
+    width: 25px;
+    height: 25px;
+    background: #4facfe;
+    border-radius: 50% 50% 50% 0;
+    transform: rotate(-45deg);
+    box-shadow: 5px 5px 15px rgba(79, 172, 254, 0.3);
+}
+
+.kotha-logo-inner {
+    width: 45px;
+    height: 45px;
+    background: rgba(255, 255, 255, 0.15);
+    backdrop-filter: blur(5px);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1.5px solid rgba(255, 255, 255, 0.35);
+}
+
+.kotha-logo-dot {
+    width: 16px;
+    height: 16px;
+    background: #ffffff;
+    border-radius: 50%;
+    box-shadow: 0 0 15px #ffffff, 0 0 30px #00f2fe;
+    animation: dot-glow 1.5s ease-in-out infinite alternate;
+}
+
+/* Sound wave animations surrounding the logo */
+.kotha-waves {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+}
+
+.kotha-wave {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    border: 2px solid rgba(0, 242, 254, 0.3);
+    border-radius: inherit;
+    animation: wave-expand 3s linear infinite;
+    opacity: 0;
+}
+
+.kotha-wave:nth-child(2) {
+    animation-delay: 1s;
+}
+
+.kotha-wave:nth-child(3) {
+    animation-delay: 2s;
+}
+
+.kotha-branding-text {
+    font-size: 2.5rem;
+    font-weight: 800;
+    background: linear-gradient(to right, #00f2fe, #4facfe);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin-top: 15px;
+    letter-spacing: 2px;
+    font-family: 'Outfit', sans-serif;
+    text-shadow: 0 10px 20px rgba(0, 242, 254, 0.15);
+}
+
+.sohojweb-signature {
+    font-size: 0.85rem;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 3px;
+    margin-top: 5px;
+    font-weight: 500;
+}
+
+/* Keyframes */
+@keyframes liquid-morph {
+    0% {
+        border-radius: 30% 70% 70% 30% / 30% 30% 70% 70%;
+    }
+    33% {
+        border-radius: 70% 30% 50% 50% / 50% 50% 30% 70%;
+    }
+    66% {
+        border-radius: 50% 50% 30% 70% / 30% 70% 50% 50%;
+    }
+    100% {
+        border-radius: 30% 70% 70% 30% / 30% 30% 70% 70%;
+    }
+}
+
+@keyframes logo-pulse {
+    from {
+        transform: scale(1);
+    }
+    to {
+        transform: scale(1.04);
+    }
+}
+
+@keyframes dot-glow {
+    from {
+        transform: scale(0.85);
+        box-shadow: 0 0 10px #ffffff, 0 0 20px #00f2fe;
+    }
+    to {
+        transform: scale(1.15);
+        box-shadow: 0 0 25px #ffffff, 0 0 45px #00f2fe;
+    }
+}
+
+@keyframes wave-expand {
+    0% {
+        transform: scale(1);
+        opacity: 0.8;
+    }
+    100% {
+        transform: scale(1.8);
+        opacity: 0;
+    }
+}

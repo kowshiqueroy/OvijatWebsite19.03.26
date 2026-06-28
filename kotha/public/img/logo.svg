@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 80" role="img" aria-label="Kotha">
+  <title>Kotha — Secure Messaging</title>
+  <defs>
+    <linearGradient id="gi" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00f2fe"/>
+      <stop offset="100%" stop-color="#4facfe"/>
+    </linearGradient>
+    <linearGradient id="gt" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#00f2fe"/>
+      <stop offset="100%" stop-color="#4facfe"/>
+    </linearGradient>
+  </defs>
+
+  <!--
+    Icon mark at scale 0.76 (fills ~76×76 of the 80px height leaving 2px top/bottom).
+    Original viewBox was 0 0 100 100, tail tip at y=96.
+    0.76 × 96 = 73px — fits comfortably with translate(0,2).
+  -->
+  <g transform="translate(2,2) scale(0.76)">
+    <!-- Speech bubble body + tail -->
+    <path d="
+      M 20,6 L 80,6 Q 94,6 94,20 L 94,62 Q 94,76 80,76
+      L 42,76 L 18,96 L 26,76 L 20,76
+      Q 6,76 6,62 L 6,20 Q 6,6 20,6 Z
+    " fill="url(#gi)"/>
+    <!-- Gloss highlight -->
+    <path d="
+      M 20,6 L 80,6 Q 94,6 94,20 L 94,38 Q 50,50 6,38 L 6,20 Q 6,6 20,6 Z
+    " fill="rgba(255,255,255,0.18)"/>
+    <!-- K: vertical bar -->
+    <rect x="30" y="22" width="8.5" height="37" rx="4.25" fill="white"/>
+    <!-- K: upper arm -->
+    <line x1="34.25" y1="40.5" x2="62" y2="22" stroke="white" stroke-width="8" stroke-linecap="round"/>
+    <!-- K: lower arm -->
+    <line x1="34.25" y1="40.5" x2="62" y2="59" stroke="white" stroke-width="8" stroke-linecap="round"/>
+  </g>
+
+  <!--
+    "Kotha" wordmark.
+    Baseline y=58 centres capital height (~34px) in the 80px logo.
+    Gradient fill applied via url(#gt).
+    font-family lists system fonts so it renders everywhere without external loading.
+  -->
+  <text x="86" y="58"
+        font-family="'Outfit', 'Helvetica Neue', 'Segoe UI', Arial, sans-serif"
+        font-size="46"
+        font-weight="800"
+        letter-spacing="1"
+        fill="url(#gt)">Kotha</text>
+</svg>
