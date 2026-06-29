@@ -87,11 +87,9 @@ class AuthController {
                     // Trigger location prompt on the next page load
                     $_SESSION['location_prompt']   = true;
 
-                    if ($user['is_admin'] == 1) {
-                        $this->redirect('/admin');
-                    } else {
-                        $this->redirect('/dashboard');
-                    }
+                    // All users (including admins) land on the chat dashboard.
+                    // Admins can reach the admin panel via the crown button in the sidebar.
+                    $this->redirect('/dashboard');
                 }
             } else {
                 $error = 'Invalid email or password.';

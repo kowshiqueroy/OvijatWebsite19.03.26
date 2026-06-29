@@ -1,0 +1,58 @@
+# ============================================================
+#  Kotha — .htaccess for LIVE / PRODUCTION server only
+#  DO NOT use this on localhost (HTTPS redirect breaks local dev)
+#  Upload this file to the live server as: .htaccess
+# ============================================================
+
+RewriteEngine On
+Options -Indexes
+
+# ── HTTPS Enforcement ─────────────────────────────────────────
+# Redirect all HTTP to HTTPS permanently.
+# If behind Cloudflare / Nginx / load balancer, use the
+# X-Forwarded-Proto version (commented below) instead.
+
+# -- Direct SSL (standard VPS/shared hosting) --
+RewriteCond %{HTTPS} off
+RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+
+# -- Behind reverse proxy / Cloudflare / AWS ALB --
+# RewriteCond %{HTTP:X-Forwarded-Proto} =http
+# RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+
+# ── HTTP Security Headers ─────────────────────────────────────
+<IfModule mod_headers.c>
+    Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set X-Frame-Options "SAMEORIGIN"
+    Header always set X-XSS-Protection "1; mode=block"
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+    Header always unset X-Powered-By
+</IfModule>
+
+# ── Block sensitive files ─────────────────────────────────────
+<FilesMatch "^(seed\.php|verify_debug\.php|create_mock\.php|test_write\.php)$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+<FilesMatch "^\.">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# ── Static file caching ───────────────────────────────────────
+<IfModule mod_expires.c>
+    ExpiresActive On
+    ExpiresByType text/css               "access plus 7 days"
+    ExpiresByType application/javascript "access plus 7 days"
+    ExpiresByType image/svg+xml          "access plus 30 days"
+    ExpiresByType image/png              "access plus 30 days"
+    ExpiresByType image/jpeg             "access plus 30 days"
+    ExpiresByType image/webp             "access plus 30 days"
+</IfModule>
+
+# ── Route all app requests through index.php ──────────────────
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^(.*)$ index.php [QSA,L]

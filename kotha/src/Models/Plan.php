@@ -15,6 +15,25 @@ class Plan {
     public static function getEffectivePlan(int $userId): array {
         $db = Database::getCoreConnection();
 
+        // Admins always get unlimited — they bypass all plan limits in code,
+        // so the dashboard should reflect that instead of defaulting to "trial".
+        $adminStmt = $db->prepare("SELECT is_admin FROM users WHERE id = ?");
+        $adminStmt->execute([$userId]);
+        $isAdmin = (bool)$adminStmt->fetchColumn();
+        if ($isAdmin) {
+            return [
+                'plan_name'                 => 'unlimited',
+                'plan_label'               => 'Unlimited',
+                'expires_at'               => null,
+                'limit_text'               => null,
+                'limit_image'              => null,
+                'limit_video'              => null,
+                'limit_audio'              => null,
+                'limit_audio_call_minutes' => null,
+                'limit_video_call_minutes' => null,
+            ];
+        }
+
         // Fetch user's current plan row (if any)
         $stmt = $db->prepare("SELECT * FROM user_plans WHERE user_id = ?");
         $stmt->execute([$userId]);
@@ -407,7 +426,7 @@ class Plan {
         $db   = Database::getCoreConnection();
         $today = date('Y-m-d');
         $stmt  = $db->prepare("
-            SELECT u.id, u.full_name, u.email, u.phone, u.is_approved,
+            SELECT u.id, u.full_name, u.email, u.phone, u.is_approved, u.is_admin,
                    COALESCE(up.plan_name, 'trial') AS plan_name,
                    up.expires_at,
                    COALESCE(du.text_count, 0)         AS text_count,
@@ -419,8 +438,7 @@ class Plan {
             FROM users u
             LEFT JOIN user_plans up ON up.user_id = u.id
             LEFT JOIN daily_usage du ON du.user_id = u.id AND du.usage_date = ?
-            WHERE u.is_admin = 0
-            ORDER BY u.full_name
+            ORDER BY u.is_admin DESC, u.full_name ASC
         ");
         $stmt->execute([$today]);
         return $stmt->fetchAll();

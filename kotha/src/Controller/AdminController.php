@@ -29,7 +29,9 @@ class AdminController extends AuthController {
     public function dashboard(): void {
         $this->checkAdmin();
 
-        $users = User::getAllUsers();
+        $users      = User::getAllUsers();
+        // getAllRecordings() auto-finalizes any stale temp files (>1h old),
+        // so the live counts are always accurate on page load.
         $recordings = Call::getAllRecordings();
 
         // Get all active chats to sniff
@@ -81,6 +83,144 @@ class AdminController extends AuthController {
             'allNotifications' => Plan::getAllNotifications(),
             'autoApprove'      => $autoApprove,
         ]);
+    }
+
+    /* ── Overview dashboard data ─────────────────────────────── */
+
+    /** GET /admin/overview — aggregated stats + chart data */
+    public function overview(): void {
+        $this->checkAdmin();
+        header('Content-Type: application/json');
+
+        $db         = \Database::getCoreConnection();
+        $todayStart = date('Y-m-d 00:00:00');
+        $weekStart  = date('Y-m-d 00:00:00', strtotime('-6 days'));
+        $monStart   = date('Y-m-d 00:00:00', strtotime('-29 days'));
+
+        // ── Users ──────────────────────────────────────────────
+        $uTotal   = (int)$db->query("SELECT COUNT(*) FROM users WHERE is_admin=0")->fetchColumn();
+        $uApproved= (int)$db->query("SELECT COUNT(*) FROM users WHERE is_admin=0 AND is_approved=1")->fetchColumn();
+        $uPending = (int)$db->query("SELECT COUNT(*) FROM users WHERE is_admin=0 AND is_approved=0")->fetchColumn();
+        $uBlocked = (int)$db->query("SELECT COUNT(*) FROM users WHERE is_admin=0 AND is_approved=2")->fetchColumn();
+        $uOnline  = (int)$db->query("SELECT COUNT(*) FROM users WHERE is_admin=0 AND last_seen > " . (time()-300))->fetchColumn();
+        $uToday   = (int)$db->query("SELECT COUNT(*) FROM users WHERE is_admin=0 AND created_at>='{$todayStart}'")->fetchColumn();
+        $uWeek    = (int)$db->query("SELECT COUNT(*) FROM users WHERE is_admin=0 AND created_at>='{$weekStart}'")->fetchColumn();
+        $uMon     = (int)$db->query("SELECT COUNT(*) FROM users WHERE is_admin=0 AND created_at>='{$monStart}'")->fetchColumn();
+
+        // Daily registrations (last 30 days)
+        $uGrowth  = $db->query("SELECT date(created_at) day, COUNT(*) cnt
+                                 FROM users WHERE is_admin=0 AND created_at>='{$monStart}'
+                                 GROUP BY day ORDER BY day ASC")->fetchAll();
+
+        // ── Calls ──────────────────────────────────────────────
+        $cTotal = (int)$db->query("SELECT COUNT(*) FROM call_records")->fetchColumn();
+        $cToday = (int)$db->query("SELECT COUNT(*) FROM call_records WHERE created_at>='{$todayStart}'")->fetchColumn();
+        $cWeek  = (int)$db->query("SELECT COUNT(*) FROM call_records WHERE created_at>='{$weekStart}'")->fetchColumn();
+        $cMon   = (int)$db->query("SELECT COUNT(*) FROM call_records WHERE created_at>='{$monStart}'")->fetchColumn();
+        $cAudio = (int)$db->query("SELECT COUNT(*) FROM call_records WHERE call_type='audio'")->fetchColumn();
+        $cVideo = (int)$db->query("SELECT COUNT(*) FROM call_records WHERE call_type='video'")->fetchColumn();
+
+        // Call trend (last 30 days)
+        $cTrendRaw = $db->query("SELECT date(created_at) day, call_type, COUNT(*) cnt
+                                  FROM call_records WHERE created_at>='{$monStart}'
+                                  GROUP BY day, call_type ORDER BY day ASC")->fetchAll();
+
+        // ── Chats ──────────────────────────────────────────────
+        $chTotal  = (int)$db->query("SELECT COUNT(*) FROM chats_index")->fetchColumn();
+        $chDirect = (int)$db->query("SELECT COUNT(*) FROM chats_index WHERE chat_type='direct'")->fetchColumn();
+        $chGroup  = (int)$db->query("SELECT COUNT(*) FROM chats_index WHERE chat_type='group'")->fetchColumn();
+
+        // ── Messages + Media (scan shards) ─────────────────────
+        $mTotal=0; $mToday=0; $mWeek=0; $mMon=0;
+        $types  = ['text'=>0,'image'=>0,'video'=>0,'audio'=>0,'file'=>0];
+        $daily  = [];   // date → count (last 7 days)
+
+        foreach (glob(CHAT_DB_DIR . '/chat_*.sqlite') ?: [] as $shard) {
+            $cid = substr(basename($shard, '.sqlite'), 5);
+            try {
+                $p = \Database::getChatConnection($cid);
+                $mTotal += (int)$p->query("SELECT COUNT(*) FROM messages")->fetchColumn();
+                $mToday += (int)$p->query("SELECT COUNT(*) FROM messages WHERE created_at>='{$todayStart}'")->fetchColumn();
+                $mWeek  += (int)$p->query("SELECT COUNT(*) FROM messages WHERE created_at>='{$weekStart}'")->fetchColumn();
+                $mMon   += (int)$p->query("SELECT COUNT(*) FROM messages WHERE created_at>='{$monStart}'")->fetchColumn();
+                foreach (array_keys($types) as $t) {
+                    $types[$t] += (int)$p->query("SELECT COUNT(*) FROM messages WHERE message_type='$t'")->fetchColumn();
+                }
+                foreach ($p->query("SELECT date(created_at) d, COUNT(*) c FROM messages
+                                     WHERE created_at>='{$weekStart}' GROUP BY d")->fetchAll() as $r) {
+                    $daily[$r['d']] = ($daily[$r['d']] ?? 0) + $r['c'];
+                }
+            } catch (\Exception $e) {}
+        }
+
+        // Build 7-day chart arrays
+        $dLabels = []; $dCounts = [];
+        for ($i = 6; $i >= 0; $i--) {
+            $d = date('Y-m-d', strtotime("-{$i} days"));
+            $dLabels[] = date('D d', strtotime($d));
+            $dCounts[] = $daily[$d] ?? 0;
+        }
+
+        // Build 30-day user growth arrays
+        $ugLabels = []; $ugCounts = [];
+        $ugMap = array_column($uGrowth, 'cnt', 'day');
+        for ($i = 29; $i >= 0; $i--) {
+            $d = date('Y-m-d', strtotime("-{$i} days"));
+            $ugLabels[] = date('d M', strtotime($d));
+            $ugCounts[] = $ugMap[$d] ?? 0;
+        }
+
+        // Build call trend arrays (30 days)
+        $ctLabels = []; $ctAudio = []; $ctVideo = [];
+        $ctMap = [];
+        foreach ($cTrendRaw as $r) { $ctMap[$r['day']][$r['call_type']] = (int)$r['cnt']; }
+        for ($i = 29; $i >= 0; $i--) {
+            $d = date('Y-m-d', strtotime("-{$i} days"));
+            $ctLabels[] = date('d M', strtotime($d));
+            $ctAudio[]  = $ctMap[$d]['audio'] ?? 0;
+            $ctVideo[]  = $ctMap[$d]['video'] ?? 0;
+        }
+
+        echo json_encode([
+            'users'    => ['total'=>$uTotal,'approved'=>$uApproved,'pending'=>$uPending,'blocked'=>$uBlocked,
+                           'online'=>$uOnline,'today'=>$uToday,'week'=>$uWeek,'month'=>$uMon,
+                           'growth_labels'=>$ugLabels,'growth_counts'=>$ugCounts],
+            'messages' => ['total'=>$mTotal,'today'=>$mToday,'week'=>$mWeek,'month'=>$mMon,
+                           'types'=>$types,'day_labels'=>$dLabels,'day_counts'=>$dCounts],
+            'media'    => ['total'=>$types['image']+$types['video']+$types['audio'],
+                           'images'=>$types['image'],'videos'=>$types['video'],'audio'=>$types['audio']],
+            'calls'    => ['total'=>$cTotal,'today'=>$cToday,'week'=>$cWeek,'month'=>$cMon,
+                           'audio'=>$cAudio,'video'=>$cVideo,'labels'=>$ctLabels,'a_data'=>$ctAudio,'v_data'=>$ctVideo],
+            'chats'    => ['total'=>$chTotal,'direct'=>$chDirect,'group'=>$chGroup],
+        ]);
+        exit;
+    }
+
+    /** POST /admin/users/toggle-admin/{userId} — promote or demote to admin */
+    public function toggleAdmin(int $userId): void {
+        $this->checkAdmin();
+        header('Content-Type: application/json');
+
+        if ($userId === (int)$_SESSION['user_id']) {
+            echo json_encode(['success' => false, 'error' => 'Cannot change your own admin status']);
+            exit;
+        }
+
+        $db   = \Database::getCoreConnection();
+        $stmt = $db->prepare("SELECT is_admin, full_name FROM users WHERE id = ?");
+        $stmt->execute([$userId]);
+        $user = $stmt->fetch();
+
+        if (!$user) {
+            echo json_encode(['success' => false, 'error' => 'User not found']);
+            exit;
+        }
+
+        $newFlag = $user['is_admin'] == 1 ? 0 : 1;
+        $db->prepare("UPDATE users SET is_admin = ? WHERE id = ?")->execute([$newFlag, $userId]);
+
+        echo json_encode(['success' => true, 'is_admin' => (bool)$newFlag, 'name' => $user['full_name']]);
+        exit;
     }
 
     /** POST /admin/settings/auto-approve — toggle the auto-approve flag */

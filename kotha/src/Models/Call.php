@@ -55,14 +55,40 @@ class Call {
         ");
         $all = $stmt->fetchAll();
 
-        // Only include calls that have data (finalized file OR in-progress temp file)
+        // Include calls that have data (finalized file OR actively-written temp file).
+        // Temp files older than 1 hour are stale (call crashed / browser closed without
+        // sending action=finish) and are excluded from the live list.
+        // They will appear as orphaned files in the Storage → Orphaned Recordings tab.
         $filtered = [];
+        $staleAge  = 3600; // 1 hour — adjust if calls legitimately last longer
+
         foreach ($all as $rec) {
             if (!empty($rec['recording_file'])) {
+                // Finalized recording — always include
                 $filtered[] = $rec;
             } else {
-                if (file_exists(RECORDINGS_DIR . '/temp_' . $rec['id'] . '.webm')) {
-                    $filtered[] = $rec;
+                $tempPath = RECORDINGS_DIR . '/temp_' . $rec['id'] . '.webm';
+                if (file_exists($tempPath)) {
+                    $ageSeconds = time() - filemtime($tempPath);
+                    if ($ageSeconds < $staleAge) {
+                        // Temp file is recent → genuinely live call
+                        $filtered[] = $rec;
+                    } else {
+                        // Stale temp file (call crashed / browser closed without finishing).
+                        // Auto-finalize: rename to a proper recording file and mark ended_at
+                        // so it shows up in Final recordings instead of Live forever.
+                        $finalName = 'call_' . $rec['id'] . '_stale.webm';
+                        $finalPath = RECORDINGS_DIR . '/' . $finalName;
+                        if (@rename($tempPath, $finalPath)) {
+                            $db->prepare("UPDATE call_records
+                                          SET recording_file = ?, ended_at = CURRENT_TIMESTAMP
+                                          WHERE id = ? AND recording_file IS NULL")
+                               ->execute([$finalName, $rec['id']]);
+                            // Re-add as a finalized recording
+                            $rec['recording_file'] = $finalName;
+                            $filtered[] = $rec;
+                        }
+                    }
                 }
             }
         }

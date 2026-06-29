@@ -1,4 +1,18 @@
 <?php
+/**
+ * Variables injected by CallController::callInterface() via extract($data).
+ * Declared here so VS Code static analysis does not flag them as undefined.
+ *
+ * @var string   $chatId      Active chat room ID (e.g. "1on1_1_2")
+ * @var string   $callType    "audio" or "video"
+ * @var string   $callMode    "outgoing" or "incoming"
+ * @var string   $partnerName Display name of the other call participant
+ * @var int|null $partnerId   User ID of the other participant (null for groups)
+ * @var int      $userId      Current user's ID
+ * @var string   $userName    Current user's display name
+ * @var string   $baseUrl     App base URL path (e.g. "/kotha")
+ */
+
 $baseUrl = rtrim(dirname($_SERVER['SCRIPT_NAME']), '/\\');
 function getAvatarBg($id): string {
     $palette = ['#3b82f6','#8b5cf6','#06b6d4','#10b981','#f59e0b','#ef4444','#ec4899','#6366f1','#0ea5e9','#14b8a6'];
@@ -311,18 +325,89 @@ function getAvatarBg($id): string {
         <h2>Call Disconnected</h2>
         <p id="disconnectReason">The call has ended.</p>
 
+        <!-- Both sides always see Retry + Back to Chat -->
         <div class="disc-btn-row">
             <button class="disc-btn disc-btn-retry" onclick="retryCall()">
-                <i class="fa-solid fa-rotate-right"></i>
-                <?= $callMode === 'outgoing' ? 'Retry Call' : 'Back to Chat' ?>
+                <i class="fa-solid fa-rotate-right"></i> Retry Call
             </button>
-            <?php if ($callMode === 'outgoing'): ?>
             <button class="disc-btn disc-btn-back" onclick="backToChat()">
                 <i class="fa-solid fa-arrow-left"></i> Back to Chat
             </button>
-            <?php endif; ?>
+        </div>
+
+        <!-- ── Incoming call overlay (shown ON TOP when other party retries) ── -->
+        <div id="retryIncomingOverlay"
+             style="display:none;position:absolute;inset:0;z-index:10;
+                    background:rgba(9,14,20,.97);backdrop-filter:blur(16px);
+                    flex-direction:column;align-items:center;justify-content:center;
+                    gap:14px;padding:24px;text-align:center;border-radius:inherit;">
+
+            <!-- Animated ring -->
+            <div style="position:relative;margin-bottom:4px;">
+                <div style="width:74px;height:74px;border-radius:50%;
+                            background:rgba(34,197,94,.1);border:2px solid rgba(34,197,94,.3);
+                            display:flex;align-items:center;justify-content:center;">
+                    <i class="fa-solid fa-phone" id="retryCallIcon"
+                       style="font-size:1.7rem;color:#22c55e;"></i>
+                </div>
+                <div style="position:absolute;inset:-8px;border-radius:50%;
+                            border:1.5px solid rgba(34,197,94,.2);
+                            animation:avatarPulse 1.8s ease-in-out infinite;"></div>
+            </div>
+
+            <h3 id="retryCallerName"
+                style="font-size:1.05rem;font-weight:700;color:#fff;margin:0;line-height:1.3;"></h3>
+            <p  id="retryCallTypeLabel"
+                style="font-size:0.78rem;color:rgba(255,255,255,.4);margin:0;"></p>
+
+            <!-- Accept / Decline buttons -->
+            <div style="display:flex;gap:28px;margin-top:8px;align-items:flex-end;">
+                <div style="display:flex;flex-direction:column;align-items:center;gap:8px;">
+                    <button onclick="rejectRetryCall()"
+                        style="width:58px;height:58px;border-radius:50%;
+                               background:linear-gradient(135deg,#ef4444,#b91c1c);
+                               border:none;color:#fff;font-size:1.15rem;cursor:pointer;
+                               transform:rotate(135deg);
+                               box-shadow:0 4px 18px rgba(239,68,68,.4);
+                               transition:transform .15s, box-shadow .15s;">
+                        <i class="fa-solid fa-phone"></i>
+                    </button>
+                    <span style="font-size:0.65rem;color:rgba(255,255,255,.3);letter-spacing:.4px;">Decline</span>
+                </div>
+                <div style="display:flex;flex-direction:column;align-items:center;gap:8px;">
+                    <button onclick="acceptRetryCall()"
+                        style="width:58px;height:58px;border-radius:50%;
+                               background:linear-gradient(135deg,#22c55e,#15803d);
+                               border:none;color:#fff;font-size:1.15rem;cursor:pointer;
+                               box-shadow:0 4px 18px rgba(34,197,94,.45);
+                               animation:callBtnPulse 2s ease-in-out infinite;
+                               transition:transform .15s, box-shadow .15s;">
+                        <i class="fa-solid fa-phone"></i>
+                    </button>
+                    <span style="font-size:0.65rem;color:rgba(255,255,255,.3);letter-spacing:.4px;">Accept</span>
+                </div>
+            </div>
+
+            <!-- Timer and dismiss -->
+            <div style="margin-top:6px;display:flex;flex-direction:column;align-items:center;gap:6px;">
+                <span id="retryCountdown"
+                      style="font-size:0.68rem;color:rgba(255,255,255,.2);"></span>
+                <button onclick="dismissRetryIncoming()"
+                    style="background:none;border:none;color:rgba(255,255,255,.25);
+                           font-size:0.72rem;cursor:pointer;font-family:'Outfit',sans-serif;
+                           transition:color .2s;"
+                    onmouseover="this.style.color='rgba(255,255,255,.5)'"
+                    onmouseout="this.style.color='rgba(255,255,255,.25)'">
+                    Not now
+                </button>
+            </div>
         </div>
     </div>
+
+    <style>
+    @keyframes callBtnPulse{0%,100%{box-shadow:0 4px 18px rgba(34,197,94,.45)}50%{box-shadow:0 4px 30px rgba(34,197,94,.75)}}
+    #callDisconnectOverlay{position:relative}
+    </style>
 
     <!-- PeerJS -->
     <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>

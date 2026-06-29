@@ -1180,7 +1180,7 @@ function appendMessageToDom(msg) {
         if (isPinUnlocked) revealMessage(this);
     });
 
-    const senderName   = isSent ? 'You' : (msg.sender_name || 'Unknown User');
+    const senderName   = isSent ? 'You' : _esc(msg.sender_name || 'Unknown User');
     const dateStr      = msg.created_at.replace(/-/g, '/') + ' UTC';
     const timeFormatted = new Date(dateStr).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Dhaka' });
 
@@ -1252,10 +1252,11 @@ function revealMessage(bubble) {
         </audio>`;
     } else if (trueType === 'file') {
         html = `<a href="${mediaUrl}" class="message-file-link" download>
-            <i class="fa-solid fa-file-arrow-down"></i> ${trueContent || 'Attachment'}
+            <i class="fa-solid fa-file-arrow-down"></i> ${_esc(trueContent || 'Attachment')}
         </a>`;
     } else {
-        html = `<span>${trueContent}</span>`;
+        // Text message — linkify converts URLs to <a> tags and escapes everything else
+        html = `<span style="white-space:pre-wrap;word-break:break-word;">${_linkify(trueContent)}</span>`;
     }
 
     textSpan.innerHTML = html;
@@ -1942,14 +1943,38 @@ function renderUsageFooter(summary) {
         expiryEl.style.display = 'none';
     }
 
-    /* ── Unlimited: just show overall bar at 0, no detail rows ─ */
+    /* ── Unlimited: ∞ overall bar + usage counts per metric (no limits) ─ */
     if (plan.plan_name === 'unlimited') {
         if (fillEl) { fillEl.style.width = '0%'; fillEl.style.background = pc; }
         if (pctEl)  { pctEl.textContent = '∞'; pctEl.style.color = pc; }
-        listEl.innerHTML =
-            `<div class="plan-unlimited-msg">
-                <i class="fa-solid fa-infinity"></i> No daily limits
-            </div>`;
+
+        listEl.innerHTML = '';
+        const uTypes = summary.types || {};
+        PLAN_METRICS.forEach(({ key, icon, tip, isCall }) => {
+            const info = uTypes[key];
+            if (!info) return;
+
+            let usedStr;
+            if (isCall) {
+                const h = Math.floor(info.used / 60), m = info.used % 60;
+                usedStr = h > 0 ? `${h}h ${m}m` : `${m}m`;
+            } else {
+                usedStr = info.used.toLocaleString();
+            }
+
+            const row = document.createElement('div');
+            row.className = 'plan-metric';
+            row.title = `${tip}: ${usedStr} used today`;
+            row.innerHTML =
+                `<i class="fa-solid ${icon} plan-metric-icon" style="color:${pc};"></i>
+                 <div class="plan-metric-track">
+                     <div class="plan-metric-fill" style="width:0%;background:${pc};opacity:.2;"></div>
+                 </div>
+                 <div class="plan-metric-val" style="color:${pc};">
+                     ${usedStr}<span class="pmv-sep">/</span><span class="pmv-limit" style="opacity:.35;">∞</span>
+                 </div>`;
+            listEl.appendChild(row);
+        });
         return;
     }
 
@@ -2299,6 +2324,36 @@ function _esc(str) {
     return String(str || '')
         .replace(/&/g,'&amp;').replace(/</g,'&lt;')
         .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+/**
+ * Converts plain text to HTML with clickable URLs.
+ * Non-URL portions are HTML-escaped (prevents XSS from message content).
+ *
+ * URLs become: <a href="..." target="_blank" rel="noopener noreferrer">
+ * onclick stops propagation so clicking a link doesn't trigger the
+ * message-bubble's vanish timer.
+ */
+function _linkify(text) {
+    if (!text) return '';
+
+    // Split on http(s):// URLs — the capture group keeps URLs as odd elements
+    const parts = String(text).split(/(https?:\/\/[^\s<>"']+)/gi);
+
+    return parts.map((part, i) => {
+        if (i % 2 === 0) {
+            // Plain text — escape and preserve whitespace / newlines
+            return _esc(part).replace(/\n/g, '<br>');
+        }
+        // URL — strip trailing punctuation that is unlikely to be part of the link
+        const url  = part.replace(/[.,!?;:'"()[\]>]+$/, '');
+        const tail = _esc(part.slice(url.length));
+        return (
+            `<a href="${_esc(url)}" target="_blank" rel="noopener noreferrer"` +
+            ` style="color:var(--accent);text-decoration:underline;word-break:break-all;"` +
+            ` onclick="event.stopPropagation();">${_esc(url)}</a>${tail}`
+        );
+    }).join('');
 }
 
 // SSE handler for live admin notifications

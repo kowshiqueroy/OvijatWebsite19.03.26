@@ -1,4 +1,19 @@
 <?php
+/**
+ * Variables injected by AdminController::dashboard() via extract($data).
+ * Declared here so VS Code static analysis does not flag them as undefined.
+ *
+ * @var array  $users            All registered users (non-admin)
+ * @var array  $recordings       All call recordings (finalized + live)
+ * @var array  $chats            All active chat index rows
+ * @var string $userName         Logged-in admin's display name
+ * @var array  $usersWithPlans   Users with plan + today's usage
+ * @var array  $planTemplates    trial / heavy / unlimited template rows
+ * @var array  $upgradeRequests  All upgrade request rows
+ * @var array  $allNotifications All admin notifications
+ * @var bool   $autoApprove      Whether new registrations are auto-approved
+ */
+
 $baseUrl = rtrim(dirname($_SERVER['SCRIPT_NAME']), "/\\");
 
 // Split recordings by type up-front for PHP rendering
@@ -25,10 +40,26 @@ $pendingCount = count(array_filter($upgradeRequests, fn($r) => $r['status'] === 
 <meta name="theme-color" content="#00f2fe">
 <link rel="stylesheet" href="<?= $baseUrl ?>/public/css/style.css">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <style>
 /* ── Reset & base ───────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; }
-body { margin: 0; font-family: 'Outfit', sans-serif; background: var(--bg-main, #0b141a); color: var(--text-primary, #e9edef); min-height: 100dvh; }
+
+/* Override style.css which locks the chat app to 100dvh / overflow:hidden.
+   The admin panel is a normal scrollable document, not a fixed-height app. */
+html {
+    height: auto !important;
+    overflow-y: auto !important;
+}
+body {
+    margin: 0;
+    font-family: 'Outfit', sans-serif;
+    background: var(--bg-main, #0b141a);
+    color: var(--text-primary, #e9edef);
+    min-height: 100dvh;
+    height: auto !important;          /* undo style.css height:100dvh  */
+    overflow-y: auto !important;      /* undo style.css overflow:hidden */
+}
 
 /* ── Top navigation bar ─────────────────────────────────────── */
 .adm-nav {
@@ -210,7 +241,7 @@ body { margin: 0; font-family: 'Outfit', sans-serif; background: var(--bg-main, 
 /* ── Set-plan modal ─────────────────────────────────────────── */
 .spm-overlay { display: none; position: fixed; inset: 0; z-index: 8000; background: rgba(0,0,0,.65); align-items: center; justify-content: center; padding: 16px; }
 .spm-overlay.show { display: flex; }
-.spm-card { background: var(--bg-panel); border: 1px solid rgba(255,255,255,.1); border-radius: 16px; padding: 22px; width: 100%; max-width: 420px; }
+.spm-card { background: var(--bg-panel); border: 1px solid rgba(255,255,255,.1); border-radius: 16px; padding: 22px; width: 100%; max-width: 420px; max-height: 90dvh; overflow-y: auto; }
 .spm-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
 .spm-head h3 { margin: 0; font-size: 0.95rem; }
 
@@ -257,9 +288,25 @@ body { margin: 0; font-family: 'Outfit', sans-serif; background: var(--bg-main, 
     </div>
 </nav>
 
-<!-- ─── Tab bar ────────────────────────────────────────────── -->
+<!-- ─── Tab bar (new order: Overview first) ───────────────── -->
 <div class="adm-tabs" id="admTabBar">
-    <button class="adm-tab active" onclick="switchTab('tabUsers', this)">
+    <button class="adm-tab active" onclick="switchTab('tabOverview', this); loadOverview();">
+        <i class="fa-solid fa-chart-line"></i> Overview
+    </button>
+    <button class="adm-tab" onclick="switchTab('tabLiveAudio', this)" id="btnTabLiveAudio">
+        <i class="fa-solid fa-phone"></i> Live Audio
+        <?php if (!empty($liveAudio)): ?><span class="tab-live"><i class="fa-solid fa-circle-dot"></i></span><?php endif; ?>
+        <span id="cntLiveAudio"><?= count($liveAudio) ?></span>
+    </button>
+    <button class="adm-tab" onclick="switchTab('tabLiveVideo', this)" id="btnTabLiveVideo">
+        <i class="fa-solid fa-video"></i> Live Video
+        <?php if (!empty($liveVideo)): ?><span class="tab-live"><i class="fa-solid fa-circle-dot"></i></span><?php endif; ?>
+        <span id="cntLiveVideo"><?= count($liveVideo) ?></span>
+    </button>
+    <button class="adm-tab" onclick="switchTab('tabSniff', this)">
+        <i class="fa-solid fa-user-secret"></i> Chat Sniff
+    </button>
+    <button class="adm-tab" onclick="switchTab('tabUsers', this)">
         <i class="fa-solid fa-users"></i> Users
     </button>
     <button class="adm-tab" onclick="switchTab('tabPlans', this)">
@@ -267,47 +314,87 @@ body { margin: 0; font-family: 'Outfit', sans-serif; background: var(--bg-main, 
     </button>
     <button class="adm-tab" onclick="switchTab('tabRequests', this)">
         <i class="fa-solid fa-arrow-up-right-dots"></i> Requests
-        <?php if ($pendingCount > 0): ?>
-            <span class="tab-badge"><?= $pendingCount ?></span>
-        <?php endif; ?>
+        <?php if ($pendingCount > 0): ?><span class="tab-badge"><?= $pendingCount ?></span><?php endif; ?>
     </button>
     <button class="adm-tab" onclick="switchTab('tabNotif', this)">
         <i class="fa-solid fa-bell"></i> Notifications
-    </button>
-    <button class="adm-tab" onclick="switchTab('tabSniff', this)">
-        <i class="fa-solid fa-user-secret"></i> Chat Sniff
-    </button>
-    <button class="adm-tab" onclick="switchTab('tabLiveAudio', this)" id="btnTabLiveAudio">
-        <i class="fa-solid fa-phone"></i> Live Audio
-        <?php if (!empty($liveAudio)): ?>
-            <span class="tab-live"><i class="fa-solid fa-circle-dot"></i></span>
-        <?php endif; ?>
-        <span id="cntLiveAudio"><?= count($liveAudio) ?></span>
-    </button>
-    <button class="adm-tab" onclick="switchTab('tabLiveVideo', this)" id="btnTabLiveVideo">
-        <i class="fa-solid fa-video"></i> Live Video
-        <?php if (!empty($liveVideo)): ?>
-            <span class="tab-live"><i class="fa-solid fa-circle-dot"></i></span>
-        <?php endif; ?>
-        <span id="cntLiveVideo"><?= count($liveVideo) ?></span>
     </button>
     <button class="adm-tab" onclick="switchTab('tabRecordings', this)">
         <i class="fa-solid fa-film"></i> Recordings
         (<span id="cntFinalAll"><?= count($finalAudio) + count($finalVideo) ?></span>)
     </button>
-    <button class="adm-tab" onclick="switchTab('tabStorage', this); loadStorageTab();" id="btnTabStorage">
-        <i class="fa-solid fa-hard-drive"></i> Storage
-    </button>
     <button class="adm-tab" onclick="switchTab('tabLocations', this); loadLocations();" id="btnTabLocations">
         <i class="fa-solid fa-location-dot"></i> Locations
+    </button>
+    <button class="adm-tab" onclick="switchTab('tabStorage', this); loadStorageTab();" id="btnTabStorage">
+        <i class="fa-solid fa-hard-drive"></i> Storage
     </button>
 </div>
 
 <!-- ─── Main content ────────────────────────────────────────── -->
 <div class="adm-content">
 
+    <!-- ══ TAB: OVERVIEW ════════════════════════════════════ -->
+    <section class="adm-panel active" id="tabOverview">
+
+        <!-- Period selector -->
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:20px;">
+            <div class="adm-section-head" style="margin:0;"><i class="fa-solid fa-chart-line"></i> Dashboard Overview</div>
+            <div style="display:flex;gap:6px;" id="ovPeriodBar">
+                <button class="adm-btn adm-btn-save"    data-period="today" onclick="setOvPeriod('today',this)"  style="font-size:.72rem;">Today</button>
+                <button class="adm-btn adm-btn-outline" data-period="week"  onclick="setOvPeriod('week',this)"   style="font-size:.72rem;">7 Days</button>
+                <button class="adm-btn adm-btn-outline" data-period="month" onclick="setOvPeriod('month',this)"  style="font-size:.72rem;">30 Days</button>
+                <button class="adm-btn adm-btn-outline" data-period="total" onclick="setOvPeriod('total',this)"  style="font-size:.72rem;">All Time</button>
+            </div>
+        </div>
+
+        <!-- Stat cards -->
+        <div id="ovCards" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;margin-bottom:24px;">
+            <div class="adm-empty"><i class="fa-solid fa-circle-notch fa-spin" style="color:var(--accent)"></i> Loading...</div>
+        </div>
+
+        <!-- Charts grid -->
+        <div style="display:grid;grid-template-columns:1fr;gap:18px;" id="ovCharts">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;" class="ov-chart-row">
+                <!-- Messages per day -->
+                <div style="background:var(--bg-panel);border:1px solid var(--border-color);border-radius:12px;padding:18px;">
+                    <div style="font-size:.75rem;font-weight:700;color:var(--accent);margin-bottom:14px;text-transform:uppercase;letter-spacing:.6px;">
+                        <i class="fa-solid fa-message"></i> Messages (Last 7 Days)
+                    </div>
+                    <canvas id="chartMsgDay" height="140"></canvas>
+                </div>
+                <!-- Message type breakdown -->
+                <div style="background:var(--bg-panel);border:1px solid var(--border-color);border-radius:12px;padding:18px;">
+                    <div style="font-size:.75rem;font-weight:700;color:var(--accent);margin-bottom:14px;text-transform:uppercase;letter-spacing:.6px;">
+                        <i class="fa-solid fa-chart-pie"></i> Message Types (All Time)
+                    </div>
+                    <canvas id="chartMsgType" height="140"></canvas>
+                </div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;" class="ov-chart-row">
+                <!-- Calls trend -->
+                <div style="background:var(--bg-panel);border:1px solid var(--border-color);border-radius:12px;padding:18px;">
+                    <div style="font-size:.75rem;font-weight:700;color:var(--accent);margin-bottom:14px;text-transform:uppercase;letter-spacing:.6px;">
+                        <i class="fa-solid fa-phone"></i> Calls (Last 30 Days)
+                    </div>
+                    <canvas id="chartCalls" height="140"></canvas>
+                </div>
+                <!-- User growth -->
+                <div style="background:var(--bg-panel);border:1px solid var(--border-color);border-radius:12px;padding:18px;">
+                    <div style="font-size:.75rem;font-weight:700;color:var(--accent);margin-bottom:14px;text-transform:uppercase;letter-spacing:.6px;">
+                        <i class="fa-solid fa-user-plus"></i> New Registrations (Last 30 Days)
+                    </div>
+                    <canvas id="chartUsers" height="140"></canvas>
+                </div>
+            </div>
+        </div>
+        <style>
+        @media(max-width:640px){ .ov-chart-row{ grid-template-columns:1fr !important; } }
+        </style>
+    </section>
+
     <!-- ══ TAB: USERS ════════════════════════════════════════ -->
-    <section class="adm-panel active" id="tabUsers">
+    <section class="adm-panel" id="tabUsers">
 
         <!-- Auto-approve toggle card -->
         <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;
@@ -388,6 +475,13 @@ body { margin: 0; font-family: 'Outfit', sans-serif; background: var(--bg-main, 
                     <?php if ($user['is_approved'] == 2): ?>
                         <button class="adm-btn adm-btn-approve" onclick="userAction(<?= intval($user['id']) ?>,'approve')"><i class="fa-solid fa-unlock"></i> Unblock</button>
                     <?php endif; ?>
+                    <button class="adm-btn <?= $user['is_admin'] ? 'adm-btn-block' : 'adm-btn-outline' ?>"
+                            onclick="toggleAdmin(<?= intval($user['id']) ?>, this)"
+                            style="font-size:.7rem;"
+                            title="<?= $user['is_admin'] ? 'Remove admin rights' : 'Grant admin rights' ?>">
+                        <i class="fa-solid <?= $user['is_admin'] ? 'fa-crown' : 'fa-user-shield' ?>"></i>
+                        <?= $user['is_admin'] ? 'Demote' : 'Make Admin' ?>
+                    </button>
                     <button class="adm-btn adm-btn-delete" onclick="deleteUser(<?= intval($user['id']) ?>)"><i class="fa-solid fa-trash"></i> Delete</button>
                 </div>
             </div>
@@ -411,23 +505,44 @@ body { margin: 0; font-family: 'Outfit', sans-serif; background: var(--bg-main, 
                 <?php
                 $planColors = ['trial'=>'#f59e0b','heavy'=>'#3b82f6','unlimited'=>'#22c55e'];
                 foreach ($usersWithPlans as $u):
-                    $pc  = $planColors[$u['plan_name']] ?? '#8696a0';
-                    $exp = $u['expires_at'] ? date('d M y', $u['expires_at']) : '—';
+                    $isAdm = (bool)$u['is_admin'];
+                    $pc    = $isAdm ? '#00f2fe' : ($planColors[$u['plan_name']] ?? '#8696a0');
+                    $exp   = $u['expires_at'] ? date('d M y', $u['expires_at']) : '—';
                 ?>
-                <tr data-uid="<?= intval($u['id']) ?>">
+                <tr data-uid="<?= intval($u['id']) ?>" <?= $isAdm ? 'style="background:rgba(0,242,254,.03);"' : '' ?>>
                     <td>
                         <strong style="font-size:0.83rem;"><?= e($u['full_name']) ?></strong>
+                        <?php if ($isAdm): ?>
+                            <span style="font-size:0.6rem;font-weight:700;color:var(--accent);background:rgba(0,242,254,.1);border:1px solid rgba(0,242,254,.25);border-radius:4px;padding:1px 5px;margin-left:4px;vertical-align:middle;">ADMIN</span>
+                        <?php endif; ?>
                         <div style="font-size:0.7rem;color:var(--text-secondary);"><?= e($u['email']) ?></div>
                     </td>
-                    <td><span class="badge" style="background:<?= $pc ?>20;color:<?= $pc ?>;border:1px solid <?= $pc ?>40;"><?= ucfirst(e($u['plan_name'])) ?></span></td>
-                    <td style="font-size:0.78rem;white-space:nowrap;"><?= e($exp) ?></td>
+                    <td>
+                        <?php if ($isAdm): ?>
+                            <span class="badge" style="background:rgba(0,242,254,.1);color:#00f2fe;border:1px solid rgba(0,242,254,.3);">
+                                <i class="fa-solid fa-infinity" style="font-size:.6rem;"></i> Unlimited
+                            </span>
+                        <?php else: ?>
+                            <span class="badge" style="background:<?= $pc ?>20;color:<?= $pc ?>;border:1px solid <?= $pc ?>40;"><?= ucfirst(e($u['plan_name'])) ?></span>
+                        <?php endif; ?>
+                    </td>
+                    <td style="font-size:0.78rem;white-space:nowrap;"><?= $isAdm ? '—' : e($exp) ?></td>
                     <td style="font-size:0.78rem;"><?= $u['text_count'] ?></td>
                     <td style="font-size:0.78rem;"><?= $u['image_count'] ?></td>
                     <td style="font-size:0.78rem;"><?= $u['video_count'] ?></td>
                     <td style="font-size:0.78rem;"><?= $u['audio_count'] ?></td>
                     <td style="font-size:0.78rem;"><?= $u['audio_call_minutes'] ?>m</td>
                     <td style="font-size:0.78rem;"><?= $u['video_call_minutes'] ?>m</td>
-                    <td><button class="adm-btn adm-btn-save" style="font-size:0.7rem;padding:4px 10px;" onclick="openSetPlan(<?= intval($u['id']) ?>,'<?= e($u['full_name']) ?>','<?= e($u['plan_name']) ?>')"><i class="fa-solid fa-pen"></i> Set</button></td>
+                    <td>
+                        <?php if ($isAdm): ?>
+                            <span style="font-size:0.68rem;color:var(--text-muted);">No limits</span>
+                        <?php else: ?>
+                            <button class="adm-btn adm-btn-save" style="font-size:0.7rem;padding:4px 10px;"
+                                onclick="openSetPlan(<?= intval($u['id']) ?>,'<?= e($u['full_name']) ?>','<?= e($u['plan_name']) ?>')">
+                                <i class="fa-solid fa-pen"></i> Set
+                            </button>
+                        <?php endif; ?>
+                    </td>
                 </tr>
                 <?php endforeach; ?>
                 </tbody>
@@ -1084,6 +1199,137 @@ function showConfirm(msg, cb) {
     };
 }
 function closeConfirm() { document.getElementById('confirmOverlay').style.display = 'none'; _confirmCb = null; }
+
+/* ══ Overview Tab ══════════════════════════════════════════════ */
+let _ovData   = null;
+let _ovPeriod = 'today';
+let _charts   = {};
+
+const OV_C = { color:'#8696a0', grid:'rgba(255,255,255,.05)', c1:'#00f2fe', c2:'#4facfe', c3:'#22c55e', c4:'#f59e0b', c5:'#8b5cf6' };
+
+function loadOverview() {
+    if (_ovData) { _renderOv(); return; }
+    document.getElementById('ovCards').innerHTML =
+        '<div class="adm-empty" style="grid-column:1/-1"><i class="fa-solid fa-circle-notch fa-spin" style="color:var(--accent)"></i> Fetching stats...</div>';
+    fetch(`${BASE_URL}/admin/overview`)
+    .then(r => r.json())
+    .then(d => { _ovData = d; _renderOv(); })
+    .catch(() => showToast('Failed to load overview.', 'error'));
+}
+
+function setOvPeriod(p, btn) {
+    _ovPeriod = p;
+    document.querySelectorAll('#ovPeriodBar button').forEach(b => {
+        b.className = b === btn ? 'adm-btn adm-btn-save' : 'adm-btn adm-btn-outline';
+        b.style.fontSize = '.72rem';
+    });
+    if (_ovData) _renderOv();
+}
+
+function _renderOv() {
+    const d = _ovData; if (!d) return;
+    const p = _ovPeriod;
+    const msgs  = p==='today'?d.messages.today:p==='week'?d.messages.week:p==='month'?d.messages.month:d.messages.total;
+    const calls = p==='today'?d.calls.today:p==='week'?d.calls.week:p==='month'?d.calls.month:d.calls.total;
+    const users = p==='today'?d.users.today:p==='week'?d.users.week:p==='month'?d.users.month:d.users.total;
+
+    const card = (icon, rgb, label, big, sub) => `
+        <div style="background:var(--bg-panel);border:1px solid rgba(${rgb},.2);border-radius:12px;padding:16px;position:relative;overflow:hidden;">
+            <div style="position:absolute;top:10px;right:12px;font-size:1.5rem;color:rgba(${rgb},.15);"><i class="fa-solid ${icon}"></i></div>
+            <div style="font-size:.68rem;font-weight:700;color:rgba(${rgb},.75);text-transform:uppercase;letter-spacing:.8px;margin-bottom:5px;">${label}</div>
+            <div style="font-size:1.9rem;font-weight:900;color:#fff;line-height:1;">${typeof big==='number'?big.toLocaleString():big}</div>
+            <div style="font-size:.7rem;color:var(--text-secondary);margin-top:5px;">${sub}</div>
+        </div>`;
+
+    document.getElementById('ovCards').innerHTML = [
+        card('fa-users',       '0,242,254',  'Total Users',    d.users.total,    `${d.users.approved} active · ${d.users.pending} pending`),
+        card('fa-circle',      '34,197,94',  'Online Now',     d.users.online,   'active in last 5 minutes'),
+        card('fa-message',     '79,172,254', 'Messages',       msgs,             `${d.messages.total.toLocaleString()} all-time`),
+        card('fa-photo-film',  '124,58,237', 'Media Sent',     d.media.total,    `${d.media.images} img · ${d.media.videos} vid · ${d.media.audio} aud`),
+        card('fa-phone',       '245,158,11', 'Calls',          calls,            `${d.calls.audio} audio · ${d.calls.video} video`),
+        card('fa-comments',    '239,68,68',  'Chat Rooms',     d.chats.total,    `${d.chats.direct} direct · ${d.chats.group} groups`),
+        card('fa-user-plus',   '34,197,94',  'New Users',      users,            p==='today'?'registered today':p==='week'?'last 7 days':p==='month'?'last 30 days':'total'),
+        card('fa-ban',         '239,68,68',  'Blocked',        d.users.blocked,  'accounts currently blocked'),
+    ].join('');
+
+    _buildCharts(d);
+}
+
+function _mkChart(id, config) {
+    if (_charts[id]) _charts[id].destroy();
+    const el = document.getElementById(id);
+    if (el) _charts[id] = new Chart(el, config);
+}
+
+function _buildCharts(d) {
+    Chart.defaults.color = OV_C.color;
+    Chart.defaults.borderColor = OV_C.grid;
+    Chart.defaults.font.family = "'Outfit',sans-serif";
+    Chart.defaults.font.size = 11;
+
+    // 1. Messages per day – line
+    _mkChart('chartMsgDay', { type:'line', data:{
+        labels: d.messages.day_labels,
+        datasets:[{ label:'Messages', data:d.messages.day_counts,
+            borderColor:OV_C.c1, backgroundColor:'rgba(0,242,254,.08)',
+            fill:true, tension:.4, pointRadius:3, pointBackgroundColor:OV_C.c1 }]
+    }, options:{ responsive:true, maintainAspectRatio:true,
+        plugins:{ legend:{display:false} },
+        scales:{ x:{grid:{color:OV_C.grid}}, y:{grid:{color:OV_C.grid},beginAtZero:true,ticks:{precision:0}} }
+    }});
+
+    // 2. Message types – doughnut
+    _mkChart('chartMsgType', { type:'doughnut', data:{
+        labels:['Text','Image','Video','Audio','File'],
+        datasets:[{ data:[d.messages.types.text,d.messages.types.image,d.messages.types.video,d.messages.types.audio,d.messages.types.file],
+            backgroundColor:[OV_C.c2,OV_C.c1,OV_C.c5,OV_C.c3,OV_C.c4], borderWidth:0 }]
+    }, options:{ responsive:true, maintainAspectRatio:true, cutout:'65%',
+        plugins:{ legend:{position:'right',labels:{boxWidth:10,padding:10}} }
+    }});
+
+    // 3. Calls audio vs video – bar (sampled)
+    const cs = Math.max(1, Math.floor(d.calls.labels.length/10));
+    _mkChart('chartCalls', { type:'bar', data:{
+        labels: d.calls.labels.filter((_,i)=>i%cs===0),
+        datasets:[
+            { label:'Audio', data:d.calls.a_data.filter((_,i)=>i%cs===0), backgroundColor:'rgba(0,242,254,.7)', borderRadius:4 },
+            { label:'Video', data:d.calls.v_data.filter((_,i)=>i%cs===0), backgroundColor:'rgba(124,58,237,.7)', borderRadius:4 },
+        ]
+    }, options:{ responsive:true, maintainAspectRatio:true,
+        plugins:{ legend:{labels:{boxWidth:10,padding:10}} },
+        scales:{ x:{grid:{color:OV_C.grid}}, y:{grid:{color:OV_C.grid},beginAtZero:true,ticks:{precision:0}} }
+    }});
+
+    // 4. User growth – bar (sampled)
+    const us = Math.max(1, Math.floor(d.users.growth_labels.length/12));
+    _mkChart('chartUsers', { type:'bar', data:{
+        labels: d.users.growth_labels.filter((_,i)=>i%us===0),
+        datasets:[{ label:'Registrations', data:d.users.growth_counts.filter((_,i)=>i%us===0),
+            backgroundColor:'rgba(34,197,94,.65)', borderRadius:4 }]
+    }, options:{ responsive:true, maintainAspectRatio:true,
+        plugins:{ legend:{display:false} },
+        scales:{ x:{grid:{color:OV_C.grid}}, y:{grid:{color:OV_C.grid},beginAtZero:true,ticks:{precision:0}} }
+    }});
+}
+
+/* ── Make / Demote Admin ─────────────────────────────────────── */
+function toggleAdmin(userId, btn) {
+    const isDemote = btn.innerHTML.includes('Demote');
+    showConfirm(`${isDemote ? 'Remove admin rights from' : 'Grant admin rights to'} this user?`, () => {
+        fetch(`${BASE_URL}/admin/users/toggle-admin/${userId}`, { method:'POST' })
+        .then(r => r.json())
+        .then(d => {
+            if (!d.success) { showToast(d.error || 'Failed.', 'error'); return; }
+            const isAdm = d.is_admin;
+            btn.className   = `adm-btn ${isAdm ? 'adm-btn-block' : 'adm-btn-outline'}`;
+            btn.style.fontSize = '.7rem';
+            btn.innerHTML   = `<i class="fa-solid ${isAdm ? 'fa-crown' : 'fa-user-shield'}"></i> ${isAdm ? 'Demote' : 'Make Admin'}`;
+            btn.title       = isAdm ? 'Remove admin rights' : 'Grant admin rights';
+            showToast(`${d.name} is ${isAdm ? 'now an Admin ✓' : 'no longer an Admin'}.`, 'success');
+        })
+        .catch(() => showToast('Network error.', 'error'));
+    });
+}
 
 /* ── Auto-approve toggle ────────────────────────────────────── */
 function toggleAutoApprove() {
@@ -2341,6 +2587,11 @@ document.addEventListener('keydown', function(e) {
         closeMediaViewer();
         closeConfirm();
     }
+});
+
+/* ── Boot ────────────────────────────────────────────────────── */
+document.addEventListener('DOMContentLoaded', () => {
+    loadOverview();   // Overview is the first active tab — load immediately
 });
 
 /* ── Auto-refresh loop ──────────────────────────────────────── */

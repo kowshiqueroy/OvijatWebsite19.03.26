@@ -166,10 +166,15 @@ function _partnerUserId() {
    Works even when the browser tab is navigated away (beforeunload
    fires sendBeacon which still POST-es the end action).
    ============================================================ */
+/* Countdown timer for the retry incoming overlay */
+let _retryCountdownTimer  = null;
+let _pendingRetryCallData = null;
+
 function startCallEndSSE() {
     if (_callEndSSE) _callEndSSE.close();
     _callEndSSE = new EventSource(`${BASE_URL}/api/sse`);
 
+    /* Remote hang-up: terminate our side */
     _callEndSSE.addEventListener('call-end', function(e) {
         try {
             const data = JSON.parse(e.data);
@@ -179,10 +184,78 @@ function startCallEndSSE() {
         } catch(ex) {}
     });
 
+    /* Incoming RETRY call while on the disconnect overlay.
+       When the other party presses Retry, they reload and send a new 'call'
+       SSE event. We show accept / decline directly over the disconnect screen. */
+    _callEndSSE.addEventListener('call', function(e) {
+        try {
+            const data = JSON.parse(e.data);
+            if (data.chat_id    !== ACTIVE_CHAT_ID)              return;
+            if (parseInt(data.caller_id) === CURRENT_USER_ID)    return;
+            if (!isTerminating) return; // still in call — normal incoming flow elsewhere
+            showRetryIncoming(data);
+        } catch(ex) {}
+    });
+
+    /* Always reconnect — even after disconnect we want to receive retry calls */
     _callEndSSE.onerror = function() {
         _callEndSSE.close();
-        if (!isTerminating) setTimeout(startCallEndSSE, 3000);
+        setTimeout(startCallEndSSE, 3000);
     };
+}
+
+/* ── Retry incoming call UI ────────────────────────────────────────
+   Shows an accept / decline panel ON TOP of the disconnect overlay.
+   ─────────────────────────────────────────────────────────────── */
+function showRetryIncoming(data) {
+    _pendingRetryCallData = data;
+
+    const overlay  = document.getElementById('retryIncomingOverlay');
+    const nameEl   = document.getElementById('retryCallerName');
+    const typeEl   = document.getElementById('retryCallTypeLabel');
+    const iconEl   = document.getElementById('retryCallIcon');
+    const countEl  = document.getElementById('retryCountdown');
+    if (!overlay) return;
+
+    if (nameEl)  nameEl.textContent  = data.caller_name || 'Caller';
+    if (typeEl)  typeEl.textContent  = (data.call_type === 'video' ? '🎥 Video Call' : '📞 Voice Call') + ' — retrying…';
+    if (iconEl)  iconEl.className    = data.call_type === 'video'
+                                        ? 'fa-solid fa-video'
+                                        : 'fa-solid fa-phone';
+    overlay.style.display = 'flex';
+
+    // 30-second countdown
+    let remaining = 30;
+    if (_retryCountdownTimer) clearInterval(_retryCountdownTimer);
+    if (countEl) countEl.textContent = `Auto-dismiss in ${remaining}s`;
+    _retryCountdownTimer = setInterval(() => {
+        remaining--;
+        if (countEl) countEl.textContent = `Auto-dismiss in ${remaining}s`;
+        if (remaining <= 0) {
+            clearInterval(_retryCountdownTimer);
+            _retryCountdownTimer = null;
+            dismissRetryIncoming();
+        }
+    }, 1000);
+}
+
+function acceptRetryCall() {
+    if (!_pendingRetryCallData) return;
+    const d = _pendingRetryCallData;
+    clearInterval(_retryCountdownTimer);
+    window.location.href =
+        `${BASE_URL}/call?chatId=${encodeURIComponent(d.chat_id)}&type=${d.call_type}&mode=incoming&callId=${d.call_id}`;
+}
+
+function rejectRetryCall() {
+    dismissRetryIncoming();
+}
+
+function dismissRetryIncoming() {
+    if (_retryCountdownTimer) { clearInterval(_retryCountdownTimer); _retryCountdownTimer = null; }
+    const overlay = document.getElementById('retryIncomingOverlay');
+    if (overlay) overlay.style.display = 'none';
+    _pendingRetryCallData = null;
 }
 
 function _publishCallEnd() {
@@ -229,27 +302,13 @@ document.addEventListener("DOMContentLoaded", function() {
 });
 
 /**
- * Cross-tab localStorage signal so the OTHER party's call page (which has no
- * SSE) knows to go back to chat when a retry is happening.
- *
- * Why this now works end-to-end:
- *   1. Caller clicks "Retry" → writes signal → reloads their page.
- *   2. Receiver's call page sees the storage event → navigates to chat.
- *   3. Receiver's chat page connects SSE with ?from=<last-known-id>
- *      (stored in sessionStorage before they navigated to the call page).
- *   4. The SSE stream replays missed events (120 s window) — the new call
- *      event the caller just sent is in that window → receiver sees it.
+ * Previously this navigated the receiver back to chat on retry.
+ * Now replaced: _callEndSSE listens for new 'call' SSE events and shows
+ * the accept/decline overlay directly on the disconnect screen — no
+ * navigation needed. Left as a no-op for safety.
  */
 function _listenForRetrySignal() {
-    window.addEventListener('storage', function(e) {
-        if (e.key !== 'kotha_call_retry') return;
-        try {
-            const data = JSON.parse(e.newValue || '{}');
-            if (data.chatId === ACTIVE_CHAT_ID && Date.now() - data.ts < 20000) {
-                window.location.href = `${BASE_URL}/chat/${ACTIVE_CHAT_ID}`;
-            }
-        } catch (ex) {}
-    });
+    // Intentionally empty — handled by _callEndSSE 'call' event listener above.
 }
 
 function initCall() {
@@ -583,8 +642,9 @@ function terminateCall(reason) {
     // Notify the other party via SSE immediately (before any async cleanup)
     _publishCallEnd();
 
-    // Close our own SSE listener — no longer needed
-    if (_callEndSSE) { _callEndSSE.close(); _callEndSSE = null; }
+    // Keep _callEndSSE alive so both sides can receive retry-call signals
+    // (accept/decline will appear on the disconnect overlay).
+    // The SSE is only closed in beforeunload when the page actually unloads.
 
     stopHeartbeat();
 
@@ -617,34 +677,28 @@ function terminateCall(reason) {
 }
 
 /**
- * Retry flow (now works end-to-end):
+ * Retry flow:
  *
- * OUTGOING (caller):
- *   - Signals the receiver's call page (localStorage) → receiver goes to chat.
- *   - Reloads own page → new call record → new SSE call event sent.
- *   - Receiver's chat page resumes SSE from ?from=<sessionStorage id> →
- *     replays the last 120 s of events → sees the new call event. ✓
+ * OUTGOING (original caller presses "Retry Call"):
+ *   - Reloads the page → new call record logged → new SSE 'call' event sent.
+ *   - Receiver's _callEndSSE (kept alive on disconnect overlay) picks up
+ *     the new 'call' event → showRetryIncoming() shows accept/decline overlay.
+ *   - Receiver accepts → navigates to call page in incoming mode. ✓
  *
- * INCOMING (receiver):
- *   - Just go back to chat; if the caller also retried, the resumed SSE
- *     will deliver their new call notification. ✓
+ * INCOMING (original receiver presses "Retry Call"):
+ *   - Goes back to chat page where they can initiate a call back.
+ *   - The original caller's disconnect overlay will receive their call via SSE. ✓
  */
 function retryCall() {
     if (CALL_MODE === 'incoming') {
+        // Receiver retrying → go to chat to call back
         backToChat();
         return;
     }
 
-    // Signal the receiver's call page to navigate back to chat
-    try {
-        localStorage.setItem('kotha_call_retry', JSON.stringify({
-            chatId: ACTIVE_CHAT_ID,
-            ts:     Date.now()
-        }));
-        setTimeout(() => { try { localStorage.removeItem('kotha_call_retry'); } catch(_){} }, 8000);
-    } catch (e) {}
-
-    // Reload → new call record → SSE call event → receiver's resumed SSE delivers it
+    // Outgoing caller retrying: reload starts a fresh call (new peer, new callId, new SSE event)
+    // The receiver's _callEndSSE on the disconnect overlay will receive the new 'call' event
+    // and show the accept/decline panel — no localStorage navigation needed anymore.
     window.location.reload();
 }
 

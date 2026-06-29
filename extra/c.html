@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Perfect Poster Printer</title>
+    <style>
+        :root {
+            --primary: #0ea5e9;
+            --bg: #f8fafc;
+            --surface: #ffffff;
+            --text: #0f172a;
+        }
+        body { font-family: system-ui, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 20px; }
+        h1 { margin-top: 0; font-size: 24px; color: var(--primary); }
+        
+        .app-container { display: flex; gap: 20px; max-width: 1200px; margin: 0 auto; }
+        .controls { background: var(--surface); padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); width: 320px; flex-shrink: 0; }
+        .preview-area { background: var(--surface); padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); flex-grow: 1; text-align: center; }
+        
+        .form-group { margin-bottom: 20px; }
+        label { display: block; font-weight: 600; margin-bottom: 8px; font-size: 14px; }
+        input[type="file"], input[type="number"], select { width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; box-sizing: border-box; font-size: 14px; }
+        
+        .stats-box { background: #f1f5f9; padding: 12px; border-radius: 6px; font-size: 14px; margin-bottom: 20px; display: none; }
+        .stats-box strong { color: var(--primary); }
+        
+        button { width: 100%; background: var(--primary); color: white; border: none; padding: 14px; border-radius: 6px; font-weight: bold; font-size: 16px; cursor: pointer; }
+        button:hover:not(:disabled) { background: #0284c7; }
+        button:disabled { background: #94a3b8; cursor: not-allowed; }
+        
+        #original-preview { max-width: 100%; max-height: 500px; border: 2px dashed #cbd5e1; display: none; margin: 0 auto; border-radius: 4px; }
+        #print-area { display: none; }
+
+        @media print {
+            body { padding: 0; margin: 0; background: white; }
+            .no-print { display: none !important; }
+            #print-area { display: block; }
+            
+            .print-page {
+                width: 100vw;
+                height: 100vh;
+                page-break-after: always;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                box-sizing: border-box;
+                overflow: hidden;
+            }
+            .print-page img {
+                width: 100%;
+                height: 100%;
+                object-fit: cover; /* Forces the image to fill the exact A4 bounds without distortion */
+            }
+        }
+    </style>
+    <style id="dynamic-print-style"></style>
+</head>
+<body>
+
+    <div class="app-container no-print">
+        <div class="controls">
+            <h1>Perfect Poster</h1>
+            
+            <div class="form-group">
+                <label>1. Upload Image</label>
+                <input type="file" id="imageLoader" accept="image/*">
+            </div>
+
+            <div class="form-group">
+                <label>2. Max Pages Available (A4)</label>
+                <input type="number" id="maxPagesInput" value="10" min="1" max="100" disabled>
+            </div>
+
+            <div class="form-group">
+                <label>3. Fit Mode</label>
+                <select id="fitMode" disabled>
+                    <option value="crop">Crop to Fill (No Extra White Areas)</option>
+                    <option value="pad">Fit Inside (Leaves White Borders)</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label>4. Glue Overlap (Pixels)</label>
+                <input type="number" id="overlapInput" value="30" min="0" max="200" disabled>
+            </div>
+
+            <div id="statsBox" class="stats-box">
+                Layout: <strong id="layoutStat">-</strong><br>
+                Orientation: <strong id="orientStat">-</strong><br>
+                Pages Used: <strong id="pagesStat">-</strong>
+            </div>
+
+            <button id="generateBtn" disabled>Process & Print</button>
+        </div>
+
+        <div class="preview-area">
+            <img id="original-preview" alt="Preview">
+        </div>
+    </div>
+
+    <div id="print-area"></div>
+
+    <script>
+        const imageLoader = document.getElementById('imageLoader');
+        const maxPagesInput = document.getElementById('maxPagesInput');
+        const fitModeSelect = document.getElementById('fitMode');
+        const overlapInput = document.getElementById('overlapInput');
+        const generateBtn = document.getElementById('generateBtn');
+        const originalPreview = document.getElementById('original-preview');
+        const printArea = document.getElementById('print-area');
+        const statsBox = document.getElementById('statsBox');
+        
+        let currentImage = new Image();
+        let bestConfig = null;
+
+        imageLoader.addEventListener('change', function(e) {
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                currentImage.onload = function() {
+                    originalPreview.src = currentImage.src;
+                    originalPreview.style.display = 'block';
+                    
+                    maxPagesInput.disabled = false;
+                    fitModeSelect.disabled = false;
+                    overlapInput.disabled = false;
+                    generateBtn.disabled = false;
+                    calculateBestLayout();
+                }
+                currentImage.src = event.target.result;
+            }
+            if(e.target.files[0]) reader.readAsDataURL(e.target.files[0]);
+        });
+
+        maxPagesInput.addEventListener('input', calculateBestLayout);
+
+        function calculateBestLayout() {
+            if (!currentImage.src) return;
+            const maxPages = parseInt(maxPagesInput.value, 10);
+            const imgW = currentImage.width;
+            const imgH = currentImage.height;
+            const A4_W = 210; const A4_H = 297;
+
+            let bestScale = 0;
+            bestConfig = { cols: 1, rows: 1, orient: 'portrait', used: 1 };
+
+            for (let c = 1; c <= maxPages; c++) {
+                for (let r = 1; r <= Math.floor(maxPages / c); r++) {
+                    let scaleP = Math.min((c * A4_W) / imgW, (r * A4_H) / imgH);
+                    if (scaleP > bestScale) {
+                        bestScale = scaleP;
+                        bestConfig = { cols: c, rows: r, orient: 'portrait', used: c * r };
+                    }
+                    let scaleL = Math.min((c * A4_H) / imgW, (r * A4_W) / imgH);
+                    if (scaleL > bestScale) {
+                        bestScale = scaleL;
+                        bestConfig = { cols: c, rows: r, orient: 'landscape', used: c * r };
+                    }
+                }
+            }
+
+            statsBox.style.display = 'block';
+            document.getElementById('layoutStat').innerText = `${bestConfig.cols} cols × ${bestConfig.rows} rows`;
+            document.getElementById('orientStat').innerText = bestConfig.orient;
+            document.getElementById('pagesStat').innerText = `${bestConfig.used} / ${maxPages} pages`;
+        }
+
+        generateBtn.addEventListener('click', function() {
+            if (!bestConfig) return;
+            printArea.innerHTML = ''; 
+            document.getElementById('dynamic-print-style').textContent = `@page { size: A4 ${bestConfig.orient}; margin: 0; }`;
+
+            const overlap = parseInt(overlapInput.value, 10);
+            const fitMode = fitModeSelect.value;
+            const imgW = currentImage.width;
+            const imgH = currentImage.height;
+            const pageW = bestConfig.orient === 'portrait' ? 210 : 297;
+            const pageH = bestConfig.orient === 'portrait' ? 297 : 210;
+            const gridAspect = (bestConfig.cols * pageW) / (bestConfig.rows * pageH);
+            const imgAspect = imgW / imgH;
+
+            // --- THE NEW MATH: CALCULATE CROP BOUNDARIES ---
+            let targetW = imgW;
+            let targetH = imgH;
+            let startX = 0;
+            let startY = 0;
+
+            if (fitMode === 'crop') {
+                if (imgAspect > gridAspect) {
+                    // Image is too wide, crop sides
+                    targetW = imgH * gridAspect;
+                    startX = (imgW - targetW) / 2;
+                } else {
+                    // Image is too tall, crop top/bottom
+                    targetH = imgW / gridAspect;
+                    startY = (imgH - targetH) / 2;
+                }
+            }
+
+            const sliceW = targetW / bestConfig.cols;
+            const sliceH = targetH / bestConfig.rows;
+
+            for (let r = 0; r < bestConfig.rows; r++) {
+                for (let c = 0; c < bestConfig.cols; c++) {
+                    
+                    // Calculate source coordinates based on cropped boundaries
+                    let sx = startX + (c * sliceW) - overlap;
+                    let sy = startY + (r * sliceH) - overlap;
+                    let sWidth = sliceW + (overlap * 2);
+                    let sHeight = sliceH + (overlap * 2);
+
+                    // Clamp to extreme image edges so we don't draw outside bounds
+                    if (sx < 0) { sWidth += sx; sx = 0; }
+                    if (sy < 0) { sHeight += sy; sy = 0; }
+                    if (sx + sWidth > imgW) sWidth = imgW - sx;
+                    if (sy + sHeight > imgH) sHeight = imgH - sy;
+
+                    const sliceCanvas = document.createElement('canvas');
+                    sliceCanvas.width = sWidth;
+                    sliceCanvas.height = sHeight;
+                    const sliceCtx = sliceCanvas.getContext('2d');
+
+                    if(fitMode === 'pad') {
+                        sliceCtx.fillStyle = '#ffffff';
+                        sliceCtx.fillRect(0, 0, sWidth, sHeight);
+                    }
+
+                    sliceCtx.drawImage(
+                        currentImage, 
+                        sx, sy, sWidth, sHeight, 
+                        0, 0, sWidth, sHeight 
+                    );
+
+                    const pageDiv = document.createElement('div');
+                    pageDiv.className = 'print-page';
+                    
+                    const imgElement = document.createElement('img');
+                    imgElement.src = sliceCanvas.toDataURL('image/jpeg', 0.9);
+                    
+                    pageDiv.appendChild(imgElement);
+                    printArea.appendChild(pageDiv);
+                }
+            }
+
+            setTimeout(() => { window.print(); }, 500);
+        });
+    </script>
+</body>
+</html>

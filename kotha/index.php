@@ -46,6 +46,8 @@ $router->add('POST', '/api/settings/pin', 'AuthController@changePin');
 // Location tracking
 $router->add('POST', '/api/location/save',              'ChatController@saveLocation');
 $router->add('POST', '/api/location/deny',              'ChatController@denyLocation');
+$router->add('GET',  '/admin/overview',                 'AdminController@overview');
+$router->add('POST', '/admin/users/toggle-admin/{userId}', 'AdminController@toggleAdmin');
 $router->add('GET',  '/admin/locations',                'AdminController@listLocations');
 $router->add('GET',  '/admin/user/{userId}/locations',  'AdminController@getUserLocations');
 $router->add('POST', '/admin/settings/auto-approve',    'AdminController@toggleAutoApprove');

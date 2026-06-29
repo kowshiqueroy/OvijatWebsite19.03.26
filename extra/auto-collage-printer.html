@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Auto Collage & Print</title>
+    <style>
+        :root {
+            --primary: #8b5cf6;
+            --bg: #f8fafc;
+            --surface: #ffffff;
+            --text: #0f172a;
+        }
+        body { font-family: system-ui, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 20px; }
+        h1 { margin-top: 0; font-size: 24px; color: var(--primary); }
+        
+        .app-container { display: flex; gap: 20px; max-width: 1400px; margin: 0 auto; }
+        .controls { background: var(--surface); padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); width: 320px; flex-shrink: 0; height: fit-content; }
+        .preview-area { background: var(--surface); padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); flex-grow: 1; overflow-y: auto; max-height: 90vh; }
+        
+        .form-group { margin-bottom: 20px; }
+        label { display: block; font-weight: 600; margin-bottom: 8px; font-size: 14px; }
+        input[type="file"], input[type="number"], select { width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; box-sizing: border-box; font-size: 14px; }
+        
+        .stats-box { background: #f1f5f9; padding: 12px; border-radius: 6px; font-size: 14px; margin-bottom: 20px; display: none; }
+        .stats-box strong { color: var(--primary); }
+        
+        button { width: 100%; background: var(--primary); color: white; border: none; padding: 14px; border-radius: 6px; font-weight: bold; font-size: 16px; cursor: pointer; transition: background 0.2s; margin-bottom: 10px;}
+        button:hover:not(:disabled) { background: #7c3aed; }
+        button:disabled { background: #94a3b8; cursor: not-allowed; }
+        
+        /* Preview Grid */
+        #preview-container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            align-items: center;
+        }
+        .preview-page {
+            background: white;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            border: 1px solid #e2e8f0;
+            display: grid;
+            box-sizing: border-box;
+            /* Scaled down for screen preview */
+            width: 500px; 
+            padding: 10px;
+        }
+        .preview-page.portrait { aspect-ratio: 210 / 297; }
+        .preview-page.landscape { aspect-ratio: 297 / 210; }
+        
+        .preview-img-container {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: #f1f5f9;
+        }
+        .preview-img-container img {
+            width: 100%;
+            height: 100%;
+        }
+
+        /* Print Area */
+        #print-area { display: none; }
+
+        @media print {
+            body { padding: 0; margin: 0; background: white; }
+            .no-print { display: none !important; }
+            #print-area { display: block; }
+            
+            .print-page {
+                width: 100vw;
+                height: 100vh;
+                page-break-after: always;
+                display: grid;
+                box-sizing: border-box;
+                padding: var(--print-padding, 5mm);
+            }
+            .print-img-container {
+                width: 100%;
+                height: 100%;
+                overflow: hidden;
+            }
+            .print-img-container img {
+                width: 100%;
+                height: 100%;
+            }
+        }
+    </style>
+    <style id="dynamic-print-style"></style>
+</head>
+<body>
+
+    <div class="app-container no-print">
+        <div class="controls">
+            <h1>Auto Collage & Print</h1>
+            
+            <div class="form-group">
+                <label>1. Upload Images (Multiple)</label>
+                <input type="file" id="imageLoader" accept="image/*" multiple>
+                <small id="imgCount" style="color: #64748b; font-size: 12px; display: block; margin-top: 5px;">0 images selected</small>
+            </div>
+
+            <div class="form-group">
+                <label>2. Number of Pages to Print On</label>
+                <input type="number" id="pagesInput" value="3" min="1" max="50">
+            </div>
+
+            <div class="form-group">
+                <label>3. Page Orientation</label>
+                <select id="orientSelect">
+                    <option value="portrait">Portrait</option>
+                    <option value="landscape">Landscape</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label>4. Image Fit Mode</label>
+                <select id="fitSelect">
+                    <option value="cover">Crop to Fill Grid Uniformly</option>
+                    <option value="contain">Fit Entire Image (Show Borders)</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label>5. Spacing Between Images (px)</label>
+                <input type="number" id="gapInput" value="10" min="0" max="100">
+            </div>
+
+            <div id="statsBox" class="stats-box">
+                Total Images: <strong id="statTotal">-</strong><br>
+                Images per Page: <strong id="statPer">-</strong><br>
+                Grid Layout: <strong id="statGrid">-</strong>
+            </div>
+
+            <button id="generateBtn" disabled>Process Collage</button>
+            <button id="printBtn" style="background: #10b981; display: none;">Print Now</button>
+        </div>
+
+        <div class="preview-area">
+            <h2 style="margin-top:0; color: #64748b; font-size: 16px; text-align: center;">Page Previews</h2>
+            <div id="preview-container">
+                <p style="color: #94a3b8;">Upload images to see preview...</p>
+            </div>
+        </div>
+    </div>
+
+    <div id="print-area"></div>
+
+    <script>
+        const imageLoader = document.getElementById('imageLoader');
+        const pagesInput = document.getElementById('pagesInput');
+        const orientSelect = document.getElementById('orientSelect');
+        const fitSelect = document.getElementById('fitSelect');
+        const gapInput = document.getElementById('gapInput');
+        
+        const generateBtn = document.getElementById('generateBtn');
+        const printBtn = document.getElementById('printBtn');
+        const previewContainer = document.getElementById('preview-container');
+        const printArea = document.getElementById('print-area');
+        
+        let loadedImages = [];
+
+        // Load multiple images
+        imageLoader.addEventListener('change', async function(e) {
+            const files = Array.from(e.target.files);
+            document.getElementById('imgCount').innerText = `${files.length} images selected`;
+            
+            if(files.length === 0) {
+                generateBtn.disabled = true;
+                return;
+            }
+
+            generateBtn.innerText = 'Loading images...';
+            generateBtn.disabled = true;
+
+            // Convert all files to data URLs
+            loadedImages = await Promise.all(files.map(file => {
+                return new Promise((resolve) => {
+                    const reader = new FileReader();
+                    reader.onload = (event) => resolve(event.target.result);
+                    reader.readAsDataURL(file);
+                });
+            }));
+
+            generateBtn.innerText = 'Process Collage';
+            generateBtn.disabled = false;
+        });
+
+        function calculateGrid(itemCount, orientation) {
+            // A4 Aspect Ratios
+            const aspect = orientation === 'portrait' ? (297/210) : (210/297);
+            
+            // We want (rows / cols) ≈ aspect
+            // And (rows * cols) ≥ itemCount
+            // cols * (cols * aspect) ≈ itemCount => cols^2 ≈ itemCount / aspect
+            
+            let cols = Math.round(Math.sqrt(itemCount / aspect));
+            if (cols < 1) cols = 1;
+            
+            let rows = Math.ceil(itemCount / cols);
+            
+            // Refine to get the absolute tightest fit
+            while ((cols - 1) * rows >= itemCount) cols--;
+            while (cols * (rows - 1) >= itemCount) rows--;
+
+            return { cols, rows };
+        }
+
+        generateBtn.addEventListener('click', function() {
+            if (loadedImages.length === 0) return;
+
+            const totalImages = loadedImages.length;
+            const targetPages = parseInt(pagesInput.value, 10) || 1;
+            const orientation = orientSelect.value;
+            const fitMode = fitSelect.value;
+            const gap = parseInt(gapInput.value, 10) || 0;
+
+            // Calculate distribution
+            const imgsPerPage = Math.ceil(totalImages / targetPages);
+            const grid = calculateGrid(imgsPerPage, orientation);
+
+            // Update Stats
+            document.getElementById('statsBox').style.display = 'block';
+            document.getElementById('statTotal').innerText = totalImages;
+            document.getElementById('statPer').innerText = `Up to ${imgsPerPage}`;
+            document.getElementById('statGrid').innerText = `${grid.cols} Cols × ${grid.rows} Rows`;
+
+            // Setup Print CSS
+            document.getElementById('dynamic-print-style').textContent = `
+                @page { size: A4 ${orientation}; margin: 0; }
+                :root { --print-padding: 10mm; }
+            `;
+
+            previewContainer.innerHTML = '';
+            printArea.innerHTML = '';
+
+            let imgIndex = 0;
+
+            for (let p = 0; p < targetPages; p++) {
+                if (imgIndex >= totalImages) break;
+
+                // Create Preview Page
+                const pPage = document.createElement('div');
+                pPage.className = `preview-page ${orientation}`;
+                pPage.style.gridTemplateColumns = `repeat(${grid.cols}, 1fr)`;
+                pPage.style.gridTemplateRows = `repeat(${grid.rows}, 1fr)`;
+                pPage.style.gap = `${gap / 3}px`; // Scale gap down for preview
+
+                // Create Print Page
+                const prPage = document.createElement('div');
+                prPage.className = 'print-page';
+                prPage.style.gridTemplateColumns = `repeat(${grid.cols}, 1fr)`;
+                prPage.style.gridTemplateRows = `repeat(${grid.rows}, 1fr)`;
+                prPage.style.gap = `${gap}px`;
+
+                for (let i = 0; i < (grid.cols * grid.rows); i++) {
+                    if (imgIndex < totalImages) {
+                        const src = loadedImages[imgIndex];
+                        
+                        // Preview Element
+                        const pImgCont = document.createElement('div');
+                        pImgCont.className = 'preview-img-container';
+                        pImgCont.innerHTML = `<img src="${src}" style="object-fit: ${fitMode};">`;
+                        pPage.appendChild(pImgCont);
+
+                        // Print Element
+                        const prImgCont = document.createElement('div');
+                        prImgCont.className = 'print-img-container';
+                        prImgCont.innerHTML = `<img src="${src}" style="object-fit: ${fitMode};">`;
+                        prPage.appendChild(prImgCont);
+
+                        imgIndex++;
+                    } else {
+                        // Empty slot to maintain grid structure
+                        pPage.appendChild(document.createElement('div'));
+                        prPage.appendChild(document.createElement('div'));
+                    }
+                }
+
+                previewContainer.appendChild(pPage);
+                printArea.appendChild(prPage);
+            }
+
+            printBtn.style.display = 'block';
+        });
+
+        printBtn.addEventListener('click', () => {
+            window.print();
+        });
+
+    </script>
+</body>
+</html>
