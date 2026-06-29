@@ -47,9 +47,7 @@ $ref_types = fetch_all("SELECT DISTINCT reference_type FROM journal_entries WHER
 
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h4 class="mb-0"><i class="fas fa-book me-2 text-primary"></i>Journal Entries</h4>
-    <a href="add_journal.php" class="btn btn-primary">
-        <i class="fas fa-plus me-1"></i> Add Journal Entry
-    </a>
+    <span class="text-muted small"><i class="fas fa-info-circle me-1"></i>Entries are posted automatically by system transactions.</span>
 </div>
 
 <!-- Filters -->

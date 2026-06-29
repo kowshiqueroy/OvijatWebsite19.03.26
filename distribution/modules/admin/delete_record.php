@@ -4,9 +4,19 @@ require_once '../../includes/functions.php';
 check_login();
 check_role([ROLE_ADMIN]);
 
+$allowed_tables = [
+    'sales_drafts', 'customers', 'products', 'suppliers', 'purchase_orders',
+    'truck_loads', 'expenses', 'journal_entries', 'users', 'categories',
+    'sales_returns', 'stock_damages', 'sr_divisions', 'sr_groups', 'sales_targets',
+];
+
 if (isset($_GET['table']) && isset($_GET['id'])) {
     $table = $_GET['table'];
     $id = intval($_GET['id']);
+
+    if (!in_array($table, $allowed_tables, true)) {
+        die("Invalid table specified.");
+    }
     $conn = get_db_connection();
     $conn->begin_transaction();
 

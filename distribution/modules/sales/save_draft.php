@@ -40,7 +40,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     try {
         // Insert into sales_drafts
         $stmt = $conn->prepare("INSERT INTO sales_drafts (customer_id, created_by, total_amount, discount, vat, grand_total, status, general_note, order_type) VALUES (?, ?, ?, ?, ?, ?, 'Draft', ?, ?)");
-        $stmt->bind_param("iiddidss", $customer_id, $created_by, $total_amount, $discount, $vat, $grand_total, $general_note, $order_type);
+        $stmt->bind_param("iiddddss", $customer_id, $created_by, $total_amount, $discount, $vat, $grand_total, $general_note, $order_type);
         $stmt->execute();
         $draft_id = $conn->insert_id;
 

@@ -13,10 +13,10 @@ if (isset($_POST['save_group'])) {
     $gid   = isset($_POST['group_id']) ? intval($_POST['group_id']) : 0;
 
     if ($gid) {
-        db_query("UPDATE account_groups SET name=?, type=? WHERE id=?", [$name, $ptype, $gid]);
+        db_query("UPDATE account_groups SET name=?, nature=? WHERE id=?", [$name, $ptype, $gid]);
         redirect('modules/accounts/chart_of_accounts.php', 'Account group updated.', 'success');
     } else {
-        db_query("INSERT INTO account_groups (name, type) VALUES (?,?)", [$name, $ptype]);
+        db_query("INSERT INTO account_groups (name, nature) VALUES (?,?)", [$name, $ptype]);
         redirect('modules/accounts/chart_of_accounts.php', 'Account group added.', 'success');
     }
 }
@@ -45,8 +45,8 @@ if (isset($_POST['save_account'])) {
 }
 
 // ── Data ────────────────────────────────────────────────────────────────────
-$groups   = fetch_all("SELECT * FROM account_groups WHERE isDelete = 0 ORDER BY type, name");
-$accounts = fetch_all("SELECT a.*, ag.name AS group_name, ag.type AS group_type FROM accounts a JOIN account_groups ag ON a.group_id = ag.id WHERE a.isDelete = 0 ORDER BY ag.type, ag.name, a.name");
+$groups   = fetch_all("SELECT * FROM account_groups WHERE isDelete = 0 ORDER BY nature, name");
+$accounts = fetch_all("SELECT a.*, ag.name AS group_name, ag.nature AS group_type FROM accounts a JOIN account_groups ag ON a.group_id = ag.id WHERE a.isDelete = 0 ORDER BY ag.nature, ag.name, a.name");
 
 // Group accounts by group_id
 $acc_by_group = [];
@@ -54,19 +54,19 @@ foreach ($accounts as $acc) {
     $acc_by_group[$acc['group_id']][] = $acc;
 }
 
-// Group by type
-$types = ['Asset', 'Liability', 'Equity', 'Income', 'Expense'];
+// Group by nature (enum: Assets, Liabilities, Equity, Income, Expense)
+$types = ['Assets', 'Liabilities', 'Equity', 'Income', 'Expense'];
 $groups_by_type = [];
 foreach ($groups as $g) {
-    $groups_by_type[$g['type']][] = $g;
+    $groups_by_type[$g['nature']][] = $g;
 }
 
 $type_colors = [
-    'Asset'     => 'primary',
-    'Liability' => 'danger',
-    'Equity'    => 'warning',
-    'Income'    => 'success',
-    'Expense'   => 'secondary',
+    'Assets'      => 'primary',
+    'Liabilities' => 'danger',
+    'Equity'      => 'warning',
+    'Income'      => 'success',
+    'Expense'     => 'secondary',
 ];
 ?>
 
@@ -129,7 +129,7 @@ $type_colors = [
                 <div class="d-flex align-items-center gap-2">
                     <span class="badge bg-light text-dark border"><?php echo count($acc_by_group[$grp['id']] ?? []); ?> accounts</span>
                     <button class="btn btn-xs btn-outline-secondary btn-sm py-0 px-2"
-                            onclick="editGroup(<?php echo $grp['id']; ?>, '<?php echo htmlspecialchars(addslashes($grp['name'])); ?>', '<?php echo $grp['type']; ?>')">
+                            onclick="editGroup(<?php echo $grp['id']; ?>, '<?php echo htmlspecialchars(addslashes($grp['name'])); ?>', '<?php echo $grp['nature']; ?>')">
                         <i class="fas fa-edit"></i>
                     </button>
                 </div>

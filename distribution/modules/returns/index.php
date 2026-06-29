@@ -33,8 +33,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 // Refund customer balance
                 db_query("UPDATE customers SET balance = balance + ? WHERE id = ?", [$ret['total_amount'], $ret['customer_id']]);
-                db_query("INSERT INTO transactions (customer_id,type,amount,description) VALUES (?,?,'Credit',?)",
-                    [$ret['customer_id'], $ret['total_amount'], "Return #$return_id approved — credit issued"]);
+                db_query("INSERT INTO transactions (customer_id,type,amount,description) VALUES (?,?,?,?)",
+                    [$ret['customer_id'], 'Credit', $ret['total_amount'], "Return #$return_id approved — credit issued"]);
 
                 $msg = 'Return approved. Stock restocked and customer credited.';
             } else {

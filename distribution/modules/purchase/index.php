@@ -48,8 +48,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_purchase'])) {
 
             // Create batch record if batch given
             if ($batch) {
-                db_query("INSERT INTO product_batches (product_id,batch_no,expiry_date,quantity_in,quantity_remaining,unit_cost,purchase_id,source) VALUES (?,?,?,?,?,?,?,'Purchase')",
-                    [$pid, $batch, $expiry, $qty, $qty, $cost, $po_id]);
+                db_query("INSERT INTO product_batches (product_id,batch_no,expiry_date,quantity_in,quantity_remaining,purchase_id,source) VALUES (?,?,?,?,?,?,'Purchase')",
+                    [$pid, $batch, $expiry, $qty, $qty, $po_id]);
             }
             // Stock movement
             db_query("INSERT INTO stock_movements (product_id,movement_type,quantity,reference_type,reference_id,notes,created_by) VALUES (?,'IN',?,'purchase',?,?,?)",
