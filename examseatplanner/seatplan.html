@@ -1,0 +1,1726 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Advanced Exam Seat Plan Generator</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Tiro+Bangla&display=swap" rel="stylesheet">
+<style>
+:root{
+  --primary:#1d4ed8; --primary-dark:#1e3a8a; --bg:#f1f5f9; --card:#ffffff;
+  --border:#cbd5e1; --text:#1e293b; --muted:#64748b; --accent:#0d9488; --danger:#dc2626;
+  --font-main: 'Times New Roman', 'Tiro Bangla', Times, serif;
+  --bench-row-h: 17mm;
+  --seat-w: 18mm;
+  /* Print font — controlled by Font Settings panel */
+  --print-font: 'Times New Roman','Tiro Bangla',Times,serif;
+  --tk-org:6.8pt; --tk-exam:6pt; --tk-name:9.6pt; --tk-line:7.4pt;
+  --rm-school:19px; --rm-exam-line:13px; --rm-title:16px; --rm-bench-no:6.2pt;
+  --rm-roll:10pt; --rm-cls:6.8pt; --rm-name:6.4pt;
+  --sm-table:13px; --instr-size:10.5px; --sign-size:11px;
+}
+*{box-sizing:border-box;}
+body{margin:0;font-family:var(--font-main);background:var(--bg);color:var(--text);}
+header.app-bar{background:linear-gradient(135deg,var(--primary-dark),var(--primary));color:#fff;padding:14px 20px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;position:sticky;top:0;z-index:50;}
+header.app-bar h1{font-size:18px;margin:0;font-weight:600;}
+nav.tabs{display:flex;gap:6px;flex-wrap:wrap;}
+nav.tabs button{background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.3);color:#fff;padding:8px 14px;border-radius:6px;cursor:pointer;font-size:13px;}
+nav.tabs button.active{background:#fff;color:var(--primary-dark);font-weight:600;}
+nav.tabs button:disabled{opacity:.4;cursor:not-allowed;}
+.toolbar-btn{background:var(--accent);border:none;color:#fff;padding:8px 14px;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600;}
+.toolbar-btn:hover{filter:brightness(1.08);}
+.toolbar-link{text-decoration:none;display:inline-flex;align-items:center;}
+main{max-width:1300px;margin:18px auto;padding:0 16px 60px;}
+.view{display:none;}
+.view.active{display:block;}
+.card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:18px 20px;margin-bottom:18px;box-shadow:0 1px 2px rgba(0,0,0,.04);}
+.card h2{margin:0 0 4px;font-size:16px;color:var(--primary-dark);}
+.card .hint{color:var(--muted);font-size:12.5px;margin:0 0 12px;}
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:18px;}
+@media (max-width:900px){.grid-2{grid-template-columns:1fr;}}
+label{display:block;font-size:12.5px;font-weight:600;color:var(--muted);margin-bottom:4px;}
+textarea,input[type=text],input[type=number],input[type=date],select{
+  width:100%;border:1px solid var(--border);border-radius:6px;padding:8px 10px;font-size:13px;font-family:inherit;background:#fff;color:var(--text);
+}
+textarea{resize:vertical;font-family:Consolas,monospace;font-size:12.5px;}
+.field{margin-bottom:12px;}
+.row-inline{display:flex;gap:10px;flex-wrap:wrap;}
+.row-inline>div{flex:1;min-width:140px;}
+table.cfg{width:100%;border-collapse:collapse;font-size:12.5px;}
+table.cfg th{background:#eef2ff;color:var(--primary-dark);text-align:left;padding:6px 8px;border:1px solid var(--border);}
+table.cfg td{padding:5px 6px;border:1px solid var(--border);}
+table.cfg input,table.cfg select{padding:5px 6px;font-size:12.5px;}
+.small-btn{background:#fff;border:1px solid var(--border);border-radius:5px;padding:5px 9px;cursor:pointer;font-size:12px;}
+.small-btn.danger{color:var(--danger);border-color:#fecaca;}
+.actions-bar{display:flex;gap:10px;align-items:center;margin-top:8px;flex-wrap:wrap;}
+.status-pill{font-size:12px;background:#ecfdf5;color:#047857;border:1px solid #a7f3d0;padding:4px 10px;border-radius:999px;}
+.generate-btn{background:var(--primary);color:#fff;border:none;padding:12px 22px;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;}
+.generate-btn:hover{background:var(--primary-dark);}
+.summary-table{width:100%;border-collapse:collapse;font-size:var(--sm-table);font-family:var(--print-font);}
+.summary-table th,.summary-table td{border:1px solid var(--border);padding:8px 10px;text-align:center;font-size:var(--sm-table);font-family:inherit;}
+.summary-table th{background:#eef2ff;color:var(--primary-dark);}
+.summary-table tfoot td{font-weight:700;background:#f8fafc;}
+.output-toolbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;gap:10px;}
+.token-order-sel{width:auto;font-size:12.5px;padding:6px 8px;}
+.output-toolbar .info{font-size:12.5px;color:var(--muted);}
+.suggest-card{margin-top:10px;border-radius:8px;padding:10px 14px;font-size:12.5px;}
+.suggest-card .suggest-title{font-weight:700;}
+.suggest-card ul{margin:5px 0 0;padding-left:18px;}
+.suggest-card li{margin-bottom:3px;}
+.suggest-card p{margin:5px 0 0;}
+.suggest-card.ok{background:#ecfdf5;border:1px solid #a7f3d0;color:#047857;}
+.suggest-card.info{background:#eff6ff;border:1px solid #bfdbfe;color:#1d4ed8;}
+.suggest-card.caution{background:#fffbeb;border:1px solid #fde68a;color:#92400e;}
+.suggest-card.critical{background:#fef2f2;border:1px solid #fecaca;color:#b91c1c;}
+.suggest-card.action{background:#faf5ff;border:1px solid #e9d5ff;color:#7e22ce;}
+.rolls-cell{text-align:left;font-size:var(--sm-table);padding:0 !important;}
+.rolls-cell b{color:var(--primary-dark);}
+.summary-class-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 12px;
+}
+.summary-class-row:not(:last-child) {
+  border-bottom: 1px solid var(--border);
+}
+.summary-class-row .divider {
+  color: var(--border);
+  font-weight: 300;
+  user-select: none;
+}
+.summary-class-row .class-name {
+  min-width: 75px;
+  text-align: left;
+}
+.summary-class-row .class-rolls {
+  flex: 1;
+  text-align: left;
+}
+.summary-class-row .class-count {
+  min-width: 65px;
+  text-align: right;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+/* Zero out the browser's own print margins — our .page padding is the only
+   margin. Without this, the browser's default header/footer margin stacks
+   on top of our 297mm-tall page and pushes a near-empty sliver onto an
+   extra physical sheet after every page (the "blank pages" bug). */
+@page{ size:A4; margin:0; }
+
+/* ---- Print page base ---- */
+.page{width:210mm;min-height:297mm;background:#fff;margin:0 auto 16px;padding:12mm;box-shadow:0 0 6px rgba(0,0,0,.18);page-break-after:always;display:flex;flex-direction:column;font-family:var(--print-font);}
+
+/* ---- Font Settings panel ---- */
+.font-section{border:1px solid var(--border);border-radius:7px;margin-bottom:8px;overflow:hidden;}
+.font-section summary{font-size:13px;font-weight:600;cursor:pointer;padding:9px 12px;background:#f8fafc;list-style:none;display:flex;align-items:center;gap:6px;-webkit-user-select:none;user-select:none;}
+.font-section summary::before{content:'▶';font-size:10px;transition:transform .15s;color:var(--muted);}
+.font-section[open] summary::before{transform:rotate(90deg);}
+.font-sliders{padding:10px 14px 12px;display:grid;grid-template-columns:1fr 1fr;gap:6px 18px;}
+@media(max-width:640px){.font-sliders{grid-template-columns:1fr;}}
+.font-row{display:flex;align-items:center;gap:6px;}
+.font-row .fl{font-size:11.5px;color:var(--muted);min-width:90px;white-space:nowrap;}
+.font-row input[type=range]{flex:1;min-width:60px;accent-color:var(--primary);height:4px;cursor:pointer;}
+.font-row .fv{font-size:11px;font-family:monospace;color:var(--text);min-width:36px;text-align:right;}
+.page:last-child{page-break-after:auto;}
+.sheet-header{text-align:center;border-bottom:2px solid var(--primary-dark);padding-bottom:8px;margin-bottom:10px;display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap;}
+.sheet-header .head-text{flex:1;min-width:160px;}
+.sheet-header .school{font-size:var(--rm-school);font-weight:800;color:var(--primary-dark);letter-spacing:.2px;}
+.sheet-header .exam{font-size:var(--rm-exam-line);color:var(--muted);font-weight:600;margin-top:1px;}
+.sheet-logo{height:16mm;max-width:32mm;object-fit:contain;}
+
+/* Tokens — modern badge-card layout */
+.token-page{display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(10,1fr);gap:2.5mm;height:265mm;}
+.token{border-radius:6px;padding:2mm 2.6mm;display:flex;flex-direction:column;justify-content:center;gap:1mm;font-size:8pt;overflow:hidden;background:#f8fafc;font-family:var(--print-font);}
+.token .t-org{font-size:var(--tk-org);font-weight:700;color:var(--primary-dark);text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.token .t-exam{font-size:var(--tk-exam);color:var(--muted);text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.token .t-name{font-size:var(--tk-name);font-weight:800;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin:0.5px 0;}
+.token .t-line{font-size:var(--tk-line);text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text);}
+.token .t-line b{color:var(--accent);}
+
+/* Room plan — modern, full column-width benches */
+.room-title{text-align:center;font-size:var(--rm-title);font-weight:800;margin:4px 0 10px;color:var(--primary-dark);}
+.room-layout{display:flex;gap:4mm;justify-content:center;}
+.room-col{display:flex;flex-direction:column;width:fit-content;flex:none;}
+.room-card{border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:10px;background:#fff;}
+.room-card-hdr{display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap;}
+.room-card-hdr label{font-size:12px;font-weight:600;color:var(--muted);white-space:nowrap;}
+.room-card .r-number{width:70px;}
+.room-card .r-gender{width:110px;}
+.col-table{width:100%;border-collapse:collapse;font-size:12px;}
+.col-table th{background:#f8fafc;color:var(--muted);padding:4px 6px;border:1px solid var(--border);text-align:left;font-size:11.5px;}
+.col-table td{padding:3px 5px;border:1px solid var(--border);}
+.col-table input,.col-table select{padding:3px 5px;font-size:12px;width:100%;}
+.col-table .c-label-in{width:32px;}
+.bench-stack.align-bottom{margin-top:auto;}
+.bench-stack.align-offset-1{margin-top:calc(1*var(--bench-row-h));}
+.bench-stack.align-offset-2{margin-top:calc(2*var(--bench-row-h));}
+.bench-stack.align-offset-3{margin-top:calc(3*var(--bench-row-h));}
+.bench-stack.align-offset-4{margin-top:calc(4*var(--bench-row-h));}
+.bench-stack.align-offset-5{margin-top:calc(5*var(--bench-row-h));}
+.bench-stack.align-offset-6{margin-top:calc(6*var(--bench-row-h));}
+.bench-stack.align-offset-7{margin-top:calc(7*var(--bench-row-h));}
+.bench-stack.align-offset-8{margin-top:calc(8*var(--bench-row-h));}
+.bench-stack.align-offset-9{margin-top:calc(9*var(--bench-row-h));}
+.room-col h3{text-align:center;font-size:12px;background:var(--primary-dark);color:#fff;border-radius:5px;padding:4px 0;margin:0 0 6px;letter-spacing:.3px;}
+.bench-stack{display:flex;flex-direction:column;gap:1.6mm;width:100%;}
+.bench{display:flex;align-items:stretch;gap:1mm;border:1px solid var(--border);border-radius:5px;padding:1mm;background:#f8fafc;height:15.4mm;width:100%;}
+.bench-no{font-size:var(--rm-bench-no);font-weight:700;color:#fff;background:var(--accent);border-radius:3px;writing-mode:vertical-rl;text-align:center;align-self:stretch;display:flex;align-items:center;justify-content:center;padding:1px 2px;flex-shrink:0;}
+.bench-seats{display:flex;flex:1;gap:1mm;min-width:0;}
+.seat{flex:1;min-width:0;height:100%;border:1px solid var(--border);border-radius:4px;background:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:7pt;text-align:center;line-height:1.15;padding:0.6mm;overflow:hidden;}
+.seat .s-roll{font-size:var(--rm-roll);font-weight:800;color:var(--primary-dark);}
+.seat .s-class{font-size:var(--rm-cls);color:var(--muted);}
+.seat .s-name{font-size:var(--rm-name);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;margin-top:0.5px;}
+.seat.empty{background:#f1f5f9;color:#94a3b8;font-style:italic;}
+.sign-row{display:flex;justify-content:space-between;margin-top:auto;padding-top:16mm;}
+.sign-row div{text-align:center;font-size:var(--sign-size);flex:1;}
+.sign-line{border-top:1px solid #475569;width:46mm;margin:22px auto 4px;}
+.instructions-box{font-size:var(--instr-size);background:#fffbeb;border:1px solid #fde68a;border-radius:5px;padding:6px 10px;margin:8px 0;}
+.instructions-box ol{margin:3px 0 0;padding-left:16px;}
+.instructions-box li{margin-bottom:2px;}
+.room-summary{font-size:10.5px;border:1px solid var(--border);border-radius:4px;padding:4px 10px;margin:6px 0 8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+
+@media print{
+  body{background:#fff;}
+  header.app-bar,.no-print{display:none !important;}
+  main{margin:0;padding:0;max-width:none;}
+  .page{box-shadow:none;margin:0;width:auto;min-height:0;}
+
+  /* Strict black & white print — the logo <img> is untouched since color/background/border-color don't affect its pixel content. */
+  .page, .page *{
+    color:#000 !important;
+    background:#fff !important;
+    border-color:#000 !important;
+    box-shadow:none !important;
+  }
+  .bench-no, .room-col h3{ background:#000 !important; color:#fff !important; }
+  .seat.empty{ color:#555 !important; }
+}
+</style>
+</head>
+<body>
+
+<header class="app-bar">
+  <h1>🪑 Advanced Exam Seat Plan Generator</h1>
+  <nav class="tabs" id="tabNav">
+    <button data-tab="setup" class="active">1. Setup</button>
+    <button data-tab="tokens" disabled>2. Seat Tokens</button>
+    <button data-tab="rooms" disabled>3. Room Plans</button>
+    <button data-tab="summary" disabled>4. Summary</button>
+  </nav>
+  <a href="seatplanroomui.html" target="_blank" class="toolbar-btn toolbar-link no-print">🗂 Room Editor</a>
+  <button class="toolbar-btn no-print" id="printBtn">🖨 Print Current View</button>
+  <button class="toolbar-btn no-print" id="clearCacheBtn" style="background:var(--danger);margin-left:4px;">🗑 Clear Cache</button>
+</header>
+
+<main>
+
+<!-- ============ SETUP VIEW ============ -->
+<section class="view active" id="view-setup">
+
+  <div class="card">
+    <h2>Student Data</h2>
+    <p class="hint">Paste tab/comma separated data copied from Google Sheets. Columns: Class, Roll, Name, Gender (M/F). A header row is auto-detected and skipped.</p>
+    <div class="field">
+      <textarea id="studentsInput" rows="10" placeholder="Class	Roll	Name	Gender"></textarea>
+    </div>
+    <div class="field">
+      <label>Exclude (absent) students — Class-Roll pairs, comma or newline separated</label>
+      <input type="text" id="excludeInput" placeholder="e.g. 6-12, 7-5, 9-21">
+    </div>
+    <div class="actions-bar">
+      <button class="small-btn" id="loadDemoBtn">Load Demo Dataset (~130 students)</button>
+      <button class="small-btn danger" id="clearStudentsBtn">Clear</button>
+      <span class="status-pill" id="studentCountPill">0 students parsed</span>
+    </div>
+  </div>
+
+  <div class="grid-2">
+    <div class="card">
+      <h2>Room Configuration</h2>
+      <p class="hint">1–4 columns per room. Leave "Benches" blank for dynamic/unlimited. Use Alignment to position a shorter column at the top, bottom, or offset by bench rows relative to the tallest column.</p>
+      <div id="roomsContainer"></div>
+      <div class="actions-bar">
+        <button class="small-btn" id="addRoomBtn">+ Add Room</button>
+        <button class="small-btn" id="loadDemoRoomsBtn">Load Demo Rooms (111, 112, 110)</button>
+      </div>
+      <div id="roomSuggestions"></div>
+    </div>
+
+    <div class="card">
+      <h2>Print Metadata</h2>
+      <div class="field"><label>School / Institution Name</label><input type="text" id="metaSchool" value="Green Sign Residential School and College, Nilphamari"></div>
+      <div class="field"><label>Exam Name</label><input type="text" id="metaExam" value="Half-Yealy &amp; Pre-Test Exam 2026"></div>
+      <div class="field"><label>Logo URL (shown on Room Plan &amp; Summary printouts)</label>
+        <input type="text" id="metaLogo" value="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSf6YwZE0G7PdhCdiGmHaVKJH1SqyLL1v5FfYgXTfaz-Q&amp;s=10" placeholder="https://example.com/logo.png"></div>
+      <div class="row-inline">
+        <div class="field"><label>Exam Date</label><input type="date" id="metaDate"></div>
+      </div>
+      <div class="field"><label>Instructions — one per line (shown on Room Plan &amp; Summary pages)</label>
+        <textarea id="metaInstructions" rows="3">No electronic devices allowed.
+Students must occupy the seat matching their Roll number.
+Maintain silence inside the examination hall.</textarea>
+      </div>
+      <div class="row-inline">
+        <div class="field"><label>Instructions Label</label>
+          <input type="text" id="metaInstructionsLabel" value="Instructions" placeholder="Leave blank to hide the label only"></div>
+        <div class="field"><label>"Class" Label (used before the class number everywhere)</label>
+          <input type="text" id="metaClassLabel" value="Class" placeholder="e.g. Grade, Section — blank to just show the number"></div>
+      </div>
+      <div class="field"><label>Signature Labels (comma separated)</label>
+        <input type="text" id="metaSignatures" value="In-charge, Principal">
+      </div>
+    </div>
+  </div>
+
+  <div class="card no-print">
+    <h2>Font Settings</h2>
+    <p class="hint">Customize fonts for all print pages. Changes apply live — no need to regenerate.</p>
+    <div class="field">
+      <label>Font Family (all print pages)</label>
+      <select id="fontFamily" title="Font family for all print pages">
+        <option value="'Times New Roman','Tiro Bangla',Times,serif">Times New Roman (Default)</option>
+        <option value="'Tiro Bangla','Times New Roman',Times,serif">Tiro Bangla (Bangla-first)</option>
+        <option value="Georgia,'Times New Roman',serif">Georgia</option>
+        <option value="Arial,Helvetica,sans-serif">Arial / Helvetica</option>
+        <option value="Calibri,Arial,sans-serif">Calibri</option>
+        <option value="'Courier New',Courier,monospace">Courier New</option>
+      </select>
+    </div>
+    <details class="font-section" open>
+      <summary>Token Page Fonts</summary>
+      <div class="font-sliders">
+        <div class="font-row"><span class="fl">Org / School</span><input type="range" id="fs-tk-org" min="4" max="14" step="0.1" title="Token: org/school name font size"><span class="fv" id="fv-tk-org"></span></div>
+        <div class="font-row"><span class="fl">Exam Name</span><input type="range" id="fs-tk-exam" min="3" max="12" step="0.1" title="Token: exam name font size"><span class="fv" id="fv-tk-exam"></span></div>
+        <div class="font-row"><span class="fl">Student Name</span><input type="range" id="fs-tk-name" min="5" max="18" step="0.1" title="Token: student name font size"><span class="fv" id="fv-tk-name"></span></div>
+        <div class="font-row"><span class="fl">Info Line</span><input type="range" id="fs-tk-line" min="4" max="14" step="0.1" title="Token: info line font size"><span class="fv" id="fv-tk-line"></span></div>
+      </div>
+    </details>
+    <details class="font-section">
+      <summary>Room Plan Page Fonts</summary>
+      <div class="font-sliders">
+        <div class="font-row"><span class="fl">School Name</span><input type="range" id="fs-rm-school" min="10" max="32" step="0.5" title="Room plan: school name font size"><span class="fv" id="fv-rm-school"></span></div>
+        <div class="font-row"><span class="fl">Exam / Date</span><input type="range" id="fs-rm-examline" min="8" max="22" step="0.5" title="Room plan: exam/date line font size"><span class="fv" id="fv-rm-examline"></span></div>
+        <div class="font-row"><span class="fl">Room Title</span><input type="range" id="fs-rm-title" min="10" max="28" step="0.5" title="Room plan: room title font size"><span class="fv" id="fv-rm-title"></span></div>
+        <div class="font-row"><span class="fl">Bench Label</span><input type="range" id="fs-rm-benchno" min="3" max="12" step="0.1" title="Room plan: bench number label font size"><span class="fv" id="fv-rm-benchno"></span></div>
+        <div class="font-row"><span class="fl">Roll Number</span><input type="range" id="fs-rm-roll" min="5" max="18" step="0.1" title="Room plan: roll number font size"><span class="fv" id="fv-rm-roll"></span></div>
+        <div class="font-row"><span class="fl">Class Label</span><input type="range" id="fs-rm-cls" min="3" max="12" step="0.1" title="Room plan: class label font size"><span class="fv" id="fv-rm-cls"></span></div>
+        <div class="font-row"><span class="fl">Student Name</span><input type="range" id="fs-rm-name" min="3" max="12" step="0.1" title="Room plan: student name font size"><span class="fv" id="fv-rm-name"></span></div>
+      </div>
+    </details>
+    <details class="font-section">
+      <summary>Summary Page Fonts</summary>
+      <div class="font-sliders">
+        <div class="font-row"><span class="fl">Table Text</span><input type="range" id="fs-sm-table" min="8" max="22" step="0.5" title="Summary: table font size"><span class="fv" id="fv-sm-table"></span></div>
+        <div class="font-row"><span class="fl">Instructions</span><input type="range" id="fs-instr" min="7" max="20" step="0.5" title="Instructions block font size (room plan &amp; summary)"><span class="fv" id="fv-instr"></span></div>
+        <div class="font-row"><span class="fl">Signature Line</span><input type="range" id="fs-sign" min="7" max="20" step="0.5" title="Signature label font size"><span class="fv" id="fv-sign"></span></div>
+      </div>
+    </details>
+    <div class="actions-bar">
+      <button class="small-btn" id="fontResetBtn">↺ Reset to Defaults</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Allocation Engine</h2>
+    <div class="row-inline">
+      <div class="field">
+        <label>Mixing Mode</label>
+        <select id="mixingMode">
+          <option value="sequential">Sequential (fill by Class &amp; Roll order)</option>
+          <option value="sidebyside">Side-by-Side (alternating classes per bench)</option>
+          <option value="zigzag" selected>Zig-Zag (max distance, horizontal + vertical)</option>
+        </select>
+      </div>
+    </div>
+    <div class="actions-bar">
+      <button class="generate-btn" id="generateBtn">⚙ Generate Seat Plan</button>
+      <button class="generate-btn" id="compactBtn" style="background:var(--accent);margin-left:8px;">⚡ Compact Layout</button>
+      <span id="genStatus" class="status-pill" style="display:none;"></span>
+    </div>
+  </div>
+
+</section>
+
+<!-- ============ TOKENS VIEW ============ -->
+<section class="view" id="view-tokens">
+  <div class="output-toolbar no-print">
+    <div class="info">Seat Tokens — 30 per page (3 × 10 grid)</div>
+    <select id="tokenOrder" class="token-order-sel">
+      <option value="roomseat">Room · Seat Order (bench sequence)</option>
+      <option value="roomroll">Room · Roll Order</option>
+      <option value="classwise">Class &amp; Roll — Global</option>
+      <option value="roomclasswise">Room → Class → Roll</option>
+    </select>
+  </div>
+  <div id="tokensOutput"></div>
+</section>
+
+<!-- ============ ROOM PLANS VIEW ============ -->
+<section class="view" id="view-rooms">
+  <div class="output-toolbar no-print"><div class="info">Room-Wise Visual Seating Plan — one page per room</div></div>
+  <div id="roomsOutput"></div>
+</section>
+
+<!-- ============ SUMMARY VIEW ============ -->
+<section class="view" id="view-summary">
+  <div class="output-toolbar no-print"><div class="info">Overall Seat Allocation Summary — paginates automatically if the room list is long</div></div>
+  <div id="summaryOutput"></div>
+</section>
+
+</main>
+
+<script>
+(function(){
+"use strict";
+
+/* ---------------------------------------------------------------------
+   STATE
+--------------------------------------------------------------------- */
+let STUDENTS = [];
+let ROOMS = [];
+let RESULT = null;
+
+const FONT_DEFAULTS = {
+  family: "'Times New Roman','Tiro Bangla',Times,serif",
+  tkOrg:6.8, tkExam:6.0, tkName:9.6, tkLine:7.4,
+  rmSchool:19, rmExamLine:13, rmTitle:16, rmBenchNo:6.2,
+  rmRoll:10, rmCls:6.8, rmName:6.4,
+  smTable:13, instrSize:10.5, signSize:11
+};
+let FONTS = Object.assign({}, FONT_DEFAULTS);
+
+const els = {
+  studentsInput: document.getElementById('studentsInput'),
+  excludeInput: document.getElementById('excludeInput'),
+  studentCountPill: document.getElementById('studentCountPill'),
+  roomsContainer: document.getElementById('roomsContainer'),
+  metaSchool: document.getElementById('metaSchool'),
+  metaExam: document.getElementById('metaExam'),
+  metaLogo: document.getElementById('metaLogo'),
+  metaDate: document.getElementById('metaDate'),
+  metaInstructions: document.getElementById('metaInstructions'),
+  metaInstructionsLabel: document.getElementById('metaInstructionsLabel'),
+  metaClassLabel: document.getElementById('metaClassLabel'),
+  metaSignatures: document.getElementById('metaSignatures'),
+  mixingMode: document.getElementById('mixingMode'),
+  genStatus: document.getElementById('genStatus'),
+};
+
+const naturalCmp = (a,b)=> String(a).localeCompare(String(b), undefined, {numeric:true, sensitivity:'base'});
+
+/* ---------------------------------------------------------------------
+   TABS
+--------------------------------------------------------------------- */
+document.getElementById('tabNav').addEventListener('click', e=>{
+  const btn = e.target.closest('button[data-tab]');
+  if(!btn || btn.disabled) return;
+  switchTab(btn.dataset.tab);
+});
+function switchTab(name){
+  document.querySelectorAll('#tabNav button').forEach(b=>b.classList.toggle('active', b.dataset.tab===name));
+  document.querySelectorAll('.view').forEach(v=>v.classList.toggle('active', v.id==='view-'+name));
+  // Elements are display:none until their tab becomes active, so width can only
+  // be measured (for the auto-fit below) right after they're shown.
+  if(name==='tokens'){
+    autoFitText('#view-tokens .t-org', FONTS.tkOrg, 4.5, 'pt');
+    autoFitEach('#view-tokens .t-name', FONTS.tkName, 6, 'pt', 800);
+  } else if(name==='rooms'){
+    autoFitText('#view-rooms .school', FONTS.rmSchool, 11, 'px');
+    autoFitEach('#view-rooms .s-name', FONTS.rmName, 4.5, 'pt', 400);
+  } else if(name==='summary'){
+    fitSummaryPages();
+    autoFitText('#view-summary .school', FONTS.rmSchool, 11, 'px');
+  }
+}
+
+/* ---------------------------------------------------------------------
+   Shrink a label's font size just enough to fit its container on one
+   line. Measures against the first matching element (they all share the
+   same text + container width) and applies the result to every match.
+--------------------------------------------------------------------- */
+function autoFitText(selector, maxSize, minSize, unit){
+  const els = document.querySelectorAll(selector);
+  if(!els.length) return;
+  const step = unit==='px' ? 0.5 : 0.2;
+  const probe = els[0];
+  let size = maxSize;
+  probe.style.fontSize = size + unit;
+  while(size > minSize && probe.scrollWidth > probe.clientWidth + 0.5){
+    size -= step;
+    probe.style.fontSize = size + unit;
+  }
+  els.forEach(el => el.style.fontSize = size + unit);
+}
+
+/* ---------------------------------------------------------------------
+   Same idea as autoFitText, but each element holds different text (a
+   different student's name), so every element is fit independently.
+   Uses canvas measureText instead of repeated DOM reflows — with 100+
+   tokens/seats on screen at once, a per-element layout-thrash loop would
+   be noticeably slow.
+--------------------------------------------------------------------- */
+const _measureCtx = document.createElement('canvas').getContext('2d');
+function autoFitEach(selector, maxSize, minSize, unit, weight){
+  const family = "'Times New Roman','Tiro Bangla',Times,serif";
+  const step = unit==='px' ? 0.4 : 0.15;
+  const toPx = v => unit==='pt' ? v*4/3 : v;
+  document.querySelectorAll(selector).forEach(el=>{
+    const containerPx = el.clientWidth;
+    if(!containerPx || !_measureCtx){ el.style.fontSize = maxSize + unit; return; }
+    let size = maxSize;
+    while(size > minSize){
+      _measureCtx.font = `${weight} ${toPx(size)}px ${family}`;
+      if(_measureCtx.measureText(el.textContent).width <= containerPx) break;
+      size -= step;
+    }
+    el.style.fontSize = size + unit;
+  });
+}
+
+/* ---------------------------------------------------------------------
+   A room with many dynamic benches can be taller than one A4 page as a
+   single full-width column. Split that column's benches into 2-4 side-
+   by-side stacks (still full-width within their own stack) so the whole
+   room plan stays on one printed page instead of overflowing onto a
+   near-empty extra sheet.
+--------------------------------------------------------------------- */
+document.getElementById('printBtn').addEventListener('click', ()=>window.print());
+document.getElementById('tokenOrder').addEventListener('change', ()=>{ if(RESULT) renderTokens(); });
+
+/* ---------------------------------------------------------------------
+   ROOM CARDS  (1–4 columns per room, per-column alignment control)
+--------------------------------------------------------------------- */
+const ALIGN_OPTIONS = [
+  {v:'top',    label:'Align Top'},
+  {v:'bottom', label:'Align Bottom'},
+  {v:'offset-1', label:'Offset: start at row 2'},
+  {v:'offset-2', label:'Offset: start at row 3'},
+  {v:'offset-3', label:'Offset: start at row 4'},
+  {v:'offset-4', label:'Offset: start at row 5'},
+  {v:'offset-5', label:'Offset: start at row 6'},
+  {v:'offset-6', label:'Offset: start at row 7'},
+  {v:'offset-7', label:'Offset: start at row 8'},
+  {v:'offset-8', label:'Offset: start at row 9'},
+  {v:'offset-9', label:'Offset: start at row 10'},
+];
+function alignOptionHtml(selected){
+  return ALIGN_OPTIONS.map(o=>`<option value="${o.v}"${selected===o.v?' selected':''}>${o.label}</option>`).join('');
+}
+
+function addColumnRow(tbody, col){
+  col = col || {label:'', benches:'', seats:2, align:'top'};
+  let selectedVal = col.align;
+  if(selectedVal === 'offset'){
+    selectedVal = `offset-${col.alignOffset || 1}`;
+  }
+  const benchesVal = col.benches === null ? '' : col.benches;
+  const tr = document.createElement('tr');
+  tr.innerHTML = `
+    <td><input type="text" class="c-label-in" value="${col.label}" placeholder="A"></td>
+    <td><input type="number" min="0" class="c-benches" value="${benchesVal}" placeholder="blank=∞"></td>
+    <td><input type="number" min="1" class="c-seats" value="${col.seats}"></td>
+    <td><select class="c-align">${alignOptionHtml(selectedVal)}</select></td>
+    <td><button class="small-btn danger rm-col">✕</button></td>`;
+  tr.querySelector('.rm-col').addEventListener('click', ()=>{ tr.remove(); updateRoomSuggestions(); });
+  tbody.appendChild(tr);
+}
+
+function addRoomCard(data){
+  data = data || {number:'', gender:'M', columns:[{label:'A',benches:'',seats:2,align:'top'}]};
+  const card = document.createElement('div');
+  card.className = 'room-card';
+  const genderOpts = ['M','F','Mixed'].map(g=>
+    `<option value="${g}"${data.gender===g?' selected':''}>${g==='M'?'Male only':g==='F'?'Female only':'Mixed'}</option>`).join('');
+  card.innerHTML = `
+    <div class="room-card-hdr">
+      <label>Room</label>
+      <input type="text" class="r-number" value="${data.number}" placeholder="e.g. 110">
+      <select class="r-gender">${genderOpts}</select>
+      <button class="small-btn add-col">+ Column</button>
+      <button class="small-btn danger rm-room">✕ Room</button>
+    </div>
+    <table class="col-table">
+      <thead><tr><th>Label</th><th>Benches (blank=∞)</th><th>Seats/Bench</th><th>Alignment</th><th></th></tr></thead>
+      <tbody class="col-tbody"></tbody>
+    </table>`;
+  const tbody = card.querySelector('.col-tbody');
+  (data.columns || [{label:'A',benches:'',seats:2,align:'top'}]).forEach(col=>addColumnRow(tbody, col));
+  card.querySelector('.add-col').addEventListener('click', ()=>{
+    if(tbody.children.length >= 4){ alert('Maximum 4 columns per room.'); return; }
+    const labels = 'ABCD';
+    addColumnRow(tbody, {label: labels[tbody.children.length]||'', benches:'', seats:2, align:'top'});
+    updateRoomSuggestions();
+  });
+  card.querySelector('.rm-room').addEventListener('click', ()=>{ card.remove(); updateRoomSuggestions(); });
+  card.addEventListener('input', updateRoomSuggestions);
+  card.addEventListener('change', updateRoomSuggestions);
+  document.getElementById('roomsContainer').appendChild(card);
+  updateRoomSuggestions();
+}
+
+document.getElementById('addRoomBtn').addEventListener('click', ()=>addRoomCard());
+document.getElementById('loadDemoRoomsBtn').addEventListener('click', ()=>{
+  document.getElementById('roomsContainer').innerHTML='';
+  addRoomCard({number:'111', gender:'F', columns:[
+    {label:'A', benches:7, seats:3, align:'top'},
+    {label:'B', benches:7, seats:3, align:'top'}]});
+  addRoomCard({number:'112', gender:'M', columns:[
+    {label:'A', benches:'', seats:2, align:'top'},
+    {label:'B', benches:'', seats:2, align:'top'}]});
+  addRoomCard({number:'110', gender:'M', columns:[
+    {label:'A', benches:10, seats:3, align:'top'},
+    {label:'B', benches:'',  seats:2, align:'top'}]});
+});
+
+/* ---------------------------------------------------------------------
+   DEMO STUDENT DATA (130 students, classes 6-10: 75 Male, 55 Female)
+--------------------------------------------------------------------- */
+const MALE_NAMES = ["SABBIR AHMED","MD MUHIN ISLAM","MD RISHAD ISLAM","ABDUL OHAB SIYAM","MRITTUNJOY ROY",
+  "JIBON ROY","MD MOBASHER","MD JAWYAT MAHI","AL MUTTASIN BILLAH","MD. SAKIBUL HASAN",
+  "MD RAHAT HOSSEN","LIMON CHANDRO ROY","MD SHOAIB ISLAM"];
+const FEMALE_NAMES = ["JANNATUL FERDOUS JINIYA","PUJA RANI ROY","MST MUBASSHIRA","MST MUSHFIKA JANNAT MAHI",
+  "JARIA MEJBA JARIF","SUMAIYA AKTHER","WASFIYA ANOWAR SHUKTARA"];
+function buildDemoStudents(){
+  const classes = [6,7,8,9,10];
+  const rows = ["Class\tRoll\tName\tGender"];
+  let mIdx = 0, fIdx = 0;
+  classes.forEach(cls=>{
+    // Rolls 1-15 male, 16-26 female per class (15+11=26) -> 75 M / 55 F across 5 classes = 130 total,
+    // and contiguous gender blocks so Summary roll-ranges still compress nicely.
+    for(let roll=1; roll<=26; roll++){
+      const isMale = roll <= 15;
+      const gender = isMale ? 'M' : 'F';
+      const name = isMale ? MALE_NAMES[mIdx++ % MALE_NAMES.length] : FEMALE_NAMES[fIdx++ % FEMALE_NAMES.length];
+      rows.push(`${cls}\t${roll}\t${name}\t${gender}`);
+    }
+  });
+  return rows.join("\n");
+}
+document.getElementById('loadDemoBtn').addEventListener('click', ()=>{
+  els.studentsInput.value = buildDemoStudents();
+  refreshStudentCount();
+});
+document.getElementById('clearStudentsBtn').addEventListener('click', ()=>{
+  els.studentsInput.value=''; refreshStudentCount();
+});
+els.studentsInput.addEventListener('input', refreshStudentCount);
+els.excludeInput.addEventListener('input', refreshStudentCount);
+function refreshStudentCount(){
+  parseStudents();
+  els.studentCountPill.textContent = STUDENTS.length + ' students parsed';
+  updateRoomSuggestions();
+}
+
+/* ---------------------------------------------------------------------
+   PARSERS
+--------------------------------------------------------------------- */
+function parseStudents(){
+  const raw = els.studentsInput.value.trim();
+  if(!raw){ STUDENTS = []; return; }
+  const lines = raw.split(/\r?\n/).filter(l=>l.trim().length);
+  if(!lines.length){ STUDENTS = []; return; }
+  const sep = lines[0].includes('\t') ? '\t' : ',';
+  let start = 0;
+  const head = lines[0].split(sep).map(c=>c.trim().toLowerCase());
+  if(head.includes('class') && head.includes('roll')) start = 1;
+
+  const list = [];
+  for(let i=start; i<lines.length; i++){
+    const cells = lines[i].split(sep).map(c=>c.trim());
+    if(cells.length < 4) continue;
+    const [cls, roll, name, genderRaw] = cells;
+    if(!cls || !roll || !name) continue;
+    const gender = (genderRaw||'').toUpperCase().startsWith('F') ? 'F' : 'M';
+    list.push({class: cls, roll, name, gender, id: `${cls}-${roll}-${i}`});
+  }
+
+  const excludeSet = new Set(
+    els.excludeInput.value.split(/[\n,]/).map(s=>s.trim().toLowerCase()).filter(Boolean)
+  );
+  STUDENTS = list.filter(s => !excludeSet.has(`${s.class}-${s.roll}`.toLowerCase()));
+}
+
+function parseRooms(){
+  const toBenches = v => (v==='' ? null : Math.max(0, parseInt(v,10) || 0));
+  ROOMS = [];
+  document.querySelectorAll('#roomsContainer .room-card').forEach(card=>{
+    const number = card.querySelector('.r-number').value.trim();
+    if(!number) return;
+    const gender = card.querySelector('.r-gender').value;
+    const columns = [];
+    card.querySelectorAll('.col-tbody tr').forEach((tr,ci)=>{
+      const alignVal = tr.querySelector('.c-align').value;
+      const isOffset = alignVal.startsWith('offset-');
+      columns.push({
+        label: tr.querySelector('.c-label-in').value.trim() || String.fromCharCode(65+ci),
+        benches: toBenches(tr.querySelector('.c-benches').value),
+        seats:   Math.max(1, parseInt(tr.querySelector('.c-seats').value)||1),
+        align:   isOffset ? 'offset' : alignVal,
+        alignOffset: isOffset ? parseInt(alignVal.split('-')[1]) : 0,
+      });
+    });
+    if(columns.length) ROOMS.push({number, gender, columns});
+  });
+  localStorage.setItem('seatplan_draft_rooms', JSON.stringify(ROOMS));
+}
+
+function parseMeta(){
+  return {
+    school: els.metaSchool.value.trim() || 'School Name',
+    exam: els.metaExam.value.trim() || 'Examination',
+    logo: els.metaLogo.value.trim(),
+    date: els.metaDate.value || '',
+    instructionLines: els.metaInstructions.value.split(/\r?\n/).map(s=>s.trim()).filter(Boolean),
+    instructionsLabel: els.metaInstructionsLabel.value.trim(),
+    classLabel: els.metaClassLabel.value.trim(),
+    signatures: els.metaSignatures.value.split(',').map(s=>s.trim()).filter(Boolean),
+  };
+}
+
+// "Class 6" if a class label is set, otherwise just "6".
+// '' or the configured class label + a space, e.g. "Class " / "Grade " / "".
+function classPrefix(meta){
+  return meta.classLabel ? esc(meta.classLabel) + ' ' : '';
+}
+
+// One or more instruction lines as an optional-label block; '' if there's nothing to show.
+function instructionsBlockHtml(meta){
+  if(!meta.instructionLines.length) return '';
+  const label = meta.instructionsLabel ? `<b>${esc(meta.instructionsLabel)}:</b> ` : '';
+  const body = meta.instructionLines.length > 1
+    ? `<ol>${meta.instructionLines.map(l=>`<li>${esc(l)}</li>`).join('')}</ol>`
+    : esc(meta.instructionLines[0]);
+  return `<div class="instructions-box">${label}${body}</div>`;
+}
+
+/* ---------------------------------------------------------------------
+   ROOM CONFIGURATION — live capacity / balance suggestions
+--------------------------------------------------------------------- */
+function updateRoomSuggestions(){
+  const box = document.getElementById('roomSuggestions');
+  if(!box) return;
+  parseStudents();
+  parseRooms();
+
+  if(!STUDENTS.length || !ROOMS.length){ box.innerHTML = ''; return; }
+
+  // col.label is used directly now that cols are generic
+  const sections = [];
+
+  // 1. Class-wise student summary — always-useful context, shown first.
+  const classMap = new Map();
+  STUDENTS.forEach(s=>{
+    if(!classMap.has(s.class)) classMap.set(s.class, {m:0, f:0});
+    classMap.get(s.class)[s.gender==='M' ? 'm' : 'f']++;
+  });
+  const classKeys = [...classMap.keys()].sort(naturalCmp);
+  const labelPrefix = classPrefix(parseMeta());
+  const classItems = classKeys.map(c=>{
+    const {m,f} = classMap.get(c);
+    return `<li>${labelPrefix}${esc(c)}: <b>${m+f}</b> students (${m} M / ${f} F)</li>`;
+  }).join('');
+  const totalM = STUDENTS.filter(s=>s.gender==='M').length;
+  const totalF = STUDENTS.length - totalM;
+  sections.push({
+    type: 'info',
+    title: `📊 ${STUDENTS.length} students across ${classKeys.length} classes (${totalM} M / ${totalF} F)`,
+    body: `<ul>${classItems}</ul>`
+  });
+
+  // 2. Per-gender capacity & balance, computed once so each side can reference the other.
+  const genderStats = {};
+  ['M','F'].forEach(gender=>{
+    const count = STUDENTS.filter(s=>s.gender===gender).length;
+    const eligible = ROOMS.filter(r => r.gender===gender || r.gender==='Mixed');
+    const fixedCols = [];
+    const dynCols = [];
+    eligible.forEach(r=>{
+      r.columns.forEach(col=>{
+        if(col.benches===null) dynCols.push({room:r, col});
+        else fixedCols.push({room:r, col, capacity: col.benches*col.seats});
+      });
+    });
+    const fixedCap = fixedCols.reduce((sum,c)=>sum+c.capacity, 0);
+    genderStats[gender] = { count, eligible, fixedCols, dynCols, fixedCap, deficit: count - fixedCap };
+  });
+
+  ['M','F'].forEach(gender=>{
+    const stat = genderStats[gender];
+    if(!stat.count) return;
+    const genderName = gender==='M' ? 'Male' : 'Female';
+    const { deficit, dynCols, fixedCols, fixedCap, eligible } = stat;
+
+    if(deficit <= 0){
+      // Surplus: walk the fixed columns in room order (same order the engine
+      // fills them) to find which ones end up partly or fully unused.
+      let remaining = stat.count;
+      const excessNotes = [];
+      fixedCols.forEach(({room,key,col,capacity})=>{
+        const used = Math.min(capacity, remaining);
+        const excessSeats = capacity - used;
+        remaining -= used;
+        const excessBenches = Math.floor(excessSeats / col.seats);
+        if(excessBenches > 0){
+          excessNotes.push(`<li>Room ${esc(room.number)} Col ${esc(col.label)}: ~${excessBenches} bench(es) idle (${excessSeats} surplus seats)</li>`);
+        }
+      });
+      if(excessNotes.length){
+        const other = gender==='M' ? 'F' : 'M';
+        const otherStat = genderStats[other];
+        const otherName = other==='M' ? 'Male' : 'Female';
+        const crossNote = (otherStat && otherStat.deficit > 0)
+          ? `<p><b>Suggestion:</b> ${otherName} students are short ${otherStat.deficit} seats — consider changing one of these rooms to <b>Mixed</b> instead of shrinking it.</p>`
+          : '';
+        sections.push({
+          type: 'caution',
+          title: `⚠ ${genderName}: ${fixedCap - stat.count} surplus seats`,
+          body: `<p>${stat.count} students, fixed capacity ${fixedCap}.</p><ul>${excessNotes.join('')}</ul>${crossNote}`
+        });
+      } else {
+        sections.push({
+          type: 'ok',
+          title: `✓ ${genderName}: capacity matches well`,
+          body: `<p>${stat.count} students, fixed capacity ${fixedCap}.</p>`
+        });
+      }
+    } else if(!dynCols.length){
+      const action = eligible.length
+        ? `Add more fixed benches to an existing ${genderName}/Mixed room, or leave one column's "Benches" field blank to make it dynamic (auto-expanding).`
+        : `No room currently accepts ${genderName} students — add a new ${genderName} or Mixed room.`;
+      sections.push({
+        type: 'critical',
+        title: `✗ ${genderName}: ${deficit} of ${stat.count} students cannot be seated`,
+        body: `<p>${action}</p>`
+      });
+    } else {
+      // Split the leftover students evenly across every dynamic column so rooms
+      // grow together instead of one room absorbing everyone.
+      const share = Math.ceil(deficit / dynCols.length);
+      const parts = dynCols.map(({room,key,col})=>{
+        const benches = Math.ceil(share/col.seats);
+        return `<li>Room ${esc(room.number)} Col ${esc(col.label)}: ~${benches} more benches (~${share} students)</li>`;
+      }).join('');
+      sections.push({
+        type: 'action',
+        title: `➕ ${genderName}: ${deficit} students will auto-balance into dynamic rooms`,
+        body: `<ul>${parts}</ul>`
+      });
+    }
+  });
+
+  // 3. Structural suggestions — flag rooms that can never receive a student.
+  ROOMS.forEach(r=>{
+    const matchCount = STUDENTS.filter(s => r.gender==='Mixed' || s.gender===r.gender).length;
+    if(matchCount === 0){
+      const genderWord = r.gender==='Mixed' ? '' : (r.gender==='M' ? 'Male ' : 'Female ');
+      sections.push({
+        type: 'action',
+        title: `🗑 Room ${esc(r.number)} has no matching students`,
+        body: `<p>No ${genderWord}students to seat here — remove this room or change its gender restriction.</p>`
+      });
+    }
+  });
+
+  box.innerHTML = sections.map(s => `
+    <div class="suggest-card ${s.type}">
+      <div class="suggest-title">${s.title}</div>
+      ${s.body}
+    </div>`).join('');
+}
+
+function compressRanges(rolls){
+  const nums = rolls.map(r=>parseInt(r,10));
+  if(nums.some(n=>isNaN(n))) return [...new Set(rolls)].sort(naturalCmp).join(', ');
+  const sorted = [...new Set(nums)].sort((a,b)=>a-b);
+  const parts = [];
+  let start = sorted[0], prev = sorted[0];
+  for(let i=1; i<=sorted.length; i++){
+    const cur = sorted[i];
+    if(cur === prev+1){ prev = cur; continue; }
+    parts.push(start===prev ? `${start}` : `${start}-${prev}`);
+    start = cur; prev = cur;
+  }
+  return parts.join(', ');
+}
+
+/* ---------------------------------------------------------------------
+   ALLOCATION ENGINE
+--------------------------------------------------------------------- */
+function runAllocation(){
+  parseStudents();
+  parseRooms();
+  const meta = parseMeta();
+  const mode = els.mixingMode.value;
+
+  if(!STUDENTS.length){ alert('Please paste at least one student row.'); return null; }
+  if(!ROOMS.length){ alert('Please configure at least one room.'); return null; }
+
+  // Per-class queues, sorted by roll. Shared & mutated across the whole run so a
+  // student is only ever placed once, and classes interleave continuously across rooms.
+  const classQueues = new Map();
+  STUDENTS.forEach(s=>{
+    if(!classQueues.has(s.class)) classQueues.set(s.class, []);
+    classQueues.get(s.class).push(s);
+  });
+  classQueues.forEach(arr => arr.sort((a,b)=> naturalCmp(a.roll, b.roll)));
+
+  const matches = (s, genderFilter) => genderFilter==='Mixed' || s.gender===genderFilter;
+
+  function availableClasses(genderFilter){
+    return [...classQueues.keys()]
+      .filter(c => classQueues.get(c).some(s=>matches(s, genderFilter)))
+      .sort(naturalCmp);
+  }
+  function takeNext(cls, genderFilter){
+    const arr = classQueues.get(cls);
+    const idx = arr.findIndex(s=>matches(s, genderFilter));
+    return idx===-1 ? null : arr.splice(idx,1)[0];
+  }
+  function poolHasAny(genderFilter){
+    for(const arr of classQueues.values()) if(arr.some(s=>matches(s, genderFilter))) return true;
+    return false;
+  }
+
+  // Side-by-side / zig-zag pick a fixed set of classes for a column (e.g.
+  // bench 1 has Class 6, 7 & 8 -> every bench keeps using 6, 7 & 8) and keep
+  // reusing that same group, bench after bench, until ONE of those classes
+  // runs out for this gender — only then is a fresh group picked for the
+  // rest of the column. groupRotation advances per group (not per seat) so
+  // different columns/rooms still land on different class groupings overall.
+  let groupRotation = 0;
+  const groupCache = new Map(); // colKey -> { classes, startRow } | null
+  // prevBench passed in so that when a new group is picked (on class
+  // exhaustion), we try different starting offsets until the new group's
+  // first-row rotation doesn't repeat the classes that are directly above
+  // in the previous bench — preventing vertical duplicates at group boundaries.
+  function getClassGroup(colKey, genderFilter, seatsPerBench, row, prevBench){
+    if(mode === 'sequential') return null;
+    const cached = groupCache.get(colKey);
+    const stillValid = cached && cached.classes.every(cls=>{
+      const arr = classQueues.get(cls);
+      return arr && arr.some(s=>matches(s, genderFilter));
+    });
+    if(stillValid) return cached;
+
+    const avail = availableClasses(genderFilter);
+    if(!avail.length){ groupCache.set(colKey, null); return null; }
+    const n = avail.length;
+    let chosenOffset = 0;
+    for(let attempt=0; attempt<n; attempt++){
+      const start = (groupRotation + attempt) % n;
+      const candidateClasses = [];
+      for(let s=0; s<seatsPerBench; s++) candidateClasses.push(avail[(start+s)%n]);
+      // For the new group's first bench (localRow=0), the zigzag rotation gives
+      // idx=seat, so class at seat s = candidateClasses[s]. Check this against
+      // prevBench to avoid repeating directly-above classes at group switch time.
+      const conflictsAbove = prevBench && candidateClasses.some((cls, s)=>{
+        const pb = prevBench[s];
+        return pb && pb.class === cls;
+      });
+      chosenOffset = attempt;
+      if(!conflictsAbove) break;
+    }
+    const start = (groupRotation + chosenOffset) % n;
+    const classes = [];
+    for(let s=0; s<seatsPerBench; s++) classes.push(avail[(start+s)%n]);
+    groupRotation += chosenOffset + seatsPerBench;
+    const entry = { classes, startRow: row };
+    groupCache.set(colKey, entry);
+    return entry;
+  }
+
+  // result[i].columns[ci] = array-of-benches for room i, column ci
+  const result = ROOMS.map(r => ({ room: r, columns: r.columns.map(()=>[]) }));
+
+  function getGlobalOffset(rIdx, cIdx, colDataLength) {
+    const r = ROOMS[rIdx];
+    const maxBenchesInRoom = Math.max(...r.columns.map((col, idx) => {
+      if (col.benches !== null) return col.benches;
+      const data = result[rIdx].columns[idx];
+      return data ? data.length : 0;
+    }), 0);
+    
+    const colCfg = r.columns[cIdx];
+    if (colCfg.align === 'bottom') {
+      return maxBenchesInRoom - colDataLength;
+    } else if (colCfg.align === 'offset') {
+      return colCfg.alignOffset || 0;
+    }
+    return 0;
+  }
+
+  function getAdjacentColumnClasses(rIdx, cIdx, row, globalOffset){
+    const classes = new Set();
+    if (cIdx === 0) return classes;
+    
+    const prevColCfg = ROOMS[rIdx].columns[cIdx - 1];
+    const prevColData = result[rIdx].columns[cIdx - 1];
+    if (!prevColData || !prevColData.length) return classes;
+    
+    let prevGlobalOffset = 0;
+    const maxBenchesInRoom = Math.max(...ROOMS[rIdx].columns.map((col, idx) => {
+      if (col.benches !== null) return col.benches;
+      const data = result[rIdx].columns[idx];
+      return data ? data.length : 0;
+    }), 0);
+    
+    if (prevColCfg.align === 'bottom') {
+      prevGlobalOffset = maxBenchesInRoom - prevColData.length;
+    } else if (prevColCfg.align === 'offset') {
+      prevGlobalOffset = prevColCfg.alignOffset || 0;
+    }
+    
+    const globalRow = globalOffset + row;
+    const prevBenchIdx = globalRow - prevGlobalOffset;
+    if (prevBenchIdx >= 0 && prevBenchIdx < prevColData.length) {
+      const prevBench = prevColData[prevBenchIdx];
+      if (prevBench) {
+        prevBench.forEach(s => {
+          if (s && s.class) classes.add(s.class);
+        });
+      }
+    }
+    return classes;
+  }
+
+  // Builds one whole bench's seats together (rather than seat-by-seat) so
+  // that if a class runs dry mid-bench, the fallback can see what's already
+  // been seated in THIS bench and avoid repeating it — otherwise a transient
+  // exhaustion could seat the same class twice, side by side.
+  // prevBench: the bench immediately above (same column), or null if this is
+  // the first bench. Used to enforce vertical adjacency (zig-zag: the class
+  // directly below should differ from the class directly above).
+  function fillBenchSeats(genderFilter, classGroup, seatsPerBench, row, prevBench, rIdx, cIdx, globalOffset){
+    const seats = [];
+    
+    // Get classes seated in the adjacent column at the same global row
+    const adjacentClasses = (rIdx !== undefined && cIdx > 0)
+      ? getAdjacentColumnClasses(rIdx, cIdx, row, globalOffset)
+      : new Set();
+
+    for(let seat=0; seat<seatsPerBench; seat++){
+      let student = null;
+      if(mode === 'sequential'){
+        const classes = availableClasses(genderFilter);
+        if(classes.length) student = takeNext(classes[0], genderFilter); // smallest class first
+      } else if(classGroup && classGroup.classes.length){
+        // Zig-zag rotates the group by one position every row, counted from
+        // when THIS group started: "6 7 8" then "8 6 7" then "7 8 6" ... (a
+        // pair gives "6 7" then "7 6"). Side-by-side keeps the same order.
+        const n = classGroup.classes.length;
+        const localRow = row - classGroup.startRow;
+        const idx = (mode === 'zigzag') ? (((seat - localRow) % n) + n) % n : seat;
+        const candidateClass = classGroup.classes[idx];
+        
+        // If the candidate class matches an adjacent column class at the same row,
+        // try to find an alternative class that avoids this side-by-side conflict.
+        if (adjacentClasses.has(candidateClass)) {
+          const avail = availableClasses(genderFilter);
+          const nonClashing = avail.filter(c => !adjacentClasses.has(c) && c !== (prevBench && prevBench[seat] ? prevBench[seat].class : null));
+          if (nonClashing.length > 0) {
+            student = takeNext(nonClashing[0], genderFilter);
+          }
+        }
+        
+        if(!student) {
+          student = takeNext(candidateClass, genderFilter);
+        }
+      }
+      if(!student){
+        // Fallback when the assigned class ran out (or no group): pick the
+        // best available class that avoids neighbour clashes:
+        //   1. Horizontal — don't repeat a class already in THIS bench.
+        //   2. Vertical   - don't repeat the class directly above.
+        //   3. Side-by-Side - don't repeat a class seated in the adjacent column.
+        const usedHere = new Set(seats.filter(Boolean).map(s=>s.class));
+        const aboveClass = prevBench && prevBench[seat] ? prevBench[seat].class : null;
+        const classes = availableClasses(genderFilter);
+        
+        const avoidAll = classes.filter(c => !usedHere.has(c) && c !== aboveClass && !adjacentClasses.has(c));
+        const avoidHorizVert = avoidAll.length ? avoidAll : classes.filter(c => !usedHere.has(c) && c !== aboveClass);
+        const avoidHoriz = avoidHorizVert.length ? avoidHorizVert : classes.filter(c => !usedHere.has(c));
+        const pool = avoidHoriz.length ? avoidHoriz : classes;
+        if(pool.length) student = takeNext(pool[0], genderFilter);
+      }
+      seats.push(student);
+    }
+    return seats;
+  }
+
+  function fillColumn(colCfg, genderFilter, benchCount, colKey, rIdx, cIdx, globalOffset){
+    const benches = [];
+    for(let row=0; row<benchCount; row++){
+      const prev = row > 0 ? benches[row-1] : null;
+      const group = getClassGroup(colKey, genderFilter, colCfg.seats, row, prev);
+      benches.push(fillBenchSeats(genderFilter, group, colCfg.seats, row, prev, rIdx, cIdx, globalOffset));
+    }
+    return benches;
+  }
+
+  // Pass 1: fixed-size columns get filled first, in room order.
+  ROOMS.forEach((r, i) => {
+    r.columns.forEach((col, ci) => {
+      if(col.benches !== null) {
+        const offset = getGlobalOffset(i, ci, col.benches);
+        result[i].columns[ci] = fillColumn(col, r.gender, col.benches, `${i}-${ci}`, i, ci, offset);
+      }
+    });
+  });
+
+  // Pass 2: dynamic columns grow one bench at a time in round-robin order.
+  const dynamicTargets = [];
+  ROOMS.forEach((r, i) => {
+    r.columns.forEach((col, ci) => {
+      if(col.benches === null) dynamicTargets.push({i, ci, room:r, col});
+    });
+  });
+  let grew = dynamicTargets.length > 0;
+  let guard = 0;
+  while(grew && guard < 5000){
+    guard++;
+    grew = false;
+    dynamicTargets.forEach(({i, ci, room, col})=>{
+      if(!poolHasAny(room.gender)) return;
+      const colData = result[i].columns[ci];
+      const row = colData.length;
+      const prevBench = row > 0 ? colData[row-1] : null;
+      const offset = getGlobalOffset(i, ci, row + 1);
+      const group = getClassGroup(`${i}-${ci}`, room.gender, col.seats, row, prevBench);
+      colData.push(fillBenchSeats(room.gender, group, col.seats, row, prevBench, i, ci, offset));
+      grew = true;
+    });
+  }
+
+  const unassigned = [];
+  classQueues.forEach(arr => unassigned.push(...arr));
+
+  return { rooms: result, unassigned, meta, mode };
+}
+
+/* ---------------------------------------------------------------------
+   RENDER: TOKENS
+--------------------------------------------------------------------- */
+function buildTokenFlat(order){
+  const raw = [];
+  RESULT.rooms.forEach(rr=>{
+    rr.columns.forEach(col=>col.forEach(bench=>bench.forEach(s=>{
+      if(s) raw.push({student:s, room:rr.room.number});
+    })));
+  });
+  if(order === 'classwise'){
+    // Global: all Class 6 (by roll), then Class 7, etc. — useful for class teachers.
+    raw.sort((a,b)=> naturalCmp(a.student.class, b.student.class) || naturalCmp(a.student.roll, b.student.roll));
+  } else if(order === 'roomroll'){
+    // Group by room (preserve UI table order), within room sort by roll number.
+    raw.sort((a,b)=>{
+      const ri = x => RESULT.rooms.findIndex(r=>r.room.number===x.room);
+      return ri(a)-ri(b) || naturalCmp(a.student.roll, b.student.roll);
+    });
+  } else if(order === 'roomclasswise'){
+    // Group by room, then by class, then by roll — class-organised stacks per room.
+    raw.sort((a,b)=>{
+      const ri = x => RESULT.rooms.findIndex(r=>r.room.number===x.room);
+      return ri(a)-ri(b) || naturalCmp(a.student.class, b.student.class) || naturalCmp(a.student.roll, b.student.roll);
+    });
+  }
+  // 'roomseat' = default forEach order already in room → colA bench/seat → colB bench/seat.
+  return raw;
+}
+
+function renderTokens(){
+  const out = document.getElementById('tokensOutput');
+  out.innerHTML = '';
+  const order = (document.getElementById('tokenOrder')||{}).value || 'roomseat';
+  const flat = buildTokenFlat(order);
+
+  const meta = RESULT.meta;
+  const perPage = 30;
+  for(let i=0; i<flat.length; i+=perPage){
+    const chunk = flat.slice(i, i+perPage);
+    const page = document.createElement('div');
+    page.className = 'page';
+    const grid = document.createElement('div');
+    grid.className = 'token-page';
+    chunk.forEach(({student, room})=>{
+      const t = document.createElement('div');
+      t.className = 'token';
+      t.innerHTML = `
+        <div class="t-org">${esc(meta.school)}</div>
+        <div class="t-exam">${esc(meta.exam)}</div>
+        <div class="t-name">${esc(student.name)}</div>
+        <div class="t-line">${classPrefix(meta)}<b>${esc(student.class)}</b> &middot; Roll <b>${esc(student.roll)}</b> &middot; Room <b>${esc(room)}</b></div>`;
+      grid.appendChild(t);
+    });
+    page.appendChild(grid);
+    out.appendChild(page);
+  }
+  if(!flat.length) out.innerHTML = '<p class="card">No students were allocated.</p>';
+  autoFitEach('#tokensOutput .token .t-name', FONTS.tkName, 6, 'pt', 'bold');
+}
+
+/* ---------------------------------------------------------------------
+   RENDER: ROOM PLANS
+--------------------------------------------------------------------- */
+function renderRoomPlans(){
+  const out = document.getElementById('roomsOutput');
+  out.innerHTML = '';
+  const meta = RESULT.meta;
+
+  RESULT.rooms.forEach(rr=>{
+    // Per-class roll list + count for the room summary line (after instructions).
+    const classData = new Map(); // class → {count, rolls[]}
+    rr.columns.forEach(col=>col.forEach(bench=>bench.forEach(s=>{
+      if(!s) return;
+      if(!classData.has(s.class)) classData.set(s.class, {count:0, rolls:[]});
+      const d = classData.get(s.class);
+      d.count++; d.rolls.push(s.roll);
+    })));
+    const classKeys = [...classData.keys()].sort(naturalCmp);
+    const totalStudents = [...classData.values()].reduce((a,d)=>a+d.count, 0);
+    const summaryHtml = classKeys.length
+      ? `<div class="room-summary">`
+        + classKeys.map(c=>{
+            const {count,rolls} = classData.get(c);
+            return `${classPrefix(meta)}${esc(c)}: ${esc(compressRanges(rolls))} <b>(${count})</b>`;
+          }).join(' &nbsp;·&nbsp; ')
+        + ` &nbsp;|&nbsp; Total: <b>${totalStudents}</b></div>`
+      : '';
+
+    const benchesPerPage = 10;
+    const maxBenchesInRoom = Math.max(...rr.columns.map(col => col.length), 0);
+    const numPages = Math.ceil(maxBenchesInRoom / benchesPerPage) || 1;
+
+    for (let pageIdx = 0; pageIdx < numPages; pageIdx++) {
+      const page = document.createElement('div');
+      page.className = 'page';
+
+      const header = document.createElement('div');
+      header.innerHTML = `
+        <div class="sheet-header">
+          ${meta.logo ? `<img class="sheet-logo" src="${esc(meta.logo)}">` : ''}
+          <div class="head-text">
+            <div class="school">${esc(meta.school)}</div>
+            <div class="exam">${esc(meta.exam)} ${meta.date ? '— '+esc(meta.date) : ''}</div>
+          </div>
+        </div>
+        <div class="room-title">Room ${esc(rr.room.number)}${numPages > 1 ? ` (Page ${pageIdx + 1} of ${numPages})` : ''}</div>
+        ${instructionsBlockHtml(meta)}
+        ${summaryHtml}`;
+      page.appendChild(header);
+
+      const layout = document.createElement('div');
+      layout.className = 'room-layout';
+      rr.room.columns.forEach((colCfg, ci)=>{
+        const colBenches = rr.columns[ci] || [];
+        
+        let globalOffset = 0;
+        if (colCfg.align === 'bottom') {
+          globalOffset = maxBenchesInRoom - colBenches.length;
+        } else if (colCfg.align === 'offset') {
+          globalOffset = colCfg.alignOffset || 0;
+        }
+
+        const pageBenches = [];
+        let firstBenchIdx = -1;
+        colBenches.forEach((bench, i) => {
+          const globalRow = globalOffset + i;
+          const benchPageIdx = Math.floor(globalRow / benchesPerPage);
+          if (benchPageIdx === pageIdx) {
+            pageBenches.push(bench);
+            if (firstBenchIdx === -1) {
+              firstBenchIdx = i;
+            }
+          }
+        });
+
+        let pageOffset = 0;
+        if (pageBenches.length > 0) {
+          pageOffset = (globalOffset + firstBenchIdx) % benchesPerPage;
+        }
+
+        const startIdx = firstBenchIdx === -1 ? 0 : firstBenchIdx;
+        layout.appendChild(buildColumnEl(colCfg, pageBenches, startIdx, pageOffset));
+      });
+      page.appendChild(layout);
+
+      const sign = document.createElement('div');
+      sign.className = 'sign-row';
+      sign.innerHTML = meta.signatures.map(s=>`<div><div class="sign-line"></div>${esc(s)}</div>`).join('');
+      page.appendChild(sign);
+
+      out.appendChild(page);
+    }
+  });
+
+  if(!RESULT.rooms.length) out.innerHTML = '<p class="card">No rooms configured.</p>';
+
+  function buildColumnEl(colCfg, benches, startIndex, pageOffset){
+    const wrap = document.createElement('div');
+    wrap.className = 'room-col';
+    wrap.style.flex = colCfg.seats;
+    const h = document.createElement('h3');
+    h.textContent = colCfg.label ? `Column ${colCfg.label}` : 'Column';
+    wrap.appendChild(h);
+    const bw = document.createElement('div');
+    
+    // Apply column alignment via CSS class based on pageOffset
+    if(pageOffset > 0){
+      bw.className = `bench-stack align-offset-${pageOffset}`;
+    } else {
+      bw.className = 'bench-stack';
+    }
+
+    benches.forEach((seats, idx)=>{
+      const bench = document.createElement('div');
+      bench.className = 'bench';
+      const no = document.createElement('span'); no.className='bench-no'; no.textContent = 'B'+(startIndex + idx + 1);
+      bench.appendChild(no);
+      const seatsWrap = document.createElement('div'); seatsWrap.className = 'bench-seats';
+      seats.forEach(student=>{
+        const seat = document.createElement('div');
+        if(student){
+          seat.className = 'seat';
+          seat.innerHTML = `<span class="s-roll">${esc(student.roll)}</span><span class="s-class">${classPrefix(meta)}${esc(student.class)}</span><span class="s-name">${esc(student.name)}</span>`;
+        } else {
+          seat.className = 'seat empty';
+          seat.textContent = 'Empty';
+        }
+        seatsWrap.appendChild(seat);
+      });
+      bench.appendChild(seatsWrap);
+      bw.appendChild(bench);
+    });
+    wrap.appendChild(bw);
+    return wrap;
+  }
+  autoFitEach('#roomsOutput .seat .s-name', FONTS.rmName, 4.5, 'pt', 'normal');
+}
+
+/* ---------------------------------------------------------------------
+   RENDER: SUMMARY
+--------------------------------------------------------------------- */
+let SUMMARY_ROWS = null;
+
+function renderSummary(){
+  const meta = RESULT.meta;
+  const roomRows = RESULT.rooms.map(rr=>{
+    const byClass = new Map();
+    rr.columns.forEach(col=>col.forEach(bench=>bench.forEach(s=>{
+      if(!s) return;
+      if(!byClass.has(s.class)) byClass.set(s.class, []);
+      byClass.get(s.class).push(s.roll);
+    })));
+    const classKeys = [...byClass.keys()].sort(naturalCmp);
+    const total = classKeys.reduce((sum,c)=>sum+byClass.get(c).length, 0);
+    const rollsHtml = classKeys.length
+      ? classKeys.map(c=>{
+          const rolls = byClass.get(c);
+          return `<div class="summary-class-row">`
+            + `<span class="class-name"><b>${classPrefix(meta)}${esc(c)}</b></span>`
+            + `<span class="divider">|</span>`
+            + `<span class="class-rolls">Rolls: ${esc(compressRanges(rolls))}</span>`
+            + `<span class="divider">|</span>`
+            + `<span class="class-count">Total: ${rolls.length}</span>`
+            + `</div>`;
+        }).join('')
+      : '<span style="color:var(--muted); padding: 8px 12px; display: block;">(none)</span>';
+    return { number: rr.room.number, total, rollsHtml };
+  });
+  const grandTotal = roomRows.reduce((sum,r)=>sum+r.total, 0);
+  SUMMARY_ROWS = { rows: roomRows, grandTotal, meta };
+
+  const out = document.getElementById('summaryOutput');
+  out.innerHTML = '';
+  out.appendChild(buildSummaryPage(roomRows, grandTotal, meta));
+}
+
+function buildSummaryPage(rows, grandTotal, meta){
+  const page = document.createElement('div');
+  page.className = 'page';
+  page.innerHTML = `
+    <div class="sheet-header">
+      ${meta.logo ? `<img class="sheet-logo" src="${esc(meta.logo)}">` : ''}
+      <div class="head-text">
+        <div class="school">${esc(meta.school)}</div>
+        <div class="exam">${esc(meta.exam)} ${meta.date ? '— '+esc(meta.date) : ''}</div>
+        <div class="exam">Overall Seat Allocation Summary</div>
+      </div>
+    </div>
+    <table class="summary-table">
+      <thead><tr><th>Room</th><th>Total</th><th>Roll Numbers (by Class)</th></tr></thead>
+      <tbody>${rows.map(r=>`<tr><td>${esc(r.number)}</td><td>${r.total}</td><td class="rolls-cell">${r.rollsHtml}</td></tr>`).join('')}</tbody>
+      <tfoot><tr><td>Total</td><td>${grandTotal}</td><td></td></tr></tfoot>
+    </table>
+    ${instructionsBlockHtml(meta)}
+    <div class="sign-row">${meta.signatures.map(s=>`<div><div class="sign-line"></div>${esc(s)}</div>`).join('')}</div>`;
+  return page;
+}
+
+/* ---------------------------------------------------------------------
+   If the room list is too long, the single page built by renderSummary()
+   overflows. Measure it (only possible once the tab is actually visible)
+   and, if needed, re-split the same rows across multiple pages — each one
+   repeating the header, instructions and signatures, same as Room Plans.
+--------------------------------------------------------------------- */
+function fitSummaryPages(){
+  if(!SUMMARY_ROWS) return;
+  const { rows, grandTotal, meta } = SUMMARY_ROWS;
+  const out = document.getElementById('summaryOutput');
+
+  out.innerHTML = '';
+  out.appendChild(buildSummaryPage(rows, grandTotal, meta));
+  const page = out.firstElementChild;
+  const pageRect = page.getBoundingClientRect();
+  if(!pageRect.width) return;
+
+  const pxPerMm = pageRect.width / 210;
+  const bottomBudgetPx = pageRect.top + (297 - 12) * pxPerMm;
+
+  const tbody = page.querySelector('tbody');
+  const trs = [...tbody.children];
+  if(trs.length < 2) return;
+
+  const instr = page.querySelector('.instructions-box');
+  const signRow = page.querySelector('.sign-row');
+  const footerPx = (instr ? instr.offsetHeight + 20 : 0) + (signRow ? signRow.offsetHeight : 0) + 20;
+
+  const lastRowBottom = trs[trs.length-1].getBoundingClientRect().bottom;
+  if(lastRowBottom + footerPx <= bottomBudgetPx) return; // already fits on one page
+
+  const headerBottom = page.querySelector('thead').getBoundingClientRect().bottom;
+  const avgRowHeight = (lastRowBottom - headerBottom) / trs.length;
+  const usable = bottomBudgetPx - footerPx - headerBottom;
+  const perPage = Math.max(1, Math.floor(usable / avgRowHeight));
+
+  const chunks = [];
+  for(let i=0; i<rows.length; i+=perPage) chunks.push(rows.slice(i, i+perPage));
+
+  out.innerHTML = '';
+  chunks.forEach(chunk => out.appendChild(buildSummaryPage(chunk, grandTotal, meta)));
+}
+
+function esc(str){
+  return String(str).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+/* ---------------------------------------------------------------------
+   GENERATE
+--------------------------------------------------------------------- */
+document.getElementById('generateBtn').addEventListener('click', ()=>{
+  const result = runAllocation();
+  if(!result) return;
+  RESULT = result;
+  renderTokens();
+  renderRoomPlans();
+  renderSummary();
+  localStorage.setItem('seatplan_data', JSON.stringify(RESULT));
+
+  document.querySelectorAll('#tabNav button').forEach(b=>{ if(b.dataset.tab!=='setup') b.disabled=false; });
+  els.genStatus.style.display='inline-block';
+  els.genStatus.textContent = `Generated: ${result.rooms.reduce((a,r)=>a+r.columns.flat(2).filter(Boolean).length,0)} of ${STUDENTS.length} students seated`;
+  switchTab('summary');
+});
+
+// Detect edits made in seatplanroomui.html and re-render the output tabs.
+window.addEventListener('storage', e=>{
+  if(e.key !== 'seatplan_data' || !e.newValue) return;
+  try{
+    const data = JSON.parse(e.newValue);
+    if(!data || !data.rooms) return;
+    RESULT = data;
+    renderTokens(); renderRoomPlans(); renderSummary();
+    syncSetupFieldsFromRESULT();
+    
+    // Also save the newly synced rooms into the draft rooms list so they persist!
+    const syncedRooms = RESULT.rooms.map(rr => rr.room);
+    localStorage.setItem('seatplan_draft_rooms', JSON.stringify(syncedRooms));
+
+    document.querySelectorAll('#tabNav button').forEach(b=>{ if(b.dataset.tab!=='setup') b.disabled=false; });
+    els.genStatus.style.display='inline-block';
+    els.genStatus.textContent = 'Updated from Room Editor';
+  } catch(_){}
+});
+
+function syncSetupFieldsFromRESULT(){
+  if(!RESULT) return;
+
+  // 1. Metadata
+  if(RESULT.meta){
+    const meta = RESULT.meta;
+    if(meta.school !== undefined) els.metaSchool.value = meta.school;
+    if(meta.exam !== undefined) els.metaExam.value = meta.exam;
+    if(meta.logo !== undefined) els.metaLogo.value = meta.logo;
+    if(meta.date !== undefined) els.metaDate.value = meta.date;
+    if(meta.instructionLines !== undefined) els.metaInstructions.value = meta.instructionLines.join('\n');
+    if(meta.instructionsLabel !== undefined) els.metaInstructionsLabel.value = meta.instructionsLabel;
+    if(meta.classLabel !== undefined) els.metaClassLabel.value = meta.classLabel;
+    if(meta.signatures !== undefined) els.metaSignatures.value = meta.signatures.join(', ');
+  }
+
+  // 2. Mode
+  if(RESULT.mode){
+    els.mixingMode.value = RESULT.mode;
+  }
+
+  // 3. Students
+  const allStudents = [];
+  if(RESULT.rooms){
+    RESULT.rooms.forEach(rr=>{
+      rr.columns.forEach(col=>{
+        col.forEach(bench=>{
+          bench.forEach(student=>{
+            if(student) allStudents.push(student);
+          });
+        });
+      });
+    });
+  }
+  if(RESULT.unassigned){
+    allStudents.push(...RESULT.unassigned);
+  }
+  // Sort naturally by class, then roll
+  allStudents.sort((a,b)=> naturalCmp(a.class,b.class) || naturalCmp(a.roll,b.roll));
+  
+  if(allStudents.length){
+    const lines = ['Class\tRoll\tName\tGender'];
+    allStudents.forEach(s=>{
+      lines.push(`${s.class}\t${s.roll}\t${s.name}\t${s.gender}`);
+    });
+    els.studentsInput.value = lines.join('\n');
+  }
+
+  // Parse and update local parsed students list and pill counter
+  parseStudents();
+  els.studentCountPill.textContent = STUDENTS.length + ' students parsed';
+
+  // 4. Room Configuration Cards
+  if(RESULT.rooms && RESULT.rooms.length){
+    els.roomsContainer.innerHTML = '';
+    RESULT.rooms.forEach(rr=>{
+      rr.columns.forEach((col, ci) => {
+        if (rr.room.columns[ci]) {
+          rr.room.columns[ci].benches = col.length;
+        }
+      });
+      addRoomCard(rr.room);
+    });
+  }
+  updateRoomSuggestions();
+}
+
+/* ---------------------------------------------------------------------
+   INIT
+ --------------------------------------------------------------------- */
+addRoomCard({number:'111', gender:'F', columns:[{label:'A',benches:7,seats:3,align:'top',alignOffset:0},{label:'B',benches:7,seats:3,align:'top',alignOffset:0}]});
+addRoomCard({number:'112', gender:'M', columns:[{label:'A',benches:'',seats:2,align:'top',alignOffset:0},{label:'B',benches:'',seats:2,align:'top',alignOffset:0}]});
+addRoomCard({number:'110', gender:'M', columns:[{label:'A',benches:10,seats:3,align:'top',alignOffset:0},{label:'B',benches:'',seats:2,align:'top',alignOffset:0}]});
+els.studentsInput.value = buildDemoStudents();
+refreshStudentCount();
+
+// Restore last session from localStorage (generated by this page or edited in Room Editor).
+(function restoreSession(){
+  try{
+    const raw = localStorage.getItem('seatplan_data');
+    if(raw) {
+      const data = JSON.parse(raw);
+      if(data && data.rooms) {
+        RESULT = data;
+        renderTokens(); renderRoomPlans(); renderSummary();
+        syncSetupFieldsFromRESULT();
+        document.querySelectorAll('#tabNav button').forEach(b=>{ if(b.dataset.tab!=='setup') b.disabled=false; });
+        els.genStatus.style.display='inline-block';
+        els.genStatus.textContent = 'Restored from last session';
+      }
+    }
+
+    // Explicitly restore draft room configurations if they exist, overwriting setup inputs
+    const draftRoomsRaw = localStorage.getItem('seatplan_draft_rooms');
+    if (draftRoomsRaw) {
+      const draftRooms = JSON.parse(draftRoomsRaw);
+      if (draftRooms && draftRooms.length) {
+        els.roomsContainer.innerHTML = '';
+        draftRooms.forEach(r => addRoomCard(r));
+        updateRoomSuggestions();
+      }
+    }
+  } catch(_){}
+})();
+  
+  function compactLayout(){
+    if (!RESULT || !RESULT.rooms || !RESULT.rooms.length) {
+      alert('Please generate a seat plan first.');
+      return;
+    }
+    
+    RESULT.rooms.forEach((rr, rIdx) => {
+      const roomStudents = [];
+      rr.columns.forEach((col) => {
+        col.forEach((bench) => {
+          bench.forEach(s => {
+            if (s) roomStudents.push(s);
+          });
+        });
+      });
+      
+      // Clear columns
+      rr.columns = rr.room.columns.map(() => []);
+      
+      const r = rr.room;
+      
+      // Fill row-by-row
+      let sIdx = 0;
+      while (sIdx < roomStudents.length) {
+        let placedInThisRow = false;
+        for (let ci = 0; ci < rr.columns.length; ci++) {
+          if (sIdx >= roomStudents.length) break;
+          const seats = r.columns[ci].seats;
+          const bench = new Array(seats).fill(null);
+          let seatsFilled = 0;
+          for (let si = 0; si < seats; si++) {
+            if (sIdx < roomStudents.length) {
+              bench[si] = roomStudents[sIdx++];
+              seatsFilled++;
+              placedInThisRow = true;
+            }
+          }
+          if (seatsFilled > 0) {
+            rr.columns[ci].push(bench);
+          }
+        }
+        if (!placedInThisRow) break;
+      }
+    });
+    
+    // Save to storage
+    localStorage.setItem('seatplan_data', JSON.stringify(RESULT));
+    
+    // Rerender all views
+    renderRoomPlans();
+    renderTokens();
+    renderSummary();
+    syncSetupFieldsFromRESULT();
+    
+    alert('Successfully compacted layout: filled empty seats and removed empty benches.');
+  }
+
+  document.getElementById('compactBtn').addEventListener('click', compactLayout);
+
+  function clearCache(){
+    if(!confirm('Are you sure you want to clear all cached seat plans, room configurations, and reset the application? This cannot be undone.')) return;
+    localStorage.removeItem('seatplan_data');
+    localStorage.removeItem('seatplan_draft_rooms');
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const key = localStorage.key(i);
+      if (key && (key.startsWith('seatplan') || key.startsWith('agy'))) {
+        localStorage.removeItem(key);
+      }
+    }
+    alert('Cache cleared successfully! Reloading...');
+    window.location.reload();
+  }
+  document.getElementById('clearCacheBtn').addEventListener('click', clearCache);
+
+/* ---------------------------------------------------------------------
+   FONT SETTINGS
+--------------------------------------------------------------------- */
+const FONT_MAP = [
+  {id:'fs-tk-org',     fv:'fv-tk-org',     key:'tkOrg',      unit:'pt'},
+  {id:'fs-tk-exam',    fv:'fv-tk-exam',    key:'tkExam',     unit:'pt'},
+  {id:'fs-tk-name',    fv:'fv-tk-name',    key:'tkName',     unit:'pt'},
+  {id:'fs-tk-line',    fv:'fv-tk-line',    key:'tkLine',     unit:'pt'},
+  {id:'fs-rm-school',  fv:'fv-rm-school',  key:'rmSchool',   unit:'px'},
+  {id:'fs-rm-examline',fv:'fv-rm-examline',key:'rmExamLine', unit:'px'},
+  {id:'fs-rm-title',   fv:'fv-rm-title',   key:'rmTitle',    unit:'px'},
+  {id:'fs-rm-benchno', fv:'fv-rm-benchno', key:'rmBenchNo',  unit:'pt'},
+  {id:'fs-rm-roll',    fv:'fv-rm-roll',    key:'rmRoll',     unit:'pt'},
+  {id:'fs-rm-cls',     fv:'fv-rm-cls',     key:'rmCls',      unit:'pt'},
+  {id:'fs-rm-name',    fv:'fv-rm-name',    key:'rmName',     unit:'pt'},
+  {id:'fs-sm-table',   fv:'fv-sm-table',   key:'smTable',    unit:'px'},
+  {id:'fs-instr',      fv:'fv-instr',      key:'instrSize',  unit:'px'},
+  {id:'fs-sign',       fv:'fv-sign',       key:'signSize',   unit:'px'},
+];
+
+const CSS_VAR_MAP = {
+  tkOrg:'--tk-org', tkExam:'--tk-exam', tkName:'--tk-name', tkLine:'--tk-line',
+  rmSchool:'--rm-school', rmExamLine:'--rm-exam-line', rmTitle:'--rm-title',
+  rmBenchNo:'--rm-bench-no', rmRoll:'--rm-roll', rmCls:'--rm-cls', rmName:'--rm-name',
+  smTable:'--sm-table', instrSize:'--instr-size', signSize:'--sign-size',
+};
+
+function applyFontCSS(){
+  const root = document.documentElement.style;
+  root.setProperty('--print-font', FONTS.family);
+  FONT_MAP.forEach(({key, unit}) => {
+    root.setProperty(CSS_VAR_MAP[key], FONTS[key] + unit);
+  });
+}
+
+function syncFontUI(){
+  document.getElementById('fontFamily').value = FONTS.family;
+  FONT_MAP.forEach(({id, fv, key, unit}) => {
+    const el = document.getElementById(id);
+    const vEl = document.getElementById(fv);
+    if(el){ el.value = FONTS[key]; }
+    if(vEl){ vEl.textContent = FONTS[key] + unit; }
+  });
+}
+
+function saveFontSettings(){
+  localStorage.setItem('seatplan_fonts', JSON.stringify(FONTS));
+}
+
+function rerunAutoFit(){
+  const activeTab = document.querySelector('#tabNav button.active');
+  if(activeTab) switchTab(activeTab.dataset.tab);
+}
+
+document.getElementById('fontFamily').addEventListener('change', function(){
+  FONTS.family = this.value;
+  applyFontCSS();
+  saveFontSettings();
+  rerunAutoFit();
+});
+
+FONT_MAP.forEach(({id, fv, key, unit}) => {
+  const el = document.getElementById(id);
+  if(!el) return;
+  el.addEventListener('input', function(){
+    FONTS[key] = parseFloat(this.value);
+    const vEl = document.getElementById(fv);
+    if(vEl) vEl.textContent = FONTS[key] + unit;
+    applyFontCSS();
+    saveFontSettings();
+    rerunAutoFit();
+  });
+});
+
+document.getElementById('fontResetBtn').addEventListener('click', ()=>{
+  FONTS = Object.assign({}, FONT_DEFAULTS);
+  applyFontCSS();
+  syncFontUI();
+  saveFontSettings();
+  rerunAutoFit();
+});
+
+// Restore saved font settings or apply defaults
+(function initFonts(){
+  try{
+    const raw = localStorage.getItem('seatplan_fonts');
+    if(raw){
+      const saved = JSON.parse(raw);
+      if(saved) FONTS = Object.assign({}, FONT_DEFAULTS, saved);
+    }
+  } catch(_){}
+  applyFontCSS();
+  syncFontUI();
+})();
+
+})();
+</script>
+</body>
+</html>

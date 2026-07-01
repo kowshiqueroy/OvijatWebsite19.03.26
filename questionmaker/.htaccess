@@ -1,0 +1,8 @@
+# Protect SQLite DB and font files listing
+Options -Indexes
+
+<FilesMatch "\.(sqlite|db)$">
+    Order Allow,Deny
+    Deny from all
+</FilesMatch>
+

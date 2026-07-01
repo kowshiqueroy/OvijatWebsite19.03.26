@@ -1,0 +1,193 @@
+/* Shared paper rendering: used both for the on-screen live preview
+   (scaled inside .paper-page) and the real print output (view.php). */
+
+/* Bundled Unicode-compatible Bangla fonts (assets/fonts/). Legacy ANSI/Bijoy-encoded
+   fonts like SutonnyMJ are intentionally not offered here — they don't have Unicode
+   Bangla glyphs, so they can't render the Unicode Bangla text this app stores. */
+@font-face {
+    font-family: "Kalpurush";
+    src: url("../fonts/Kalpurush.ttf") format("truetype");
+    font-weight: normal;
+    font-style: normal;
+}
+@font-face {
+    font-family: "Siyam Rupali";
+    src: url("../fonts/SiyamRupali.ttf") format("truetype");
+    font-weight: normal;
+    font-style: normal;
+}
+@font-face {
+    font-family: "SutonnyUniBanglaOMJ";
+    src: url("../fonts/SutonnyUniBanglaOMJ.ttf") format("truetype");
+    font-weight: normal;
+    font-style: normal;
+}
+
+.paper-page {
+    /* --page-margin/--gap-margin/--base-font-size/--line-height/--para-spacing are
+       NOT redeclared here on purpose — they're set by JS on the ancestor .pages-stack
+       so the user's Print & Page Settings actually reach every page. Redeclaring them
+       here (even with the "same" default values) would shadow the inherited ones and
+       silently ignore every setting, since a custom property declared on an element
+       always wins over one merely inherited from an ancestor. */
+    --pw: 210mm;
+    --ph: 297mm;
+
+    /* border-box is essential here: with the default content-box, `padding`
+       is added OUTSIDE `width`, so the real page would render ~2x the margin
+       wider/taller than the intended A4/Legal size (overflowing the physical
+       sheet when actually printed), AND render.js's pagination math (which
+       assumes content width = pw - 2*margin) would measure text at a
+       narrower width than it actually gets, wrapping more than reality and
+       leaving unnecessary gaps at the bottom of every page. */
+    box-sizing: border-box;
+    width: var(--pw);
+    min-height: var(--ph);
+    padding: var(--page-margin, 15mm);
+    font-size: var(--base-font-size, 13px);
+    line-height: var(--line-height, 1.4);
+    color: #000;
+}
+
+.paper-page.orientation-landscape { --pw: 297mm; --ph: 210mm; }
+.paper-page.size-legal { --pw: 216mm; --ph: 356mm; }
+.paper-page.size-legal.orientation-landscape { --pw: 356mm; --ph: 216mm; }
+
+.paper-page-inner { font-family: var(--paper-font, "Times New Roman", sans-serif); overflow-wrap: break-word; }
+
+/* ---------- Header ---------- */
+/* font-size lives on .paper-header itself (independent of --base-font-size, the
+   body/question text size) so the header can be scaled separately; every row
+   below is an em-multiplier of THIS, not the body's font-size. */
+.paper-header { text-align: center; margin-bottom: 12px; font-size: var(--header-font-size, 18px); }
+.hdr-row { margin-bottom: 2px; }
+.hdr-school { font-size: 1.4em; font-weight: 700; }
+.hdr-exam { font-size: 1.1em; font-weight: 600; }
+.hdr-classline {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    font-weight: 600;
+    min-height: 1.6em;
+}
+.hdr-setcode { position: absolute; left: 0; font-size: 0.85em; font-weight: 500; }
+.hdr-subjectcode { position: absolute; right: 0; font-size: 0.85em; font-weight: 500; }
+.code-chip {
+    display: inline-block;
+    border: 1px solid #000;
+    min-width: 1.4em;
+    padding: 0 3px;
+    text-align: center;
+    margin-left: 2px;
+    font-weight: 700;
+}
+.hdr-subject { font-weight: 600; }
+.hdr-timemarks { display: flex; justify-content: space-between; margin-top: 4px; font-weight: 600; }
+
+/* Bold Header toggle: applied to the .paper-page wrapper (via Print & Page
+   Settings), overrides the header rows' individual weights down to regular. */
+.paper-page.header-regular .hdr-school,
+.paper-page.header-regular .hdr-exam,
+.paper-page.header-regular .hdr-classline,
+.paper-page.header-regular .hdr-subject,
+.paper-page.header-regular .hdr-timemarks { font-weight: 400; }
+
+/* ---------- Elements ---------- */
+/* Only atomic (unsplittable) types avoid breaking mid-content in full-2col's
+   native CSS column layout — question/passage/instruction are deliberately
+   allowed to flow across the column break (JS pagination already splits them
+   the same way across page/column boundaries elsewhere; see render.js). */
+.paper-body > * { margin-bottom: var(--para-spacing); }
+.paper-body > .el-mcq, .paper-body > .el-section, .paper-body > .el-image, .paper-body > .el-fillblank { break-inside: avoid; }
+.paper-body table { border-collapse: collapse; margin: 6px 0; }
+.paper-body table td, .paper-body table th { border: 1px solid #999; padding: 4px 8px; }
+
+.el-instruction.align-center { text-align: center; }
+.el-instruction.align-left { text-align: left; }
+.el-instruction.italic { font-style: italic; }
+.el-instruction.boxed { border: 1px solid #000; padding: 6px 10px; }
+
+.el-section { display: flex; align-items: baseline; gap: 8px; position: relative; padding-right: 50px; }
+.el-section.bold { font-weight: 700; }
+.el-section.align-center { justify-content: center; text-align: center; }
+.el-section.align-left { justify-content: flex-start; }
+.section-count { font-weight: 500; font-size: 0.9em; }
+.section-marks { font-weight: 400; font-size: 0.8em; position: absolute; top: 0; right: 0; }
+
+.align-left { text-align: left; }
+.align-right { text-align: right; }
+.align-center { text-align: center; }
+.align-justify { text-align: justify; }
+
+.q-main { display: flex; gap: 6px; align-items: baseline; position: relative; padding-right: 50px; }
+.q-num { font-weight: 700; flex-shrink: 0; }
+.q-marks { font-weight: 400; font-size: 0.8em; position: absolute; top: 0; right: 0; }
+.sub-question { display: flex; gap: 6px; margin: 4px 0 4px 1.4em; align-items: baseline; position: relative; padding-right: 50px; }
+.sub-label { font-weight: 700; flex-shrink: 0; }
+
+.mcq-options { display: grid; gap: 4px 16px; margin: 6px 0 0 1.4em; }
+.mcq-options.mcq-4col { grid-template-columns: repeat(4, 1fr); }
+.mcq-options.mcq-2col { grid-template-columns: repeat(2, 1fr); }
+.mcq-options.mcq-1col { grid-template-columns: 1fr; }
+.mcq-option { display: flex; gap: 4px; min-width: 0; }
+.mcq-option span { overflow-wrap: break-word; min-width: 0; }
+.mcq-bubble { font-weight: 700; }
+
+.el-passage { border-left: 3px solid #999; padding: 4px 0 4px 10px; }
+.passage-img { display: block; margin: 6px auto; max-width: 100%; }
+.passage-img.align-left { float: left; margin: 0 10px 6px 0; }
+.passage-img.align-right { float: right; margin: 0 0 6px 10px; }
+
+.el-image { text-align: center; }
+.el-image img { height: calc(var(--img-lines, 2) * 1.4 * var(--base-font-size, 13px) * 3); max-width: 100%; object-fit: contain; }
+.el-image.align-left { text-align: left; }
+.el-image.align-right { text-align: right; }
+.el-image.img-behind img { opacity: 0.9; }
+
+.el-pagebreak { height: 0; }
+
+/* ---------- Full page 2-column mode ---------- */
+.paper-page.mode-full-2col .paper-body { column-count: 2; column-gap: var(--gap-margin, 10mm); }
+
+/* ---------- Half page (two columns per landscape sheet) ---------- */
+/* width: 100% (of the already-padded .paper-page content box), NOT var(--pw) —
+   var(--pw) is the FULL outer page width and would overflow past the page's
+   own padding since these are nested inside a .paper-page, not siblings of it. */
+.half-page-wrap { display: flex; width: 100%; box-sizing: border-box; }
+.half-page-wrap .paper-page-inner {
+    width: calc(50% - var(--gap-margin) / 2);
+    box-sizing: border-box;
+}
+.half-page-wrap .half-gap { width: var(--gap-margin); flex-shrink: 0; }
+
+/* ---------- Booklet sheets ---------- */
+.booklet-sheet { display: flex; width: 100%; box-sizing: border-box; }
+/* No overflow-x here (a previous version had it as a defensive measure against
+   horizontal bleed between columns) — setting only one axis forces the browser
+   to switch the other to `auto`, which both added a visible scrollbar AND still
+   didn't stop vertical clipping (a scrollable box just hides overflow behind a
+   scrollbar on screen; print can't scroll, so it clips there regardless).
+   overflow-wrap: break-word on .paper-page-inner plus min-width:0 on MCQ option
+   spans is what actually keeps content within its column's width; height is
+   left unconstrained so tall Bangla glyphs (matras/conjuncts) never get cut. */
+.booklet-sheet .booklet-col { width: 50%; padding: 0 calc(var(--gap-margin, 10mm) / 2); box-sizing: border-box; }
+.booklet-pagenum { text-align: center; font-size: 0.75em; color: #888; margin-top: 10px; }
+
+/* ---------- Screen chrome (not printed) ---------- */
+@media screen {
+    .paper-page { border: 1px solid #ddd; margin: 0 auto; }
+    .pages-stack { display: flex; flex-direction: column; align-items: center; gap: 20px; }
+    .preview-scale-wrap { display: flex; justify-content: center; padding: 10px 0 40px; overflow-x: auto; }
+}
+
+/* ---------- Print ---------- */
+@media print {
+    body * { visibility: hidden; }
+    #printRoot, #printRoot * { visibility: visible; }
+    #printRoot { position: absolute; left: 0; top: 0; }
+    .paper-page { box-shadow: none; border: none; margin: 0; }
+    .paper-page:not(:last-child) { page-break-after: always; }
+    .topbar, .editor-controls, .no-print { display: none !important; }
+    @page { size: A4 portrait; margin: 0; }
+}

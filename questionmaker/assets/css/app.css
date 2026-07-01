@@ -1,0 +1,120 @@
+/* ===== DESIGN SYSTEM — QuestionMaker Pro ===== */
+:root {
+  --bg-0:      #0c0e18;
+  --bg-1:      #13162a;
+  --bg-2:      #1c2040;
+  --bg-3:      #252850;
+  --border:    #2e3360;
+  --border-l:  #3d4480;
+  --text-0:    #e8eaf6;
+  --text-1:    #c5c8e0;
+  --text-2:    #8a8fb5;
+  --text-3:    #5a6080;
+  --accent:    #6c63ff;
+  --accent-h:  #5a52e8;
+  --accent-s:  rgba(108,99,255,.12);
+  --success:   #22c55e;
+  --warning:   #f59e0b;
+  --danger:    #ef4444;
+  --info:      #38bdf8;
+  --radius:    10px;
+  --shadow:    0 4px 20px rgba(0,0,0,.45);
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  background: var(--bg-0);
+  color: var(--text-0);
+  font-size: 14px;
+  line-height: 1.5;
+  min-height: 100vh;
+}
+
+/* ===== SCROLLBARS ===== */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border-l); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--accent); }
+
+/* ===== TYPOGRAPHY ===== */
+h1,h2,h3,h4 { font-weight: 600; line-height: 1.3; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* ===== BUTTONS ===== */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 9px 18px; border-radius: var(--radius); border: none;
+  font-size: 13px; font-weight: 500; cursor: pointer;
+  transition: background .15s, transform .1s, box-shadow .15s;
+  white-space: nowrap; text-decoration: none; color: var(--text-0);
+}
+.btn:active { transform: scale(.97); }
+.btn-primary { background: var(--accent); color: #fff; }
+.btn-primary:hover { background: var(--accent-h); box-shadow: 0 4px 12px rgba(108,99,255,.4); }
+.btn-ghost { background: transparent; border: 1px solid var(--border); }
+.btn-ghost:hover { background: var(--bg-2); border-color: var(--border-l); }
+.btn-accent { background: var(--accent-s); color: var(--accent); border: 1px solid rgba(108,99,255,.25); }
+.btn-accent:hover { background: rgba(108,99,255,.22); }
+.btn-danger { background: transparent; border: 1px solid var(--border); }
+.btn-danger:hover { background: rgba(239,68,68,.1); border-color: var(--danger); color: var(--danger); }
+.btn-success { background: rgba(34,197,94,.1); color: var(--success); border: 1px solid rgba(34,197,94,.25); }
+.btn-success:hover { background: rgba(34,197,94,.2); }
+.btn-sm { padding: 6px 14px; font-size: 12px; }
+.btn-xs { padding: 4px 10px; font-size: 11px; border-radius: 7px; }
+.btn-full { width: 100%; }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+
+/* ===== FORM CONTROLS ===== */
+.field-group { margin-bottom: 14px; }
+.field-label { display: block; font-size: 12px; color: var(--text-2); font-weight: 500; margin-bottom: 5px; text-transform: uppercase; letter-spacing: .04em; }
+.field-input {
+  width: 100%; padding: 9px 12px;
+  background: var(--bg-2); border: 1px solid var(--border);
+  border-radius: var(--radius); color: var(--text-0); font-size: 13px;
+  font-family: inherit; transition: border-color .15s, box-shadow .15s;
+  appearance: none;
+}
+.field-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-s); }
+.field-input::placeholder { color: var(--text-3); }
+.field-input[readonly] { opacity: .6; cursor: not-allowed; }
+select.field-input { cursor: pointer; }
+textarea.field-input { resize: vertical; min-height: 80px; }
+.field-row { display: flex; gap: 10px; }
+
+/* ===== TOGGLE ===== */
+.toggle-label { display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; color: var(--text-1); user-select: none; }
+.toggle-label input[type=checkbox] { display: none; }
+.toggle-track { width: 36px; height: 20px; background: var(--bg-3); border: 1px solid var(--border); border-radius: 10px; position: relative; transition: background .2s; flex-shrink: 0; }
+.toggle-track::after { content: ''; position: absolute; width: 14px; height: 14px; background: var(--text-3); border-radius: 50%; top: 2px; left: 2px; transition: left .2s, background .2s; }
+.toggle-label input:checked + .toggle-track { background: var(--accent); border-color: var(--accent); }
+.toggle-label input:checked + .toggle-track::after { left: 18px; background: #fff; }
+
+/* ===== MODALS ===== */
+.modal-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,.7); backdrop-filter: blur(4px);
+  display: flex; align-items: center; justify-content: center; z-index: 9000; padding: 20px;
+}
+.modal {
+  background: var(--bg-1); border: 1px solid var(--border); border-radius: 16px;
+  width: 100%; max-width: 540px; max-height: 90vh; display: flex; flex-direction: column;
+  box-shadow: var(--shadow);
+}
+.modal-lg { max-width: 720px; }
+.modal-fullscreen { max-width: 95vw; max-height: 95vh; }
+.modal-header { display: flex; align-items: center; justify-content: space-between; padding: 18px 20px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.modal-header h3 { font-size: 16px; font-weight: 600; color: var(--text-0); }
+.modal-close { background: none; border: none; color: var(--text-2); font-size: 18px; cursor: pointer; padding: 2px 6px; border-radius: 6px; }
+.modal-close:hover { background: var(--bg-3); color: var(--text-0); }
+.modal-body { padding: 20px; overflow-y: auto; flex: 1; }
+.modal-footer { display: flex; align-items: center; justify-content: space-between; padding: 14px 20px; border-top: 1px solid var(--border); flex-shrink: 0; }
+
+/* ===== TOAST ===== */
+#toastContainer { position: fixed; bottom: 20px; right: 20px; z-index: 9999; display: flex; flex-direction: column; gap: 8px; }
+.toast { background: var(--bg-2); border: 1px solid var(--border); border-radius: 10px; padding: 11px 16px; font-size: 13px; color: var(--text-0); animation: toastIn .25s ease; min-width: 220px; display: flex; align-items: center; gap: 8px; box-shadow: var(--shadow); }
+.toast.success { border-color: rgba(34,197,94,.4); }
+.toast.error   { border-color: rgba(239,68,68,.4); }
+.toast.info    { border-color: rgba(56,189,248,.4); }
+@keyframes toastIn { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:none; } }

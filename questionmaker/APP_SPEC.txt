@@ -1,0 +1,773 @@
+================================================================================
+QUESTIONMAKER PRO — FULL APPLICATION SPECIFICATION
+(Bangladesh-board-exam question paper generator)
+Written from a full source audit of the working app. Detailed enough to
+rebuild the application from scratch in any stack.
+================================================================================
+
+--------------------------------------------------------------------------------
+1. OVERVIEW
+--------------------------------------------------------------------------------
+QuestionMaker Pro ("QMaker", brand: SohojWeb) is a web app for Bangladeshi
+teachers to compose, typeset and print school/college exam question papers in
+Bangla or English, with AI-assisted question generation, a reusable personal
+question bank, and shareable public view-only links.
+
+Core idea: a single JSON document ("paper") holds print settings + header
+metadata + an ordered list of typed "elements" (MCQ, short question, creative
+question, etc.). A client-side rendering engine turns that JSON into
+print-ready HTML paginated to real A4/Legal sheets, with dynamic (height-
+measured) page breaks — not fixed page sizes.
+
+Tech stack:
+  - Backend:  PHP 7.4+, procedural with small includes/ "library" files.
+  - Database: SQLite3 via PDO (single file, WAL mode).
+  - Frontend: Vanilla JavaScript (no framework, no build step), plain CSS.
+  - Fonts:    Google Fonts (Inter, UI) + locally-installed Bangla Unicode
+              fonts for print (see section 8.4).
+  - No server-side rendering of the paper itself — all print HTML is built
+    client-side by JS and can also run standalone (view.php).
+
+--------------------------------------------------------------------------------
+2. DIRECTORY / FILE MANIFEST
+--------------------------------------------------------------------------------
+questionmaker/
+  index.php            Login/registration page (single form, auto-creates
+                        account on first login — see 4.2). Redirects to
+                        dashboard.php if a session already exists.
+  dashboard.php         Authenticated home: paper list, question bank browser,
+                        settings modal (AI keys / account / about).
+  editor.php            The paper editor: live paginated preview + sidebar
+                        (Elements / Header / Settings tabs) + modals (AI
+                        generation, share links, JSON import/export, image
+                        upload, question bank picker, symbol picker, serials
+                        formatter, print preview).
+  view.php              Public, auth-free viewer for a shared paper. Reads a
+                        share token from the query string, loads the paper
+                        JSON, and renders it with the SAME rendering engine
+                        used by the editor (render.js), then offers
+                        window.print().
+  .htaccess             Routing/hardening (deny direct access to data/, etc.)
+
+  includes/
+    config.php           App constants (name/tagline/brand/version), DB path,
+                          upload dir, AI provider fallback env keys, AI model
+                          ids, session lifetime, upload limits.
+    db.php                PDO SQLite connection + schema bootstrap
+                          (CREATE TABLE IF NOT EXISTS ... for every table,
+                          run on every getDB() call; includes small ALTER
+                          TABLE migrations for legacy installs).
+    auth.php              Session lifecycle: _startSession(), requireLogin(),
+                          loginUser(), logoutUser(), getCurrentUser().
+
+  api/                    JSON endpoints, one file per resource, dispatched
+                          by a `?action=` query param inside each file.
+    auth.php              login / logout / me / update_ai_keys /
+                          change_password / update_api_key (legacy)
+    paper.php              list / get / save / delete / duplicate
+    qbank.php               list / get / save / delete / increment_use
+    share.php                create / list / delete
+    ai.php                    generate / get_prompt / parse_manual
+    upload.php                 single multipart image upload
+
+  assets/
+    js/
+      editor.js          Editor application (~2460 lines). Owns the `paper`
+                          state object, all UI wiring, element CRUD, AI/
+                          question-bank/share/JSON-import UI, autosave, zoom,
+                          AND an inline `Render` module (buildPrintHtml +
+                          getAutoPaginatedPages) used for the live preview
+                          and the print-preview modal.
+      render.js           A byte-for-byte-synced COPY of just the `Render`
+                          module (buildPrintHtml + getAutoPaginatedPages),
+                          used standalone by view.php (which does not load
+                          editor.js). Comment in the file says explicitly:
+                          "Keep this in sync with the Render IIFE in
+                          editor.js." Any change to the print/pagination
+                          logic must be applied to BOTH files identically.
+      qbank.js            Stub file/comment only — real question-bank logic
+                          lives inside editor.js's `QM` namespace (used by
+                          editor.php's picker modal); dashboard.php's bank
+                          tab talks to api/qbank.php directly with its own
+                          inline JS.
+      bangla.js            Small helper module exposing MATH_SYMBOLS (an
+                          array of math/physics glyphs for the symbol
+                          picker). Historically also contained a Unicode→
+                          "Bijoy" ANSI glyph converter for a legacy ANSI
+                          font (SutonnyMJ); that conversion feature has been
+                          REMOVED — see section 8.4 for the current,
+                          Unicode-only font model.
+    css/
+      app.css             Global design system: CSS custom properties (dark
+                          theme only, accent purple #6c63ff), buttons, form
+                          controls, modals, toggles, scrollbars.
+      editor.css           Editor-only layout: topbar, 70/30 split
+                          (preview | sidebar), element cards, insert menu,
+                          preview scaling wrapper.
+      print.css             The print/paper stylesheet — the only stylesheet
+                          that matters for what actually gets printed
+                          (.print-page, .qp-* block classes, MCQ bubbles,
+                          answer-key table, @media print page-size rules).
+  data/
+    questionmaker.sqlite  The SQLite database file (see section 3).
+    .htaccess             Denies all HTTP access to this folder.
+  uploads/
+    u{user_id}_{random8hex}.{ext}   User-uploaded images (see 5.6).
+
+--------------------------------------------------------------------------------
+3. DATABASE SCHEMA (SQLite, verified against the live .sqlite file)
+--------------------------------------------------------------------------------
+Foreign keys are ON. WAL journal mode. Schema is created idempotently on
+every request via `CREATE TABLE IF NOT EXISTS` in includes/db.php, plus a
+couple of `ALTER TABLE ... ADD COLUMN` migrations guarded by
+try/catch (for upgrading older installs that predate a column).
+
+CREATE TABLE users (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    username       TEXT UNIQUE NOT NULL,
+    password_hash  TEXT NOT NULL,                 -- password_hash(..., PASSWORD_DEFAULT) = bcrypt
+    claude_api_key TEXT DEFAULT '',                -- legacy single-key column, kept for back-compat
+    ai_keys_json   TEXT DEFAULT '{}',              -- {"claude":"","openai":"","gemini":"","preferred":"claude"}
+    created_at     DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE question_papers (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    title       TEXT NOT NULL DEFAULT 'Untitled Paper',
+    paper_json  TEXT NOT NULL DEFAULT '{}',        -- the full paper document, see section 6
+    created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE question_bank (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    question_type  TEXT NOT NULL,                  -- 'mcq' | 'short' | 'creative' | 'fill-blank' | 'true-false'
+    subject        TEXT DEFAULT '',
+    topic          TEXT DEFAULT '',
+    content_json   TEXT NOT NULL DEFAULT '{}',      -- one element object, same shape as in paper.elements[]
+    tags           TEXT DEFAULT '',                 -- comma-separated
+    use_count      INTEGER DEFAULT 0,                -- incremented each time imported into a paper
+    created_at     DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE shared_papers (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    paper_id      INTEGER NOT NULL REFERENCES question_papers(id) ON DELETE CASCADE,
+    share_token   TEXT UNIQUE NOT NULL,              -- bin2hex(random_bytes(16)) = 32 hex chars
+    show_answers  INTEGER DEFAULT 0,                  -- 0/1, whether the public view includes the answer key
+    expires_at    DATETIME,                            -- NULL = never expires
+    created_at    DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+No `roles` table — every authenticated user has identical permissions and
+sees only their own papers/bank items (all queries are scoped by
+`WHERE user_id = ?`, taken from the session).
+
+--------------------------------------------------------------------------------
+4. AUTH SYSTEM (includes/auth.php)
+--------------------------------------------------------------------------------
+4.1 Session
+    - _startSession(): session_name('qmpro_sess'), cookie lifetime =
+      SESSION_LIFETIME (30 days = 86400*30 sec), starts session if not
+      already active.
+    - requireLogin(): calls _startSession(); if $_SESSION['user_id'] is
+      unset, either emits a JSON 401-style error (for API/AJAX callers) or
+      redirects to the app root (for full-page requests); otherwise returns
+      ['id' => (int)$_SESSION['user_id'], 'username' => $_SESSION['username']].
+
+4.2 Login = auto-registration
+    loginUser($username, $password):
+      - validates username length >= 2, password length >= 4 (very light
+        validation — NOT meant to be a hardened public product).
+      - if a user row with that username exists: password_verify() against
+        password_hash; success sets session, failure returns
+        {success:false, error:'Incorrect password'} (or similar).
+      - if NO user row exists with that username: a new account is CREATED
+        on the spot with password_hash($password, PASSWORD_DEFAULT) — i.e.
+        there is no separate "register" step; the first successful login
+        attempt for a new username silently creates the account. This is a
+        deliberate low-friction design for a small/internal user base, not
+        a public multi-tenant SaaS pattern.
+      - on success: session_regenerate_id(true), then sets
+        $_SESSION['user_id'] and $_SESSION['username'].
+
+4.3 logoutUser(): clears $_SESSION array, session_destroy(), and expires the
+    session cookie.
+
+4.4 getCurrentUser(): returns the full user row plus a decoded `ai_keys`
+    array (json_decode of ai_keys_json), with a legacy fallback that folds
+    the old single `claude_api_key` column into ai_keys['claude'] if the
+    JSON blob doesn't already have a claude key set.
+
+4.5 Config constants (includes/config.php) — copy verbatim when rebuilding:
+    APP_NAME='QMaker', APP_TAGLINE='Smart Question Paper Generator',
+    APP_BRAND='SohojWeb', APP_DOMAIN='QMaker.sohojweb.com',
+    APP_VERSION='2.1.0'
+    DB_PATH = data/questionmaker.sqlite, UPLOAD_DIR = uploads/
+    CLAUDE_API_KEY / OPENAI_API_KEY / GEMINI_API_KEY: optional server-wide
+      fallback keys read from environment variables (getenv), used only if
+      a given user hasn't set their own personal key.
+    CLAUDE_MODEL='claude-sonnet-4-6', OPENAI_MODEL='gpt-4o',
+      GEMINI_MODEL='gemini-1.5-pro'
+    SESSION_LIFETIME = 86400*30, MAX_UPLOAD_SIZE = 5*1024*1024 (5MB)
+    ALLOWED_IMG_TYPES = image/jpeg, image/png, image/gif, image/webp
+
+--------------------------------------------------------------------------------
+5. API REFERENCE (all endpoints return application/json; all except
+   api/auth.php?action=login require requireLogin())
+--------------------------------------------------------------------------------
+5.1 api/auth.php
+    action=login              POST {username, password} -> {success, error?}
+                               (creates account if new — see 4.2)
+    action=logout              GET  -> {success:true}
+    action=me                   GET  -> {success, user:{id, username, ai_keys, ai_keys_json}}
+    action=update_ai_keys        POST {claude, openai, gemini, preferred}
+                                 -> writes JSON blob to users.ai_keys_json
+    action=change_password        POST {password, confirm} -> updates password_hash
+    action=update_api_key (legacy) POST single-key fallback for old clients
+
+5.2 api/paper.php  (all scoped to session user_id)
+    action=list       GET  -> {success, papers:[{id,title,created_at,
+                       updated_at, institution, total_marks}]}
+                       (institution/total_marks pulled out of paper_json via
+                       SQLite json_extract() for list-view display without
+                       parsing full JSON client-side)
+    action=get        GET  {id} -> {success, paper:{id,title,created_at,
+                       updated_at, paper_json:{...parsed object...}}}
+    action=save        POST raw JSON body {id?, title?, paper_json} ->
+                       INSERT if no id / UPDATE if id given -> {success, id}
+    action=delete       GET/POST {id} -> DELETE ... -> {success}
+    action=duplicate     GET/POST {id} -> INSERT copy of row with
+                        title += ' (Copy)' -> {success, id}
+
+5.3 api/qbank.php
+    action=list        GET  {type?, search?} -> {success, questions:[...]}
+                        (max 200 rows, ORDER BY use_count DESC, created_at DESC)
+    action=get           GET  {id} -> {success, question:{...}}
+    action=save            POST raw JSON {id?, question_type, subject?,
+                        topic?, content, tags?} -> insert/update -> {success, id}
+    action=delete             GET/POST {id} -> {success}
+    action=increment_use        GET/POST {id} -> UPDATE ... SET use_count =
+                        use_count + 1 -> {success}
+
+5.4 api/share.php
+    action=create      POST raw JSON {paper_id, show_answers:0|1,
+                        expires_hours: 0|24|72|168} -> generates
+                        share_token=bin2hex(random_bytes(16)), inserts row,
+                        computes expires_at from expires_hours (0 = never)
+                        -> {success, url:'<origin>/view.php?token=...', token}
+    action=list          GET {paper_id} -> {success, links:[{id, paper_id,
+                        share_token, show_answers, expires_at, created_at}]}
+    action=delete           GET/POST {token} -> {success}
+
+5.5 api/ai.php — the AI question-generation endpoint. Loads the current
+    user's AI keys (ai_keys_json), falling back to the server-wide env-var
+    keys from config.php if the user hasn't set their own.
+
+    action=generate  POST raw JSON:
+      {
+        mode: 'create' | 'modify',
+        type: 'mcq' | 'short' | 'creative' | 'fill-blank' | 'true-false',
+        count: 1-20,
+        difficulty: 'easy' | 'medium' | 'hard',
+        language: 'bangla' | 'english',
+        provider: 'claude' | 'openai' | 'gemini',
+        topic, existing, lesson, speciality, class, subject
+      }
+      -> calls the matching provider function, extracts a JSON array of
+      question objects from the model's text response, returns
+      {success, questions:[...], type, provider} or {success:false, error}.
+
+      Provider calls:
+        _callClaude()  POST https://api.anthropic.com/v1/messages
+                       headers: x-api-key, anthropic-version: 2023-06-01
+                       body: {model: CLAUDE_MODEL, max_tokens:4096, ...}
+        _callOpenAI()  POST https://api.openai.com/v1/chat/completions
+                       header: Authorization: Bearer <key>
+                       body: {model: OPENAI_MODEL, temperature:0.7,
+                              max_tokens:4096, ...}
+        _callGemini()  POST https://generativelanguage.googleapis.com/
+                       v1beta/models/{GEMINI_MODEL}:generateContent?key=<key>
+                       body: {..., generationConfig:{temperature:0.7,
+                              maxOutputTokens:4096}}
+
+      Prompt construction (both create and modify modes) embeds: Bangladesh
+      board-exam context, the target language, a strict per-type JSON
+      schema the model must return (mirrors the element field shapes in
+      section 6.3), the requested difficulty/class/subject, and — for
+      'modify' mode — the existing question text/JSON to reformat.
+
+    action=get_prompt   POST same payload shape as `generate` but makes NO
+                        API call — just returns the constructed prompt text
+                        as {success, prompt, type} so the user can paste it
+                        manually into any external chatbot ("Manual mode").
+
+    action=parse_manual  POST {text} — the pasted response text from an
+                        external AI chat. Runs `_extractJSON()` to pull the
+                        first well-formed [...] or {...} block out of
+                        markdown/code-fenced text, then validates/normalizes
+                        it into element-shaped question objects ->
+                        {success, questions, type} or {success:false, error}.
+
+5.6 api/upload.php — POST multipart/form-data, field name `image`.
+    Validates: file present/no upload error, size <= MAX_UPLOAD_SIZE (5MB),
+    MIME type in ALLOWED_IMG_TYPES. Saves as
+    uploads/u{user_id}_{bin2hex(random_bytes(4))}.{ext}
+    -> {success, url:'uploads/...'} or {success:false, error}.
+
+--------------------------------------------------------------------------------
+6. DATA MODEL — the "paper" JSON document (stored verbatim in
+   question_papers.paper_json and question_bank.content_json for single
+   elements)
+--------------------------------------------------------------------------------
+6.1 Top-level shape
+{
+  "settings": { ...see 6.2... },
+  "header":   { ...see 6.2... },
+  "elements": [ ...ordered array of typed element objects, see 6.3... ]
+}
+
+6.2 settings / header fields
+settings:
+  language:        'bangla' | 'english'
+  fontFamily:       'SutonnyOMJ' | 'Nikosh' | 'NikoshBAN' | 'SolaimanLipi' |
+                    'Kalpurush'          (Bangla body font; ignored when
+                    language='english')
+  englishFont:       'Times New Roman' | 'Arial'  (used when language='english')
+  fontSize:            base font size in pt (default 12)
+  lineHeight:            base line height (default 1.7)
+  paperSize:               'A4' | 'Legal'
+  layout:                    'portrait' | 'landscape-half' | 'booklet'
+  mcqCols:                     1 | 2   (single vs two-column MCQ grid)
+  margins:                       { top, bottom, left, right }  (mm)
+  border:                          boolean  (draw a border around the page)
+  answerKey:                         boolean (append an answer-key table)
+  autoDuplicate:                       boolean (landscape-half only: mirror
+                                       the SAME content into both halves
+                                       instead of splitting content across
+                                       them — see 8.2)
+  headerFontSize / headerLineHeight,
+  sectionFontSize / sectionLineHeight,
+  instructionFontSize / instructionLineHeight,
+  questionFontSize / questionLineHeight,
+  tableFontSize / tableLineHeight,
+  summaryFontSize / summaryLineHeight
+      -- optional per-block-type typography overrides; null/unset falls
+         back to the base fontSize/lineHeight (with small deltas — e.g.
+         section headers default to base+1, instructions to base-1).
+
+header:
+  institution, exam, class, subject, subjectCode, showSubjectCode (bool),
+  time, totalMarks (auto-summed from element marks, read-only in the UI)
+
+6.3 Element types (paper.elements[i].type) — exact default shape each
+    element is created with (from editor.js addElement() defaults table):
+
+  section-header  { type, text, alignment:'center'|'left'|'right',
+                    fontSize, marksInfo }
+                    e.g. a Bangla "Group A" banner with "5x1=5" marks note.
+
+  instruction     { type, text, alignment:'left'|'center' }
+                    Italic instructional line, e.g. "Answer any 5 questions."
+
+  mcq             { type, number, question, marks, options:[4 strings],
+                    optionLayout:'4x1'|'2x2'|'1x4', correctAnswer:0-3,
+                    image, fontSize, lineHeight, letterSpacing }
+                    Renders numbered bubbles labeled ক/খ/গ/ঘ (Bangla) or
+                    A/B/C/D (English); correct option is highlighted only
+                    when the answer key is shown.
+
+  short           { type, number, question, marks, image,
+                    fontSize, lineHeight, letterSpacing }
+
+  creative        { type, number, stimulus, marks (sum of sub-marks),
+                    image, freeMove, stimulusTable (optional {headers,rows}
+                    table object or null),
+                    subQuestions:[{label:'ক)',text,marks}, ... 4 entries by
+                    default: ক)/খ)/গ)/ঘ) with marks 1/2/3/4],
+                    fontSize, lineHeight, letterSpacing }
+                    Bengali "creative question" (সৃজনশীল) structure: a
+                    stimulus paragraph (optionally with a data table),
+                    followed by 4 labeled sub-questions of increasing marks.
+
+  fill-blank      { type, number, template (sentence with ___ blanks),
+                    marks, answers:[] (one answer per blank, shown only
+                    when answer key is enabled) }
+
+  true-false      { type, number, statement, marks, answer: true|false }
+
+  image           { type, url, caption, width:10-100 (%), align:
+                    'left'|'center'|'right', freeMove (bool, absolute
+                    positioning via top/left %), zBehind (bool, watermark-
+                    style: renders behind text at 25% opacity), top, left }
+
+  text-block      { type, text, alignment:'left'|'center'|'right', fontSize }
+                    Free rich text; newlines rendered as <br>.
+
+  table           { type, caption, headers:[], rows:[[...],[...]],
+                    borderStyle:'full'|'outer'|'none' }
+                    Standalone data table (distinct from a creative
+                    question's embedded stimulusTable).
+
+  page-break      { type }  -- no other fields. Forces a manual break in
+                    the auto-pagination algorithm (see 8.1); pagination
+                    still auto-splits WITHIN the segments between manual
+                    breaks, so this is "at least a new page here", not a
+                    replacement for automatic pagination.
+
+--------------------------------------------------------------------------------
+7. EDITOR UI (editor.php + editor.js)
+--------------------------------------------------------------------------------
+Layout: 70% left = live, zoomable, WYSIWYG paginated preview (built by
+re-running the SAME print HTML generator used for the final printout — see
+section 8); 30% right = a 3-tab sidebar:
+
+  Elements tab   the ordered element list. Each row ("card") shows a type
+                 badge, a truncated preview of its content, and action
+                 icons: edit (pencil, opens a type-specific modal form),
+                 clone, delete, "save to question bank", and drag-handle
+                 for manual reordering (native HTML5 drag/drop, splice-based
+                 reindexing on drop). Thin "insert slots" between every
+                 card reveal a "+" button that opens an Insert Menu listing
+                 all 11 element types (Text Block, Table, Image, Section
+                 Header, Instruction, MCQ, Short, Creative, Fill Blank,
+                 True/False, Page Break).
+
+  Header tab    institution / exam / class / subject / subject-code
+                (toggle + 3-digit box) / time / full marks (auto, read-only).
+
+  Settings tab   language, Bangla font selector (hidden in English mode) /
+                 English font selector (shown only in English mode), base
+                 font size & line height, 6 pairs of per-block-type
+                 typography overrides (header/section/instruction/question/
+                 table/summary), paper size, layout mode (with an
+                 "auto-duplicate to second half" toggle that only appears
+                 for landscape-half), MCQ column count, 4 margin fields,
+                 border toggle, answer-key toggle.
+
+Top bar: paper title (inline-editable), buttons for AI Generate, Question
+Bank picker, Share, raw JSON view/edit, Print Preview, and a save-status
+indicator ("Saving…" / "Saved") — the app autosaves ~3s after any edit via
+a debounced POST to api/paper.php?action=save (scheduleSave()/save()).
+
+Element edit modal: opens a type-specific form (built by
+_buildEditForm(el)/read back by _readEditForm()) with a live-styled text
+field (matches the paper's actual font/size) and, on question types, a
+"∑" button that opens a math/physics symbol picker (from bangla.js's
+MATH_SYMBOLS) to insert glyphs into the focused textarea at the cursor.
+
+Question bank integration (inside editor.js, no separate page): "save to
+bank" writes the current element to api/qbank.php?action=save; the
+"Question Bank" toolbar button opens a filterable (type + text search)
+grid fetched from api/qbank.php?action=list; importing a card inserts a
+deep copy into paper.elements and fires action=increment_use.
+
+AI generation modal: provider tabs (Claude / OpenAI / Gemini / Manual),
+mode toggle (Create new vs Modify an existing question — the latter lets
+you pick one of the paper's current questions, or paste one, to reformat/
+improve), fields for topic/lesson/speciality/class/subject/count/
+difficulty/language. "Generate" posts to api/ai.php?action=generate;
+results render as a card grid with a "+ Add" button per question (and an
+"Add All" button); "Manual" mode instead calls action=get_prompt to show
+a copy-pastable prompt, and a "Parse Pasted Result" box posts back to
+action=parse_manual.
+
+Sharing modal: create a public link with an optional answer-key flag and
+an expiry (never / 24h / 72h / 7 days); lists and lets you revoke existing
+links for the current paper (api/share.php).
+
+JSON modal: view/copy the entire paper object as pretty-printed JSON, or
+paste a JSON document in to replace the current paper wholesale (a manual
+backup/restore & scripting escape hatch).
+
+Print Preview modal: renders the FULL, real print HTML (see section 8) in
+an in-app modal sized/scaled to look like actual paper, for a final check
+before printing.
+
+Zoom: "Fit" mode auto-scales the preview to the available width; manual
+mode steps in +/-5% increments (bounded ~10%-200%); implemented via CSS
+transform:scale() on the page sheet element, not by changing layout.
+
+--------------------------------------------------------------------------------
+8. PRINT / RENDERING ENGINE — the core, most intricate subsystem
+--------------------------------------------------------------------------------
+This lives in the `Render` module, IDENTICALLY duplicated in editor.js (for
+the live editor + its print-preview modal) and render.js (for the
+standalone public view.php). Any change here must be applied to both files
+verbatim — there is no shared-module loading between them.
+
+Two exported functions: `getAutoPaginatedPages(paper)` and
+`buildPrintHtml(paper, showAnswers)`.
+
+8.1 Dynamic (height-measured) pagination — getAutoPaginatedPages(paper)
+    Purpose: split `paper.elements` into an array of arrays ("chunks"),
+    each chunk being everything that fits on ONE physical page/column,
+    determined by actually rendering and measuring each element's real
+    pixel height in an off-screen sandbox — NOT a fixed count of elements
+    per page.
+
+    Algorithm:
+      1. Compute the physical sheet size in CSS pixels at 96dpi-ish scale
+         (A4≈794x1123px, Legal≈816x1346px; swapped for landscape layouts),
+         then compute maxHeight = sheet height minus top/bottom margins
+         (margins default to 20mm portrait / 10mm landscape, converted via
+         *3.78 px-per-mm).
+      2. For 2-column layouts (landscape-half / booklet), the sandbox
+         column width is HALF the sheet width — this matters because
+         narrower columns wrap Bangla/English text differently and produce
+         taller blocks, which the height measurement must reflect. Height
+         capacity (maxHeight) is still the FULL sheet height, since two
+         columns sit side by side, not stacked — each column independently
+         gets the whole sheet's height budget.
+      3. Build an off-screen sandboxed <div> with the paper's real font,
+         font-size and line-height, append it to document.body (hidden via
+         position:absolute; top:-9999px), and render the paper's header
+         into it once to get a starting `headerHeight`.
+      4. Walk `paper.elements` in order:
+           - a `page-break` element always force-starts a new chunk.
+           - any other element is rendered (via a recursive call to
+             buildPrintHtml on a 1-element temp paper — see 8.3's `_isChunk`
+             guard for why this doesn't recurse infinitely) and its
+             genuine `offsetHeight` measured, including CSS margin
+             collapsing logic between consecutive blocks (uses
+             getComputedStyle margins, tracks `prevMarginBottom` so
+             adjacent blocks' margins collapse the same way the real
+             browser layout would).
+           - if adding this element's height would exceed maxHeight AND
+             the current chunk already has content, start a new chunk;
+             otherwise append to the current chunk and accumulate height.
+      5. Remove the sandbox, return the array of chunks.
+
+    This is the single source of truth for "how much fits on a page" and
+    is font/size/margin/layout aware — change the font, font size, margins,
+    or paper size and the SAME content will re-paginate to a different
+    number of pages automatically, live, in the editor preview.
+
+8.2 buildPrintHtml(paper, showAnswers) — self-paginating HTML builder
+    Signature contract: called with either (a) the FULL, un-chunked
+    document (paper.settings/header/elements as saved), in which case it
+    dynamically paginates the WHOLE thing and returns one or more
+    concatenated `<div class="print-page">...</div>` strings — one per
+    physical sheet; or (b) an already-chunked single page/sheet (marked
+    with `paper._isChunk = true`, or carrying `paper.leftPane`/
+    `paper.rightPane` for a two-column sheet), in which case it renders
+    exactly that one sheet's HTML with no further splitting.
+
+    Top-of-function guard:
+      if (!paper._isChunk && !paper.leftPane && !paper.rightPane &&
+          layout !== 'booklet') { ...self-paginate, see below, return... }
+    This is what lets a single top-level call — from the editor preview,
+    the print-preview modal, OR view.php's raw
+    `Render.buildPrintHtml(paper, showAnswers)` call — always produce
+    correctly paginated output for ANY layout, without the caller having
+    to pre-chunk anything.
+
+    Self-pagination branches by layout:
+      - portrait (default) and landscape-half WITH autoDuplicate: call
+        getAutoPaginatedPages(paper), then for each chunk recursively call
+        buildPrintHtml with {settings, header (only on the first chunk),
+        elements: chunk, _isChunk:true}, concatenating results. showAnswers
+        is only threaded through as true on the LAST chunk (so the answer
+        key appears once, at the very end).
+      - landscape-half WITHOUT autoDuplicate: call getAutoPaginatedPages
+        (each returned chunk already represents one COLUMN's worth of
+        content, since capacity was measured against a half-width column —
+        see 8.1 step 2). Pad the chunk array to an even length with one
+        trailing empty chunk if needed (so the last physical sheet always
+        has two columns, the second possibly blank). Pair up consecutive
+        chunks (0&1, 2&3, ...) into one physical sheet each, recursing with
+        {leftPane:{elements,header,showAnswers}, rightPane:{...},
+        _isChunk:true}. The "last real chunk" index is captured BEFORE
+        padding, so the answer key lands on the actual last content column,
+        never on a blank padding column.
+      - booklet: NOT handled by the generic self-pagination guard (it's
+        excluded by `layout !== 'booklet'`); instead falls through to a
+        dedicated imposition branch (see 8.3) further down the function.
+
+    Per-sheet rendering (the part that runs once `_isChunk`/leftPane-
+    rightPane are already set, i.e. once we know exactly what goes on THIS
+    physical sheet):
+      - Bangla numerals: MCQ numbers, marks, subject-code digits etc. are
+        converted 0-9 -> ০-৯ via a simple digit-substitution when
+        language='bangla'; left as-is for 'english'. (There is no more
+        ANSI/"Bijoy" glyph remapping — see 8.4.)
+      - HTML escaping (`esc`) + a thin `txth` wrapper for user text fields.
+      - `elStyle(el, extra)` resolves each element's effective font-size/
+        line-height: element-level override > type-specific settings
+        override (questionFontSize, sectionFontSize, etc.) > base
+        fontSize/lineHeight.
+      - `buildPaneContent(elements, header, includeAnswerKey)` renders one
+        column/page's worth of HTML: optional header block (institution/
+        exam/class/subject-code box/time/marks meta bar), then each
+        element switched on `.type` into its `.qp-*` HTML block (see the
+        `.qp-*` CSS class list in print.css and the element type table in
+        section 6.3), and — only if includeAnswerKey && showAnswers — an
+        appended `.answer-key-section` table of MCQ number -> correct
+        option letter.
+      - `fontStack` resolves to the paper's chosen Bangla font (or English
+        font, in English mode) with a `serif` fallback; landscape-half/
+        booklet pages get zero page padding with padding applied per
+        `.half-pane` instead (portrait pages padding is on the page itself).
+      - Layout-specific outer wrapper: single `.print-page` div (portrait);
+        `.print-page.half-landscape` with two `.half-pane` children
+        (landscape-half); `.print-page.booklet` with two `.half-pane`
+        children (booklet — content chosen by the imposition branch).
+
+8.3 Booklet imposition (layout='booklet')
+    Special case, still inside buildPrintHtml, guarded by
+    `layout === 'booklet' && !paper.leftPane` (i.e. only runs on the
+    original top-level call, not on the recursive per-sheet calls it
+    issues itself):
+      1. getAutoPaginatedPages(paper) -> logical "pages" (each sized to one
+         column's height budget, same as landscape-half).
+      2. Pad the page count up to the next multiple of 4 with blank pages
+         (a booklet sheet, once folded, always presents 4 logical page
+         faces: 2 on the front, 2 on the back).
+      3. For each physical SHEET of paper (N/4 of them), compute standard
+         saddle-stitch booklet imposition order for front and back faces:
+           front: left = N - 2*(sheetIdx-1) - 1, right = 2*(sheetIdx-1)
+           back:  left = 2*(sheetIdx-1) + 1,      right = N - 2*(sheetIdx-1) - 2
+         (this is the classic "outside pages first, working inward" fold
+         order so that after printing double-sided and folding down the
+         middle, logical pages read 1,2,3,4...N in order).
+      4. The header only appears on logical page index 0; the answer key
+         only on logical page index N-1.
+      5. Returns the concatenated sheet HTML directly (bypasses the rest
+         of the function).
+
+8.4 Fonts (Bangla/English) — CURRENT model, post-cleanup
+    The app used to support a legacy ANSI-encoded "Bijoy" keyboard font
+    (SutonnyMJ) which required converting Unicode Bangla text into custom
+    glyph code-points at render time (a non-trivial Unicode->Bijoy
+    converter) plus wrapping any embedded Latin text in `<span class="tnr">`
+    to force Times New Roman for the non-Bangla runs (since the ANSI font
+    remapped A-Z to Bangla glyphs). THIS HAS BEEN REMOVED. All content is
+    now stored and rendered as plain Unicode; the app just sets a CSS
+    `font-family` and trusts the OS/browser to have a real Unicode Bangla
+    font installed.
+      - Bangla font choices: SutonnyOMJ, Nikosh, NikoshBAN, SolaimanLipi,
+        Kalpurush (default: SutonnyOMJ). These are NOT bundled as webfont
+        files by the app — they're assumed to be installed locally (very
+        common on Bangladeshi teachers' machines, typically via Avro
+        Keyboard or similar). If rebuilding for a context where you can't
+        assume that, either self-host these as @font-face files or swap
+        in a Bangla Unicode Google Font (e.g. Noto Sans Bengali,
+        Hind Siliguri) as the default instead.
+      - English font choices: Times New Roman, Arial (default: Times New
+        Roman), shown/used only when settings.language='english'.
+      - UI chrome font (not the printed paper) is 'Inter' via Google Fonts,
+        unrelated to the paper's own font settings.
+      - Bangla digit rendering (০-৯) is independent of font choice — plain
+        Unicode digit substitution, always applied in Bangla mode.
+
+8.5 print.css — page geometry & block styling
+    - `.print-page`: 210mm x 297mm (A4) or 216mm x 356mm (Legal); margins
+      applied via inline style computed from settings.margins.
+    - `.print-page.half-landscape` / `.booklet`: swapped to landscape
+      dimensions, flex row of two `.half-pane` children with a padding
+      applied per-pane instead of on the outer page.
+    - `@media print`: defines named `@page` sizes (A4-portrait,
+      A4-landscape, Legal, Legal-landscape) and maps each `.print-page`
+      variant to the right one via the CSS `page:` property; forces
+      `break-after: page` between sheets and `page-break-inside: avoid` on
+      question/section/table blocks so a single question is never visually
+      sliced across two physical pages by the browser's own print engine
+      (this is a second, coarser safety net on top of the JS-side height
+      measurement in 8.1).
+    - `.qp-*` classes cover every element type's print markup: header/meta
+      bar/subject-code box, section headers, instructions, MCQ (+ bubble
+      circles, 1/2/4-column option grids), short/creative/fill-blank/
+      true-false questions, images, text blocks, tables, and the answer-
+      key table.
+
+--------------------------------------------------------------------------------
+9. DASHBOARD (dashboard.php)
+--------------------------------------------------------------------------------
+Header: brand mark + name/tagline, "Hello, {username}", avatar (first
+letter of username), Settings and Sign Out buttons.
+
+Stat cards: total question papers, total question-bank items, number of AI
+providers configured (0-3), pulled from api/paper.php?action=list,
+api/qbank.php?action=list, and api/auth.php?action=me on load.
+
+Tabs:
+  My Papers (default) — search box (client-side filter over title +
+    institution) + "New Paper" button (creates a blank paper and opens the
+    editor); grid of paper cards (title, institution, total marks, relative
+    "updated X ago" time) with hover actions: duplicate, edit, delete
+    (all via api/paper.php).
+  Question Bank — type filter chips (All/MCQ/Short/Creative/Fill Blank/
+    True-False) + text search; grid of bank item cards (type badge, ~120-
+    char content preview, tags, delete button).
+
+Settings modal, 3 tabs:
+  AI Keys — one row per provider (Claude/OpenAI/Gemini): status badge
+    (Set/Not set), password-masked key input, "Get key" external link, and
+    a "Default AI Provider" dropdown (Claude/GPT-4o/Gemini/Manual). A note
+    explains Manual mode requires no key (copy-paste workflow via
+    api/ai.php?action=get_prompt + action=parse_manual).
+  Account — read-only username, change-password form (2 fields, min 4
+    chars, posts to api/auth.php?action=change_password), and a "Clear
+    Cache & Reload" utility button (clears localStorage/sessionStorage/
+    any service-worker caches client-side).
+  About — app icon/name/version/domain, "Powered by SohojWeb" credit.
+
+--------------------------------------------------------------------------------
+10. THEMING / DESIGN SYSTEM (assets/css/app.css)
+--------------------------------------------------------------------------------
+Single, fixed DARK theme (no light-mode toggle) driven entirely by CSS
+custom properties on :root:
+
+  --bg-0:#0c0e18  --bg-1:#13162a  --bg-2:#1c2040  --bg-3:#252850
+  --border:#2e3360  --border-l:#3d4480
+  --text-0:#e8eaf6  --text-1:#c5c8e0  --text-2:#8a8fb5  --text-3:#5a6080
+  --accent:#6c63ff  --accent-h:#5a52e8  --accent-s:rgba(108,99,255,.12)
+  --success:#22c55e  --warning:#f59e0b  --danger:#ef4444  --info:#38bdf8
+  --radius:10px  --shadow:0 4px 20px rgba(0,0,0,.45)
+
+Shared components styled off these variables: `.btn-primary/.btn-ghost/
+.btn-accent/.btn-danger/.btn-success`, `.field-label/.field-input/
+.field-row`, custom `.toggle-track` checkboxes, `.modal-overlay`/`.modal`
+(backdrop-blur), thin custom-colored scrollbars. UI chrome font is 'Inter'.
+
+editor.css layers the editor-specific chrome on top: `.ed-layout` (70/30
+flex split), `.sidebar-tabs`/`.stab-btn`/`.stab-pane` (3-tab sidebar),
+`.el-card`/`.el-drag`/`.el-type-badge`/`.el-preview`/`.el-actions` (element
+list rows), `.insert-slot`/`.insert-btn`/`.insert-menu` (the "+" insert
+affordance between elements), `.preview-scale-wrap`/`.preview-page-sheet`
+(the zoomable live preview, scaled via JS-applied `transform: scale()`).
+
+--------------------------------------------------------------------------------
+11. KEY IMPLEMENTATION NOTES / GOTCHAS FOR A REBUILD
+--------------------------------------------------------------------------------
+- editor.js and render.js MUST stay in sync for their shared `Render`
+  module (buildPrintHtml + getAutoPaginatedPages). There's no shared
+  import mechanism today (view.php doesn't load editor.js at all, to avoid
+  pulling in the entire editor UI for a read-only public page) — if you
+  rebuild with a bundler, extract this into one real shared module instead
+  of hand-copying it.
+- Pagination is fundamentally a MEASURE-THEN-LAYOUT approach: it renders
+  real DOM in an off-screen sandbox to get real `offsetHeight`s before
+  deciding page breaks, rather than estimating heights analytically. This
+  makes it font/size/margin-accurate but means it only works client-side
+  in a real browser (no headless/server-side pagination without something
+  like a headless-Chrome render step).
+- The `_isChunk` / `leftPane` / `rightPane` markers on the `paper` object
+  passed into `buildPrintHtml` are a recursion guard — without them, the
+  self-pagination top-of-function branch would recurse infinitely (each
+  chunk would try to re-paginate itself). Preserve this pattern (or an
+  equivalent "already chunked" flag) if reimplementing.
+- Answer-key visibility must be computed against the LAST REAL content
+  chunk, captured BEFORE any blank-padding chunks are appended (booklet
+  padding to a multiple of 4; landscape-half padding to an even count) —
+  otherwise the answer key silently lands on a blank page instead of the
+  actual final page of content.
+- Auto-registration on first login (section 4.2) is intentional simplicity
+  for a small/trusted user base — do not carry this over as-is into a
+  public-facing rebuild without adding real registration/verification.
+- All monetary/marks totals (header.totalMarks) are DERIVED from
+  element.marks fields, not independently editable — keep this
+  computed-field relationship if rebuilding the header UI.
+================================================================================

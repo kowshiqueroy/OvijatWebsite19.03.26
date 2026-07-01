@@ -1,0 +1,47 @@
+//question.sohojweb.com
+
+initial targets:
+
+to make a proper agy prompt to build a web app for teacher for creating question papers. the web app should be in core php, sqlite, html, css, advance js to handel complex UI operations of question maker in mobile first layout. the should be simple, look great, easy to work on, even if non-technical persons should be able to do all operations.
+at first an amazing landing page should show this website question.sohojweb.com is a question making platform Unicode based. create questions from any device. with login button. User can use login also for resgistration, if no user found show modal alert to create new user and enter. if password wrong, show wrong password, try again.
+in dashboard user should have default settings, search and all prevoius questions. create new question.
+create new question will create a new blank question setup. in this page user will input question name, question language: bangla or english, show font options for the selected language. for bangla: SutonyOMJ, Nikhosh, NikoshBAN, Kalpurush. for english: Times New Roman, Arial. user have to selected the other language's font also. the next sections input will be only in the selected laguage input accept.  school name, exam name, class name, subject name.  subject code overally on right wheater to show or not) if show must give code, show Set code overally on Left wheater to show or not) if show must give code.  Subject code will 3 digit each in a box show the text Subject code in bangla or english then beside the digit box. Set code will be also like that but one box letter. Time, Full Marks.
+Then will go to next page. This page will be the question setter page.
+User will select and set different types of elements then to see the preview of the question.
+
+Instructions. Center or left. Boxed or not, italic or not. Font size. Etc.
+Section: bold. Bold or not. Center or left. Could have marks and question count. Could show marks on right or not like 5 X 3 = 15.
+Each section will have auto serial numbering for questions.
+questions. Could have marks and show or not. Questions could be having multiple elements like text+Table + image + text any combinations. Should have multi line feature. Can be serialized by if  english 1. 2. 3. ….. A. B. C. …. i) ii) iii) ….  If bangla ১। ২। ৩। … ক) খ) গ) ঘ)  i) ii) iii) …. 
+Images of the questions could be positioned left, center, right. Behind text, with text, image’s height should upto 5 line max, 2 default.
+Questions could have sub questions, marks, marks to show or not. 
+Questions could have math, science and some most needed equations to pick and use.
+Questions could be MCQ. 4 options to show below. User have to select 4 in one line, 2 in 1 line, or 4 line 4 line. 4 in one line or 2 in 1 line should take equal gaps regarding other options. The option will be a b c d or ক খ গ ঘ in bubble circle or (a) , user have to select. 
+In between questions there could be passage which will not have marks. This will be the text + image + table or any.
+
+If marks are shown, they will be shown in the top right of the questions.
+Selecting any choice in a type of question should be the default for the next.
+
+Then user will go to the print setting section.
+User will tell the page size, a4 or legal.
+Then will select mode: 
+Full page mode. Have to tell the full question area to be in 1 or 2 column. Or which section’s  question area to show in 2 col.
+Half page mode: will make the questions to print in the page in landscape. 2 col. Can set duplicate other side or not.
+Booklet mode: in landscape, question will start from the 2nd col of first page, if 4 cols needed, will be the questions last col in the first page’s 1st col. More cols of question will go on page’s different cols to make a book like binding.
+
+Line and paragraph spacing, font sizes global adjustment or individual sizes. 
+Margins, margins for Half page mode and booklet mode 2 cols between gaps.
+
+
+Top Header: 1st row school name, 2nd row exam name, 3rd row class name,  4throw subject name. All center. 5th row time and full marks two side of the question’s width. The subject code and set code should be align with class possession but like a overly. 
+
+The questions section should be in Justify, left, right  alignment. 
+
+
+new feature: get questions data from an external ai. The qustions setter should give option to paste ai converted questions to be use.
+this feature should give a ai prompt text to copy and paste in external ai. suupose the user is having a qustion ready in docs or generated in ai. this feature will give a prompt to convert the question into this way this system will be able to parse it.
+the propt should give the external ai to full understand to convert his existing / generated question for this system.
+the prompt should be like this: convert this question set into this way, if having headers should be this this this, if needed subject code to show do this, if needed section in center, if marks to show, if question, if have subquestion, ..... give the full result in this way, no extra text.
+the prompt should tech the ai what capabilities this system have, how to use these and convert the question to to understandable to this system.
+
+the external ai result could be paste here and the question should auto added.

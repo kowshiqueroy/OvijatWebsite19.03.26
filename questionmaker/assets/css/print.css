@@ -1,0 +1,291 @@
+/* ===== PRINT ENGINE — QMaker by SohojWeb ===== */
+
+/* ----- Base: fallback if no per-paper font-family is applied inline ----- */
+.print-wrap, .preview-page {
+  font-family: 'SutonnyOMJ', 'Times New Roman', serif;
+  color: #000; background: #fff;
+}
+
+/* ----- Print page wrapper ----- */
+.print-page {
+  background: #fff; color: #000;
+  padding: var(--pm-top,15mm) var(--pm-right,15mm) var(--pm-bottom,15mm) var(--pm-left,20mm);
+  width: 210mm; min-height: 297mm;
+  margin: 0 auto; box-sizing: border-box;
+  position: relative; page-break-after: always;
+  font-family: 'SutonnyOMJ', 'Times New Roman', serif;
+}
+.print-page.legal   { width: 216mm; min-height: 356mm; }
+.print-page.border:not(.half-landscape):not(.booklet) { border: 1.5px solid #000; }
+.print-page.border.half-landscape .half-pane,
+.print-page.border.booklet .half-pane { border: 1.5px solid #000; }
+
+.print-page.half-landscape { width: 297mm; min-height: 210mm; display: flex; gap: 0; }
+.print-page.half-landscape.legal { width: 356mm; min-height: 216mm; }
+.half-pane { flex: 1; padding: inherit; border-right: 0.5px dashed #e5e5e5; box-sizing: border-box; }
+.half-pane:last-child { border-right: none; }
+
+/* Booklet mode layout */
+.print-page.booklet { width: 297mm; min-height: 210mm; display: flex; gap: 0; }
+.print-page.booklet.legal { width: 356mm; min-height: 216mm; }
+.print-page.booklet .half-pane { border-right: none; }
+
+/* ===== HEADER ===== */
+.qp-header-wrap {
+  margin-bottom: 0;
+  padding-bottom: 6pt;
+  position: relative;
+}
+.qp-header {
+  position: relative;
+  text-align: center;
+}
+.qp-header-main {
+  text-align: center;
+  padding: 0 70pt; /* room for subject code box on the right */
+}
+.qp-header-main .inst  { font-size: 16pt; font-weight: bold; }
+.qp-header-main .exam  { font-size: 13pt; font-weight: bold; margin-top: 2pt; }
+.qp-header-main .class-name { font-size: 12pt; margin-top: 2pt; }
+
+/* Subject code box — absolute right of header */
+.qp-subj-code-box {
+  position: absolute;
+  right: 0; bottom: 0;
+  text-align: center;
+  font-size: 9pt;
+  white-space: nowrap;
+}
+.qp-subj-code-box .sc-label { font-size: 8.5pt; font-weight: bold; display: block; margin-bottom: 3pt; }
+.qp-subj-code-box .sc-digits { display: flex; gap: 2pt; justify-content: center; }
+.qp-subj-code-box .sc-digit {
+  width: 17pt; height: 17pt;
+  border: 1.5pt solid #000;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 10pt; font-weight: bold;
+}
+
+/* Meta bar: Line 1 Subject (centered), Line 2 Time (left) & Full Marks (right) */
+.qp-meta-bar {
+  margin-bottom: 10pt;
+  padding: 4pt 0;
+}
+.qp-meta-bar .meta-subj-row {
+  text-align: center;
+  margin-bottom: 3pt;
+}
+.qp-meta-bar .meta-subj  { font-weight: bold; font-size: 12pt; }
+.qp-meta-bar .meta-details-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 11pt;
+}
+
+/* ===== SECTION HEADERS ===== */
+.qp-section-header {
+  font-weight: bold; font-size: 13pt;
+  margin: 12pt 0 6pt;
+  display: flex; align-items: baseline; justify-content: space-between;
+}
+.qp-section-header .sec-marks {
+  font-size: 11pt; font-weight: normal; white-space: nowrap;
+}
+
+/* ===== INSTRUCTIONS ===== */
+.qp-instruction { font-size: 11pt; font-style: italic; margin: 4pt 0 8pt; }
+
+/* ===== QUESTION BLOCK ===== */
+.qp-q { margin-bottom: 10pt; }
+.qp-q-num { font-weight: bold; margin-right: 3pt; }
+
+/* Prevent elements from being sliced in half across pages when printing */
+.qp-q, .qp-creative, .qp-text-block, .qp-table-wrap, .qp-section-header, .qp-instruction {
+  page-break-inside: avoid;
+  break-inside: avoid;
+}
+
+/* Marks — float right, bangla numeral in parens, no "marks" word */
+.qp-marks {
+  float: right; font-size: 10pt;
+  font-style: normal; color: #222;
+  margin-left: 6pt;
+}
+
+/* ===== MCQ ===== */
+/* MCQ questions have NO individual marks badge — shown in section header */
+.qp-q.qp-mcq .qp-marks { display: none; }
+
+.qp-options { margin-top: 5pt; clear: both; }
+.qp-options.layout-4x1 { display: grid; grid-template-columns: repeat(4,1fr); gap: 3pt 8pt; }
+.qp-options.layout-2x2 { display: grid; grid-template-columns: 1fr 1fr; gap: 3pt 16pt; }
+.qp-options.layout-1x4 { display: flex; flex-direction: column; gap: 3pt; }
+
+.opt {
+  display: flex; align-items: center; gap: 4pt;
+  font-size: 11pt; line-height: 1.3;
+}
+/* Bubble circle for option label */
+.opt-bubble {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 14pt; height: 14pt; border-radius: 50%;
+  border: 1pt solid #000;
+  font-size: 9pt; font-weight: bold;
+  flex-shrink: 0;
+}
+.opt.correct .opt-bubble { background: #000; color: #fff; border-color: #000; }
+.opt.correct             { font-weight: bold; }
+
+/* ===== SHORT / FILL-BLANK / TRUE-FALSE ===== */
+.qp-short, .qp-tf { font-size: 11pt; }
+.qp-blank {
+  display: inline-block;
+  min-width: 60pt;
+  height: 0;
+  border-bottom: 1.5px solid #000;
+  margin: 0 3pt;
+  vertical-align: baseline;
+}
+.qp-blank.filled {
+  height: auto;
+  color: #009900;
+  font-weight: bold;
+  border-bottom-color: #009900;
+  vertical-align: baseline;
+}
+.tf-ans { display: inline-block; padding: 1pt 8pt; border: 1pt solid #000; border-radius: 3pt; font-weight: bold; margin-left: 6pt; font-size: 10pt; }
+.tf-ans.true  { border-color: #009900; color: #009900; }
+.tf-ans.false { border-color: #cc0000; color: #cc0000; }
+
+/* ===== CREATIVE QUESTION ===== */
+.qp-creative { margin-bottom: 12pt; }
+
+/* Stimulus: NO border, NO background — plain paragraph */
+.qp-creative .stimulus-wrap {
+  margin-bottom: 6pt;
+  line-height: 1.7;
+}
+.qp-creative .stimulus-wrap .qp-q-num { font-weight: bold; }
+
+.qp-creative .sub-qs  { margin-left: 16pt; }
+.qp-creative .sub-q   { margin-bottom: 5pt; page-break-inside: avoid; display: flex; gap: 4pt; align-items: baseline; }
+.qp-creative .sub-q .sub-label  { font-weight: bold; flex-shrink: 0; }
+.qp-creative .sub-q .sub-q-body { flex: 1; }
+.qp-creative .sub-q .sub-marks  { flex-shrink: 0; font-size: 10pt; color: #444; padding-left: 6pt; }
+
+/* Stimulus table */
+.stimulus-table { width: 100%; border-collapse: collapse; margin: 6pt 0 8pt; font-size: 10.5pt; }
+.stimulus-table th, .stimulus-table td { border: 1px solid #555; padding: 3pt 6pt; text-align: center; }
+.stimulus-table th { background: #eee; font-weight: bold; }
+
+/* ===== IMAGE ===== */
+.qp-img          { margin: 8pt 0; }
+.qp-img.align-left   { text-align: left; }
+.qp-img.align-center { text-align: center; }
+.qp-img.align-right  { text-align: right; }
+.qp-img img      { max-width: 100%; height: auto; display: inline-block; }
+.qp-img.freeMove { position: absolute; }
+.qp-img.behind   { z-index: -1; }
+.qp-img .caption { font-size: 9pt; color: #555; margin-top: 3pt; }
+
+/* ===== TWO-COLUMN MCQ ===== */
+.mcq-two-col { columns: 2; column-gap: 20pt; }
+.mcq-two-col .qp-q { break-inside: avoid; }
+
+/* ===== PAGE BREAK ===== */
+.qp-page-break { page-break-after: always; }
+
+/* ===== ANSWER KEY ===== */
+.answer-key-section { border-top: 2px dashed #000; margin-top: 20pt; padding-top: 12pt; }
+.answer-key-section h3 { font-size: 13pt; font-weight: bold; margin-bottom: 8pt; text-align: center; }
+.ans-table { width: 100%; border-collapse: collapse; font-size: 10pt; }
+.ans-table th, .ans-table td { border: 1px solid #000; padding: 4pt 6pt; text-align: center; }
+.ans-table th { background: #eee; font-weight: bold; }
+
+/* ===== TEXT BLOCK ===== */
+.qp-text-block { font-size: 11pt; line-height: 1.7; margin: 6pt 0 10pt; }
+
+/* ===== STANDALONE TABLE ===== */
+.qp-table-wrap { margin: 8pt 0 12pt; }
+.standalone-table { width: 100%; border-collapse: collapse; font-size: 10.5pt; }
+.standalone-table th, .standalone-table td { border: 1px solid #444; padding: 4pt 6pt; }
+.standalone-table th { background: #eee; font-weight: bold; text-align: center; }
+.standalone-table.outer-border { border: 1.5px solid #000; }
+.standalone-table.outer-border th,
+.standalone-table.outer-border td { border: none; }
+.standalone-table.no-border th,
+.standalone-table.no-border td { border: none; }
+.table-caption { font-size: 9pt; color: #555; text-align: center; margin-top: 3pt; font-style: italic; }
+
+/* ===== @media print ===== */
+@media print {
+  * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+  body { background: #fff !important; }
+
+  /* Reset editor layout constraints for printable sheets */
+  body.editor-body {
+    overflow: visible !important;
+    height: auto !important;
+    min-height: 0 !important;
+    display: block !important;
+  }
+  body.editor-body > *:not(#printModal) {
+    display: none !important;
+  }
+  #printModal {
+    position: absolute !important;
+    inset: auto !important;
+    width: 100% !important;
+    height: auto !important;
+    background: transparent !important;
+    backdrop-filter: none !important;
+    display: block !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    z-index: auto !important;
+    overflow: visible !important;
+  }
+  #printModal .modal {
+    width: 100% !important;
+    max-width: none !important;
+    height: auto !important;
+    max-height: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    display: block !important;
+    overflow: visible !important;
+  }
+  #printModal .modal-header,
+  #printModal .modal-footer,
+  #printModal .modal-close {
+    display: none !important;
+  }
+  #printModal .modal-body {
+    padding: 0 !important;
+    margin: 0 !important;
+    overflow: visible !important;
+    max-height: none !important;
+    height: auto !important;
+    display: block !important;
+  }
+
+  .view-toolbar, .print-toolbar, nav, header, .overflow-warning { display: none !important; }
+
+  @page A4-portrait  { size: A4 portrait;  margin: 0; }
+  @page A4-landscape { size: A4 landscape; margin: 0; }
+  @page Legal        { size: legal portrait; margin: 0; }
+  @page Legal-landscape { size: legal landscape; margin: 0; }
+
+  .print-page          { page: A4-portrait; }
+  .print-page.legal    { page: Legal; }
+  .print-page.half-landscape { page: A4-landscape; }
+  .print-page.half-landscape.legal { page: Legal-landscape; }
+  .print-page.booklet { page: A4-landscape; }
+  .print-page.booklet.legal { page: Legal-landscape; }
+
+  .print-page { break-after: page; margin: 0; box-shadow: none !important; }
+  .qp-creative .sub-q { page-break-inside: avoid; break-inside: avoid; }
+}

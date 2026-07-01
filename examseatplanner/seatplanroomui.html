@@ -1,0 +1,1541 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Seat Plan — Room Editor</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Tiro+Bangla&display=swap" rel="stylesheet">
+<style>
+:root{
+  --primary:#1d4ed8; --primary-dark:#1e3a8a; --bg:#e9eef6; --card:#fff;
+  --border:#cbd5e1; --text:#1e293b; --muted:#64748b; --accent:#0d9488;
+  --danger:#dc2626; --warn:#f59e0b; --sel:#2563eb; --drop:#16a34a;
+  --font:'Times New Roman','Tiro Bangla',Times,serif;
+  --bench-row-h: 73px;
+  --seat-w: 74px;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:100vh;}
+
+/* ── Header ── */
+.hdr{background:linear-gradient(135deg,var(--primary-dark),var(--primary));color:#fff;
+  padding:10px 18px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;
+  position:sticky;top:0;z-index:100;box-shadow:0 2px 6px rgba(0,0,0,.25);}
+.hdr h1{font-size:16px;font-weight:700;flex:1;}
+.hdr-btn{background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.35);color:#fff;
+  padding:6px 12px;border-radius:6px;cursor:pointer;font-size:12.5px;font-family:inherit;}
+.hdr-btn:hover{background:rgba(255,255,255,.28);}
+.hdr-btn.primary{background:#fff;color:var(--primary-dark);font-weight:700;}
+.sync-badge{font-size:11.5px;background:rgba(0,0,0,.25);padding:3px 10px;border-radius:999px;}
+.sync-badge.ok{background:#15803d;}
+.sync-badge.warn{background:#b45309;}
+
+/* ── Layout ── */
+.layout{display:flex;gap:0;height:calc(100vh - 46px);}
+.sidebar{width:260px;min-width:200px;background:#fff;border-right:1px solid var(--border);
+  overflow-y:auto;display:flex;flex-direction:column;}
+.main{flex:1;overflow:auto;padding:16px;}
+
+/* ── Sidebar ── */
+.sb-section{border-bottom:1px solid var(--border);padding:12px;}
+.sb-title{font-size:12px;font-weight:700;color:var(--primary-dark);text-transform:uppercase;
+  letter-spacing:.5px;margin-bottom:8px;}
+.sb-actions{display:flex;flex-direction:column;gap:6px;}
+.sb-btn{background:#f8fafc;border:1px solid var(--border);border-radius:6px;
+  padding:7px 10px;cursor:pointer;font-size:12.5px;font-family:inherit;text-align:left;}
+.sb-btn:hover{background:#eef2ff;border-color:var(--primary);}
+.sb-btn.danger{color:var(--danger);}
+.unassigned-list{display:flex;flex-direction:column;gap:4px;margin-top:6px;}
+.u-card{background:#fff3cd;border:1px solid #fbbf24;border-radius:5px;padding:5px 8px;
+  font-size:11.5px;cursor:grab;user-select:none;transition:box-shadow .15s;}
+.u-card:hover{box-shadow:0 2px 6px rgba(0,0,0,.15);}
+.u-card.dragging{opacity:.4;}
+.u-card b{display:block;font-size:12.5px;}
+
+/* ── Rooms area ── */
+.rooms-grid{display:flex;flex-direction:column;gap:16px;}
+
+.room-card{background:var(--card);border:1px solid var(--border);border-radius:10px;
+  overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.07);}
+.room-hdr{background:var(--primary-dark);color:#fff;padding:8px 14px;
+  display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+.room-hdr .rnum{font-size:15px;font-weight:800;}
+.room-hdr .rgender{font-size:11px;background:rgba(255,255,255,.2);padding:2px 8px;border-radius:999px;}
+.room-stats{font-size:11px;color:rgba(255,255,255,.75);flex:1;}
+.rh-btn{background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;
+  padding:4px 9px;border-radius:5px;cursor:pointer;font-size:11.5px;font-family:inherit;}
+.rh-btn:hover{background:rgba(255,255,255,.3);}
+.rh-btn.del{color:#fca5a5;}
+.room-body{display:flex;gap:0;overflow-x:auto;}
+
+/* ── Column ── */
+.col-panel{width:fit-content;flex:none;min-width:140px;border-right:1px solid var(--border);display:flex;flex-direction:column;}
+.col-panel:last-child{border-right:none;}
+.col-hdr{background:#eef2ff;padding:6px 10px;display:flex;align-items:center;gap:6px;
+  border-bottom:1px solid var(--border);}
+.col-hdr .clabel{font-size:12px;font-weight:700;color:var(--primary-dark);flex:1;}
+.col-hdr .csub{font-size:10.5px;color:var(--muted);}
+.ch-btn{background:none;border:none;cursor:pointer;font-size:13px;padding:2px 4px;line-height:1;
+  color:var(--muted);}
+.ch-btn:hover{color:var(--primary);}
+.ch-btn.del:hover{color:var(--danger);}
+.col-body{padding:6px 8px;display:flex;flex-direction:column;gap:5px;min-height:60px;flex:1;}
+.add-bench-btn{background:#f8fafc;border:1px dashed var(--border);border-radius:5px;
+  padding:5px;font-size:11.5px;cursor:pointer;color:var(--muted);font-family:inherit;width:100%;}
+.add-bench-btn:hover{border-color:var(--primary);color:var(--primary);background:#eef2ff;}
+
+/* ── Bench Alignment Styles ── */
+.bench-stack{display:flex;flex-direction:column;gap:5px;}
+.bench-stack.align-bottom{margin-top:auto;}
+.bench-stack.align-offset-1{margin-top:calc(1*var(--bench-row-h));}
+.bench-stack.align-offset-2{margin-top:calc(2*var(--bench-row-h));}
+.bench-stack.align-offset-3{margin-top:calc(3*var(--bench-row-h));}
+.bench-stack.align-offset-4{margin-top:calc(4*var(--bench-row-h));}
+.bench-stack.align-offset-5{margin-top:calc(5*var(--bench-row-h));}
+.bench-stack.align-offset-6{margin-top:calc(6*var(--bench-row-h));}
+.bench-stack.align-offset-7{margin-top:calc(7*var(--bench-row-h));}
+.bench-stack.align-offset-8{margin-top:calc(8*var(--bench-row-h));}
+.bench-stack.align-offset-9{margin-top:calc(9*var(--bench-row-h));}
+
+/* ── Bench ── */
+.bench-row{display:flex;align-items:stretch;gap:4px;background:#f8fafc;
+  border:1px solid var(--border);border-radius:5px;padding:4px;height:68px;width:100%;}
+.bench-lbl{font-size:9.5px;font-weight:700;color:var(--muted);writing-mode:vertical-rl;
+  text-align:center;padding:0 2px;flex-shrink:0;display:flex;align-items:center;justify-content:center;}
+.bench-seats{display:flex;flex:1;gap:3px;min-width:0;}
+.bench-del{background:none;border:none;cursor:pointer;color:var(--border);font-size:13px;
+  align-self:center;padding:0 2px;flex-shrink:0;line-height:1;}
+.bench-del:hover{color:var(--danger);}
+
+/* ── Seat ── */
+.seat{flex:1;min-width:0;border:1.5px solid var(--border);border-radius:4px;
+  padding:4px 6px;font-size:10.5px;cursor:pointer;user-select:none;position:relative;
+  background:#fff;transition:border-color .12s, box-shadow .12s;text-align:center;
+  height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;}
+.seat .s-roll{font-size:13px;font-weight:800;color:var(--primary-dark);}
+.seat .s-cls{font-size:10px;color:var(--muted);}
+.seat .s-name{font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;}
+.seat.empty{border-style:dashed;color:var(--muted);background:#f8fafc;}
+.seat.empty::after{content:'Empty';font-size:10px;color:#cbd5e1;}
+.seat:hover{border-color:var(--primary);box-shadow:0 0 0 2px rgba(29,78,216,.12);}
+.seat.selected{border-color:var(--sel)!important;box-shadow:0 0 0 2.5px rgba(37,99,235,.35)!important;
+  background:#eff6ff!important;}
+.seat.drag-over{border-color:var(--drop)!important;box-shadow:0 0 0 2.5px rgba(22,163,74,.35)!important;
+  background:#f0fdf4!important;}
+.seat.dragging{opacity:.35;}
+
+/* ── Add room strip ── */
+.add-room-strip{background:#fff;border:2px dashed var(--border);border-radius:10px;
+  padding:14px;text-align:center;cursor:pointer;font-size:13px;color:var(--muted);
+  margin-top:4px;}
+.add-room-strip:hover{border-color:var(--primary);color:var(--primary);background:#eef2ff;}
+
+/* ── Modal ── */
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:200;
+  align-items:center;justify-content:center;}
+.modal-overlay.open{display:flex;}
+.modal{background:#fff;border-radius:10px;padding:20px 24px;min-width:300px;max-width:90vw;
+  box-shadow:0 8px 30px rgba(0,0,0,.2);}
+.modal h3{font-size:15px;font-weight:700;color:var(--primary-dark);margin-bottom:14px;}
+.modal label{font-size:12.5px;font-weight:600;color:var(--muted);display:block;margin-bottom:3px;}
+.modal input,.modal select{width:100%;border:1px solid var(--border);border-radius:6px;
+  padding:7px 10px;font-size:13px;font-family:inherit;margin-bottom:12px;}
+.modal-btns{display:flex;gap:8px;justify-content:flex-end;margin-top:4px;}
+.modal-btns button{padding:7px 16px;border-radius:6px;cursor:pointer;font-size:12.5px;
+  font-family:inherit;border:1px solid var(--border);}
+.modal-btns .ok-btn{background:var(--primary);color:#fff;border-color:var(--primary);}
+
+/* ── Seat Clash Styles ── */
+.seat.clash.critical{border-color:var(--danger)!important;box-shadow:0 0 0 2.5px rgba(220,38,38,.25)!important;background:#fef2f2!important;}
+.seat.clash.critical::before{content:'🔴';position:absolute;top:2px;right:2px;font-size:8px;}
+.seat.clash.warning{border-color:#f97316!important;box-shadow:0 0 0 2.5px rgba(249,115,22,.25)!important;background:#fff7ed!important;}
+.seat.clash.warning::before{content:'🟡';position:absolute;top:2px;right:2px;font-size:8px;}
+
+/* ── Room Summary and Warnings CSS ── */
+.room-summary-bar{background:#f8fafc;border-bottom:1px solid var(--border);padding:6px 14px;font-size:11.5px;color:var(--muted);}
+.room-warnings-list{background:#fff1f2;border-bottom:1px solid #fecaca;padding:8px 14px;font-size:11.5px;color:var(--danger);display:flex;flex-direction:column;gap:3px;}
+.bench-move-btn{background:none;border:none;cursor:pointer;color:var(--border);font-size:12px;
+  align-self:center;padding:0 2px;flex-shrink:0;line-height:1;}
+.bench-move-btn:hover{color:var(--primary);}
+
+/* ── Global Summary Dashboard CSS ── */
+.global-summary-bar{background:#fff;border:1px solid var(--border);border-radius:8px;padding:12px 16px;margin-bottom:16px;display:flex;gap:20px;font-size:13px;box-shadow:0 1px 3px rgba(0,0,0,.05);}
+.global-summary-bar > div { display:flex; flex-direction:column; }
+.global-summary-bar .lbl { font-size:11px; color:var(--muted); text-transform:uppercase; font-weight:700; margin-bottom:2px; }
+.global-summary-bar .val { font-size:16px; font-weight:800; color:var(--primary-dark); }
+.global-summary-bar .val.danger { color:var(--danger); }
+.global-summary-bar .val.accent { color:var(--accent); }
+
+/* ── Context menu ── */
+.ctx-menu{display:none;position:fixed;background:#fff;border:1px solid var(--border);
+  border-radius:7px;box-shadow:0 4px 16px rgba(0,0,0,.15);z-index:300;min-width:180px;
+  padding:4px 0;font-size:12.5px;}
+.ctx-menu.open{display:block;}
+.ctx-item{padding:7px 14px;cursor:pointer;display:flex;align-items:center;gap:6px;}
+.ctx-item:hover{background:#eef2ff;}
+.ctx-item.danger:hover{background:#fef2f2;color:var(--danger);}
+.ctx-sep{height:1px;background:var(--border);margin:3px 0;}
+
+/* ── Toast ── */
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);
+  background:#1e293b;color:#fff;padding:8px 18px;border-radius:999px;
+  font-size:12.5px;opacity:0;pointer-events:none;transition:opacity .2s;z-index:400;}
+.toast.show{opacity:1;}
+</style>
+</head>
+<body>
+
+<header class="hdr">
+  <h1>🗂 Seat Plan — Room Editor</h1>
+  <button type="button" class="hdr-btn" onclick="undoLast()">↩ Undo</button>
+  <button type="button" class="hdr-btn" onclick="autoBalance()">⚖ Auto-Balance</button>
+  <button type="button" class="hdr-btn" onclick="autoResolveConflicts()" style="background:#7e22ce;color:#fff;border-color:#7e22ce;">⚡ Auto-Resolve</button>
+  <button type="button" class="hdr-btn" onclick="compactLayout()" style="background:#2563eb;color:#fff;border-color:#2563eb;">⚡ Compact Layout</button>
+  <button type="button" class="hdr-btn" onclick="openHeaderInfoModal()" style="background:#0d9488;color:#fff;border-color:#0d9488;">📋 Header Info</button>
+  <button type="button" class="hdr-btn primary" onclick="pushToSeatPlan()">↑ Push to Seat Plan</button>
+  <span id="syncBadge" class="sync-badge warn">No data</span>
+  <a href="seatplan.html" class="hdr-btn" style="text-decoration:none">← Seat Plan</a>
+  <button type="button" class="hdr-btn" onclick="clearCache()" style="background:var(--danger);color:#fff;border-color:var(--danger);">🗑 Clear Cache</button>
+</header>
+
+<div class="layout">
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="sb-section">
+      <div class="sb-title">Actions</div>
+      <div class="sb-actions">
+        <button type="button" class="sb-btn" onclick="openAddRoomModal()">➕ Add Room</button>
+        <button type="button" class="sb-btn" onclick="loadFromStorage()">↓ Reload from Seat Plan</button>
+        <button type="button" class="sb-btn" onclick="autoAssignUnassigned()" style="color:var(--accent);font-weight:600;">⚡ Auto-Assign Empty</button>
+        <button type="button" class="sb-btn" onclick="autoSeatAllWithBenches()" style="color:#7e22ce;font-weight:600;">🚀 Auto-Seat (Auto Benches)</button>
+        <button type="button" class="sb-btn danger" onclick="clearSelection()">✕ Clear Selection</button>
+      </div>
+    </div>
+    <div class="sb-section" style="flex:1;overflow-y:auto;">
+      <div class="sb-title">Unassigned (<span id="unassignedCount">0</span>)</div>
+      <div id="unassignedList" class="unassigned-list"></div>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <main class="main">
+    <div class="global-summary-bar" id="globalSummaryBar"></div>
+    <div id="roomsGrid" class="rooms-grid"></div>
+    <div class="add-room-strip" onclick="openAddRoomModal()">➕ Add Room</div>
+    <p style="font-size:11.5px;color:var(--muted);margin-top:10px;text-align:center;">
+      Click a filled seat to select · click another seat to move/swap · drag seats to rearrange ·
+      right-click for more options</p>
+  </main>
+</div>
+
+<!-- Modal -->
+<div id="modal" class="modal-overlay">
+  <div class="modal">
+    <h3 id="modalTitle">Add Room</h3>
+    <div id="modalBody"></div>
+    <div class="modal-btns">
+      <button type="button" onclick="closeModal()">Cancel</button>
+      <button type="button" class="ok-btn" id="modalOkBtn">OK</button>
+    </div>
+  </div>
+</div>
+
+<!-- Context menu -->
+<div id="ctxMenu" class="ctx-menu">
+  <div class="ctx-item" onclick="ctxAction('move')">🚚 Move to Room…</div>
+  <div class="ctx-item" onclick="ctxAction('swap')">🔄 Select for Swap</div>
+  <div class="ctx-sep"></div>
+  <div class="ctx-item danger" onclick="ctxAction('unassign')">↩ Unassign Student</div>
+</div>
+
+<!-- Toast -->
+<div id="toast" class="toast"></div>
+
+<script>
+'use strict';
+
+/* -----------------------------------------------------------------------
+   STATE
+----------------------------------------------------------------------- */
+const LS_KEY = 'seatplan_data';
+let DATA = null;          // full RESULT object from seatplan.html
+let SEL  = null;          // selected seat position {rIdx,cIdx,bIdx,sIdx} | {type:'u',uIdx}
+let CTX  = null;          // position under context menu
+let UNDO = [];            // snapshot stack (last 10 states)
+
+const naturalCmp = (a,b)=>String(a).localeCompare(String(b),undefined,{numeric:true});
+
+/* -----------------------------------------------------------------------
+   LOAD / SAVE
+----------------------------------------------------------------------- */
+function loadFromStorage(){
+  const raw = localStorage.getItem(LS_KEY);
+  if(!raw){ showToast('No seat plan found. Generate one in Seat Plan first.'); return; }
+  try{
+    DATA = JSON.parse(raw);
+    SEL  = null;
+    render();
+    badge('ok', 'Synced ' + new Date().toLocaleTimeString());
+    showToast('Loaded from Seat Plan.');
+  } catch(e){ showToast('Failed to parse data.'); }
+}
+
+function saveToStorage(){
+  if(!DATA) return;
+  localStorage.setItem(LS_KEY, JSON.stringify(DATA));
+  badge('ok', 'Saved ' + new Date().toLocaleTimeString());
+}
+
+function pushToSeatPlan(){
+  saveToStorage();
+  showToast('Pushed to Seat Plan. Switch to that tab to see changes.');
+}
+
+function snapshot(){
+  UNDO.push(JSON.stringify(DATA));
+  if(UNDO.length > 10) UNDO.shift();
+}
+function undoLast(){
+  if(!UNDO.length){ showToast('Nothing to undo.'); return; }
+  DATA = JSON.parse(UNDO.pop());
+  SEL = null;
+  saveToStorage();
+  render();
+  showToast('Undone.');
+}
+
+// Detect changes made in seatplan.html.
+window.addEventListener('storage', e=>{
+  if(e.key !== LS_KEY || !e.newValue) return;
+  try{ DATA = JSON.parse(e.newValue); SEL=null; render(); badge('ok','Synced from Seat Plan'); }
+  catch(_){}
+});
+
+/* -----------------------------------------------------------------------
+   BADGE / TOAST
+----------------------------------------------------------------------- */
+function badge(type, text){
+  const el = document.getElementById('syncBadge');
+  el.textContent = text;
+  el.className = 'sync-badge ' + (type==='ok'?'ok':'warn');
+}
+let _toastTimer;
+function showToast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(()=>t.classList.remove('show'), 2600);
+}
+
+/* -----------------------------------------------------------------------
+   HELPERS
+----------------------------------------------------------------------- */
+function getStudent(pos){
+  return DATA.rooms[pos.rIdx].columns[pos.cIdx][pos.bIdx][pos.sIdx];
+}
+function setStudent(pos, student){
+  DATA.rooms[pos.rIdx].columns[pos.cIdx][pos.bIdx][pos.sIdx] = student;
+}
+function colSeats(rIdx, cIdx){
+  // Infer seats/bench from first existing bench; fallback to config, then 2.
+  const col = DATA.rooms[rIdx].columns[cIdx];
+  const firstBench = col.find(b=>b.length>0);
+  if(firstBench) return firstBench.length;
+  return (DATA.rooms[rIdx].room.columns[cIdx]||{}).seats || 2;
+}
+function seatedCount(rIdx){
+  return DATA.rooms[rIdx].columns.flat(2).filter(Boolean).length;
+}
+function totalCapacity(rIdx){
+  return DATA.rooms[rIdx].columns.flat(2).length;
+}
+function clearSelection(){ SEL=null; render(); }
+
+/* -----------------------------------------------------------------------
+   MOVE / SWAP
+----------------------------------------------------------------------- */
+function handleSeatClick(pos){
+  closeCtxMenu();
+  if(!SEL){
+    // Select the clicked seat only if it has a student.
+    const s = getStudent(pos);
+    if(s){ SEL = pos; render(); return; }
+    // Clicking empty seat with nothing selected → nothing.
+    return;
+  }
+  // We have a selection — move or swap into clicked target.
+  if(posEqual(SEL, pos)){ SEL=null; render(); return; }
+  snapshot();
+  const srcType = SEL.type;
+  if(srcType === 'u'){
+    // Moving from unassigned list → seat.
+    const student = DATA.unassigned.splice(SEL.uIdx,1)[0];
+    const existing = getStudent(pos);
+    if(existing) DATA.unassigned.push(existing); // bump displaced student back to unassigned
+    setStudent(pos, student);
+  } else {
+    const s1 = getStudent(SEL), s2 = getStudent(pos);
+    setStudent(pos, s1);
+    setStudent(SEL, s2 || null);
+  }
+  SEL=null; saveToStorage(); render();
+}
+
+function handleUnassignedClick(uIdx){
+  closeCtxMenu();
+  if(SEL && SEL.type!=='u'){
+    // Had a seat selected — swap seat student ↔ unassigned
+    snapshot();
+    const s1 = getStudent(SEL);
+    const s2 = DATA.unassigned[uIdx];
+    setStudent(SEL, s2);
+    DATA.unassigned[uIdx] = s1;
+    SEL=null; saveToStorage(); render();
+  } else {
+    SEL = {type:'u', uIdx};
+    render();
+  }
+}
+
+function posEqual(a, b){
+  return a && b && a.rIdx===b.rIdx && a.cIdx===b.cIdx && a.bIdx===b.bIdx && a.sIdx===b.sIdx;
+}
+
+/* -----------------------------------------------------------------------
+   DRAG & DROP
+----------------------------------------------------------------------- */
+let _dragPos = null;
+function onDragStart(e, pos){
+  _dragPos = pos;
+  e.dataTransfer.effectAllowed = 'move';
+  e.dataTransfer.setData('text/plain', pos ? JSON.stringify(pos) : 'u');
+  setTimeout(()=>render(), 10); // trigger .dragging class
+}
+function onDragStartU(e, uIdx){
+  _dragPos = {type:'u', uIdx};
+  e.dataTransfer.effectAllowed = 'move';
+  e.dataTransfer.setData('text/plain', 'u');
+}
+function onDragOver(e){ e.preventDefault(); e.dataTransfer.dropEffect='move'; }
+function onDropSeat(e, pos){
+  e.preventDefault();
+  if(!_dragPos){ _dragPos=null; return; }
+  const src = _dragPos; _dragPos=null;
+  if(src.type==='u'){
+    snapshot();
+    const student = DATA.unassigned.splice(src.uIdx,1)[0];
+    const existing = getStudent(pos);
+    if(existing) DATA.unassigned.push(existing);
+    setStudent(pos, student);
+  } else if(!posEqual(src,pos)){
+    snapshot();
+    const s1=getStudent(src), s2=getStudent(pos);
+    setStudent(pos,s1); setStudent(src, s2||null);
+  }
+  SEL=null; saveToStorage(); render();
+}
+function onDropUnassigned(e){
+  e.preventDefault();
+  if(!_dragPos || _dragPos.type==='u'){ _dragPos=null; return; }
+  const src=_dragPos; _dragPos=null;
+  const student=getStudent(src);
+  if(!student) return;
+  snapshot();
+  setStudent(src, null);
+  DATA.unassigned.push(student);
+  SEL=null; saveToStorage(); render();
+}
+
+/* -----------------------------------------------------------------------
+   CONTEXT MENU
+----------------------------------------------------------------------- */
+function openCtxMenu(e, pos){
+  e.preventDefault(); e.stopPropagation();
+  CTX = pos;
+  SEL = pos;
+  const m = document.getElementById('ctxMenu');
+  m.style.left = Math.min(e.clientX, window.innerWidth-190)+'px';
+  m.style.top  = Math.min(e.clientY, window.innerHeight-130)+'px';
+  m.classList.add('open');
+  render();
+}
+function closeCtxMenu(){ document.getElementById('ctxMenu').classList.remove('open'); CTX=null; }
+document.addEventListener('click', closeCtxMenu);
+document.getElementById('ctxMenu').addEventListener('click',e=>e.stopPropagation());
+
+function ctxAction(action){
+  closeCtxMenu();
+  if(!CTX) return;
+  const pos=CTX; CTX=null;
+  if(action==='unassign'){
+    const s=getStudent(pos); if(!s) return;
+    snapshot();
+    setStudent(pos,null);
+    DATA.unassigned.push(s);
+    SEL=null; saveToStorage(); render();
+  } else if(action==='move'){
+    openMoveToRoomModal(pos);
+  } else if(action==='swap'){
+    SEL=pos; render();
+    showToast('Now click the seat you want to swap with.');
+  }
+}
+
+/* -----------------------------------------------------------------------
+   STRUCTURE MUTATIONS
+----------------------------------------------------------------------- */
+function addBench(rIdx, cIdx){
+  snapshot();
+  const seats = colSeats(rIdx, cIdx);
+  DATA.rooms[rIdx].columns[cIdx].push(new Array(seats).fill(null));
+  saveToStorage(); render();
+}
+function removeBench(rIdx, cIdx, bIdx){
+  snapshot();
+  const freed = DATA.rooms[rIdx].columns[cIdx].splice(bIdx,1)[0];
+  freed.filter(Boolean).forEach(s=>DATA.unassigned.push(s));
+  saveToStorage(); render();
+  if(freed.filter(Boolean).length) showToast(`${freed.filter(Boolean).length} student(s) moved to Unassigned.`);
+}
+function addColumn(rIdx){
+  snapshot();
+  const labels='ABCDEFGH';
+  const ci = DATA.rooms[rIdx].columns.length;
+  const label = labels[ci] || String(ci+1);
+  // Config side
+  DATA.rooms[rIdx].room.columns.push({label, benches:null, seats:2, align:'top', alignOffset:0});
+  // Data side
+  DATA.rooms[rIdx].columns.push([]);
+  saveToStorage(); render();
+}
+function removeColumn(rIdx, cIdx){
+  snapshot();
+  const freed = DATA.rooms[rIdx].columns[cIdx].flat().filter(Boolean);
+  freed.forEach(s=>DATA.unassigned.push(s));
+  DATA.rooms[rIdx].columns.splice(cIdx,1);
+  DATA.rooms[rIdx].room.columns.splice(cIdx,1);
+  SEL=null; saveToStorage(); render();
+  if(freed.length) showToast(`${freed.length} student(s) moved to Unassigned.`);
+}
+function removeRoom(rIdx){
+  if(!confirm(`Remove Room ${DATA.rooms[rIdx].room.number}? All seated students become Unassigned.`)) return;
+  snapshot();
+  const freed = DATA.rooms[rIdx].columns.flat(2).filter(Boolean);
+  freed.forEach(s=>DATA.unassigned.push(s));
+  DATA.rooms.splice(rIdx,1);
+  SEL=null; saveToStorage(); render();
+}
+
+/* -----------------------------------------------------------------------
+   AUTO-BALANCE
+----------------------------------------------------------------------- */
+function autoBalance(){
+  if(!DATA) return;
+  snapshot();
+  // Collect all students grouped by gender.
+  const allStudents = DATA.rooms.flatMap(rr=>rr.columns.flat(2).filter(Boolean))
+    .concat(DATA.unassigned);
+  DATA.unassigned = [];
+  DATA.rooms.forEach(rr=>rr.columns.forEach(col=>col.forEach((bench,bi)=>{
+    bench.forEach((_,si)=>{ col[bi][si]=null; });
+  })));
+  // Fill rooms in order, respecting gender, in roll order.
+  const pool = {M:[], F:[], Mixed:[]};
+  allStudents.forEach(s=>{ pool.M.push(s); pool.F.push(s); }); // build separately
+  const byGender = g=>allStudents.filter(s=>g==='Mixed'||(s.gender===g));
+  const mPool = allStudents.filter(s=>s.gender==='M').sort((a,b)=>naturalCmp(a.class,b.class)||naturalCmp(a.roll,b.roll));
+  const fPool = allStudents.filter(s=>s.gender==='F').sort((a,b)=>naturalCmp(a.class,b.class)||naturalCmp(a.roll,b.roll));
+  const usedIds = new Set();
+  function nextStudent(gender){
+    const pool = gender==='M'?mPool:fPool;
+    const idx = pool.findIndex(s=>!usedIds.has(s.id));
+    if(idx<0) return null;
+    usedIds.add(pool[idx].id);
+    return pool[idx];
+  }
+  DATA.rooms.forEach(rr=>{
+    const g = rr.room.gender;
+    rr.columns.forEach(col=>{
+      col.forEach((bench,bi)=>{
+        bench.forEach((_,si)=>{
+          const student = g==='Mixed'
+            ? (nextStudent('M')||nextStudent('F'))
+            : nextStudent(g);
+          col[bi][si] = student||null;
+        });
+      });
+    });
+  });
+  // Any remaining go to unassigned.
+  allStudents.filter(s=>!usedIds.has(s.id)).forEach(s=>DATA.unassigned.push(s));
+  SEL=null; saveToStorage(); render();
+  showToast('Auto-balanced. Check unassigned for overflow.');
+}
+
+/* -----------------------------------------------------------------------
+   MODAL HELPERS
+----------------------------------------------------------------------- */
+function openModal(title, bodyHtml, onOk){
+  document.getElementById('modalTitle').textContent=title;
+  document.getElementById('modalBody').innerHTML=bodyHtml;
+  document.getElementById('modalOkBtn').onclick=()=>{ onOk(); closeModal(); };
+  document.getElementById('modal').classList.add('open');
+}
+function closeModal(){ document.getElementById('modal').classList.remove('open'); }
+
+function openAddRoomModal(){
+  openModal('Add Room', `
+    <label>Room Number <input type="text" id="mRoomNum" placeholder="e.g. 113" title="Room number"></label>
+    <label>Gender <select id="mRoomGen" title="Gender restriction">
+      <option value="M">Male only</option>
+      <option value="F">Female only</option>
+      <option value="Mixed">Mixed</option>
+    </select></label>
+    <label>Columns (1-4) <input type="number" id="mRoomCols" value="2" min="1" max="4" title="Number of columns"></label>
+    <label>Seats / bench <input type="number" id="mRoomSeats" value="2" min="1" max="6" title="Seats per bench"></label>
+  `, ()=>{
+    const num   = document.getElementById('mRoomNum').value.trim();
+    const gen   = document.getElementById('mRoomGen').value;
+    const ncols = Math.max(1,Math.min(4,parseInt(document.getElementById('mRoomCols').value)||2));
+    const seats = Math.max(1,Math.min(6,parseInt(document.getElementById('mRoomSeats').value)||2));
+    if(!num){ showToast('Room number required.'); return; }
+    snapshot();
+    const labels='ABCD';
+    const roomCols = Array.from({length:ncols},(_,i)=>({label:labels[i]||String(i+1),benches:null,seats,align:'top',alignOffset:0}));
+    DATA.rooms.push({
+      room: {number:num, gender:gen, columns:roomCols},
+      columns: Array.from({length:ncols},()=>[])
+    });
+    saveToStorage(); render();
+  });
+}
+
+function openMoveToRoomModal(pos){
+  const student = getStudent(pos);
+  if(!student){ showToast('No student in that seat.'); return; }
+  
+  const otherRooms = DATA.rooms.filter((rr,i)=>i!==pos.rIdx);
+  if(otherRooms.length===0){ showToast('No other rooms available.'); return; }
+  
+  const options = otherRooms
+    .map(rr=>`<option value="${DATA.rooms.indexOf(rr)}">${rr.room.number} (${rr.room.gender})</option>`)
+    .join('');
+    
+  openModal(`Move ${student.name}`, `
+    <p style="font-size:12.5px;color:var(--muted);margin-bottom:10px;">Move this student to the first empty seat of another room.</p>
+    <label>Target Room <select id="mTargetRoom" title="Target room">${options}</select></label>
+  `, ()=>{
+    const targetRoomSelect = document.getElementById('mTargetRoom');
+    if(!targetRoomSelect || !targetRoomSelect.value) return;
+    const ti = parseInt(targetRoomSelect.value);
+    if(isNaN(ti) || !DATA.rooms[ti]) return;
+    const targetRoom = DATA.rooms[ti];
+
+    // Check gender restriction
+    if(targetRoom.room.gender !== 'Mixed' && student.gender !== targetRoom.room.gender){
+      if(!confirm(`Warning: This student's gender (${student.gender}) does not match Room ${targetRoom.room.number}'s gender restriction (${targetRoom.room.gender}). Move anyway?`)) return;
+    }
+
+    // Find first empty seat in target room.
+    let placed=false;
+    outer: for(let ci=0;ci<targetRoom.columns.length;ci++){
+      for(let bi=0;bi<targetRoom.columns[ci].length;bi++){
+        for(let si=0;si<targetRoom.columns[ci][bi].length;si++){
+          if(!targetRoom.columns[ci][bi][si]){
+            snapshot();
+            targetRoom.columns[ci][bi][si] = student;
+            setStudent(pos, null);
+            placed=true; break outer;
+          }
+        }
+      }
+    }
+    if(!placed){ showToast('No empty seat in that room. Add a bench first.'); return; }
+    SEL=null; saveToStorage(); render();
+    showToast(`Moved ${student.name} to Room ${targetRoom.room.number}.`);
+  });
+}
+
+function openEditCapacityModal(rIdx, cIdx){
+  const cfg = DATA.rooms[rIdx].room.columns[cIdx] || {label:String.fromCharCode(65+cIdx), seats:2, align:'top', alignOffset:0};
+  const curSeats = colSeats(rIdx, cIdx);
+  let selectedVal = cfg.align || 'top';
+  if(selectedVal === 'offset'){
+    selectedVal = `offset-${cfg.alignOffset || 1}`;
+  }
+  
+  const optionsHtml = [
+    {v:'top',    label:'Align Top'},
+    {v:'bottom', label:'Align Bottom'},
+    {v:'offset-1', label:'Offset: start at row 2'},
+    {v:'offset-2', label:'Offset: start at row 3'},
+    {v:'offset-3', label:'Offset: start at row 4'},
+    {v:'offset-4', label:'Offset: start at row 5'},
+  ].map(o => `<option value="${o.v}"${selectedVal===o.v?' selected':''}>${o.label}</option>`).join('');
+
+  openModal('Column Settings', `
+    <p style="font-size:12.5px;color:var(--muted);margin-bottom:10px;">Column ${cfg.label} settings.</p>
+    <label>Seats / bench <input type="number" id="mNewSeats" value="${curSeats}" min="1" max="6" title="Seats per bench"></label>
+    <label>Alignment <select id="mColAlign" title="Column alignment">${optionsHtml}</select></label>
+    <p style="font-size:11.5px;color:var(--warn);margin-top:10px;">⚠ Reducing seats will unassign students from the removed positions.</p>
+  `, ()=>{
+    const ns = Math.max(1,Math.min(6,parseInt(document.getElementById('mNewSeats').value)||curSeats));
+    const alignVal = document.getElementById('mColAlign').value;
+    const isOffset = alignVal.startsWith('offset-');
+    
+    snapshot();
+    
+    cfg.seats = ns;
+    DATA.rooms[rIdx].columns[cIdx].forEach((bench,bi)=>{
+      while(bench.length<ns) bench.push(null);
+      if(bench.length>ns){
+        const removed = bench.splice(ns);
+        removed.filter(Boolean).forEach(s=>DATA.unassigned.push(s));
+      }
+    });
+
+    cfg.align = isOffset ? 'offset' : alignVal;
+    cfg.alignOffset = isOffset ? parseInt(alignVal.split('-')[1]) : 0;
+    
+    saveToStorage(); render();
+  });
+}
+
+/* -----------------------------------------------------------------------
+   ADVANCED UTILITIES (CLASH DETECTION, AUTO-ASSIGN, ROOM MOVES, SUMMARIES)
+----------------------------------------------------------------------- */
+let CURRENT_CLASHES = { clashesMap: new Map(), roomWarnings: [] };
+let WARN_FILTER = 'all'; // 'all', 'critical', 'warning'
+
+function changeWarnFilter(val){
+  WARN_FILTER = val;
+  render();
+}
+
+function compactLayout(){
+  snapshot();
+  DATA.rooms.forEach((rr, rIdx) => {
+    const roomStudents = [];
+    rr.columns.forEach((col) => {
+      col.forEach((bench) => {
+        bench.forEach(s => {
+          if (s) roomStudents.push(s);
+        });
+      });
+    });
+    
+    // Clear columns
+    rr.columns = rr.room.columns.map(() => []);
+    
+    // Fill row-by-row
+    let sIdx = 0;
+    while (sIdx < roomStudents.length) {
+      let placedInThisRow = false;
+      for (let ci = 0; ci < rr.columns.length; ci++) {
+        if (sIdx >= roomStudents.length) break;
+        const seats = colSeats(rIdx, ci);
+        const bench = new Array(seats).fill(null);
+        let seatsFilled = 0;
+        for (let si = 0; si < seats; si++) {
+          if (sIdx < roomStudents.length) {
+            bench[si] = roomStudents[sIdx++];
+            seatsFilled++;
+            placedInThisRow = true;
+          }
+        }
+        if (seatsFilled > 0) {
+          rr.columns[ci].push(bench);
+        }
+      }
+      if (!placedInThisRow) break;
+    }
+  });
+  
+  saveToStorage(); render();
+  showToast('Successfully compacted layout: filled empty seats and removed empty benches.');
+}
+
+function checkGenderValid(pos, student){
+  if (!student) return true;
+  const gender = DATA.rooms[pos.rIdx].room.gender;
+  return gender === 'Mixed' || gender === student.gender;
+}
+
+const _measureCtx = document.createElement('canvas').getContext('2d');
+function autoFitEach(selector, maxSize, minSize, unit, weight){
+  const family = "'Times New Roman','Tiro Bangla',Times,serif";
+  const step = unit==='px' ? 0.4 : 0.15;
+  const toPx = v => unit==='pt' ? v*4/3 : v;
+  document.querySelectorAll(selector).forEach(el=>{
+    const containerPx = el.clientWidth;
+    if(!containerPx || !_measureCtx){ el.style.fontSize = maxSize + unit; return; }
+    let size = maxSize;
+    while(size > minSize){
+      _measureCtx.font = `${weight} ${toPx(size)}px ${family}`;
+      if(_measureCtx.measureText(el.textContent).width <= containerPx) break;
+      size -= step;
+    }
+    el.style.fontSize = size + unit;
+  });
+}
+
+function clearCache(){
+  if(!confirm('Are you sure you want to clear all cached seat plans, room configurations, and reset the application? This cannot be undone.')) return;
+  localStorage.removeItem('seatplan_data');
+  localStorage.removeItem('seatplan_draft_rooms');
+  for (let i = localStorage.length - 1; i >= 0; i--) {
+    const key = localStorage.key(i);
+    if (key && (key.startsWith('seatplan') || key.startsWith('agy'))) {
+      localStorage.removeItem(key);
+    }
+  }
+  alert('Cache cleared successfully! Reloading...');
+  window.location.reload();
+}
+
+function autoResolveConflicts(){
+  let currentResult = detectClashes();
+  let currentClashes = currentResult.clashesMap.size;
+  if(currentClashes === 0){
+    showToast('No conflicts to resolve!');
+    return;
+  }
+  
+  snapshot();
+  
+  let iterations = 3000;
+  let resolvedCount = 0;
+  
+  function getClashScore() {
+    let score = 0;
+    DATA.rooms.forEach((rr, rIdx) => {
+      const maxBenchesInRoom = Math.max(...rr.columns.map(col => col.length), 0);
+      const offsets = rr.room.columns.map((colCfg, ci) => {
+        const colData = rr.columns[ci] || [];
+        if (colCfg.align === 'bottom') {
+          return maxBenchesInRoom - colData.length;
+        } else if (colCfg.align === 'offset') {
+          return colCfg.alignOffset || 0;
+        }
+        return 0;
+      });
+
+      rr.columns.forEach((col, ci) => {
+        col.forEach((bench, bi) => {
+          bench.forEach((s, si) => {
+            if (!s) return;
+            
+            // Check Bench Clash
+            for(let osi=0; osi<bench.length; osi++){
+              if (osi !== si && bench[osi] && bench[osi].class === s.class) {
+                const dist = Math.abs(osi - si);
+                if (dist === 1) {
+                  score += 10; // Critical Horizontal
+                } else {
+                  score += 1;  // Warning Horizontal
+                }
+              }
+            }
+
+            // Check Vertical Clash (Critical)
+            if (bi > 0 && col[bi - 1][si] && col[bi - 1][si].class === s.class) {
+              score += 10;
+            }
+            if (bi < col.length - 1 && col[bi + 1][si] && col[bi + 1][si].class === s.class) {
+              score += 10;
+            }
+
+            // Check Side-by-Side Clash (Critical only if bordering aisle)
+            const globalRow = offsets[ci] + bi;
+            if (ci > 0) {
+              const adjCi = ci - 1;
+              const adjOffset = offsets[adjCi];
+              const adjBi = globalRow - adjOffset;
+              const adjCol = rr.columns[adjCi];
+              if (adjBi >= 0 && adjBi < adjCol.length) {
+                adjCol[adjBi].forEach((other, osi) => {
+                  if (other && other.class === s.class) {
+                    if (si === 0 && osi === adjCol[adjBi].length - 1) {
+                      score += 10;
+                    }
+                  }
+                });
+              }
+            }
+            if (ci < rr.columns.length - 1) {
+              const adjCi = ci + 1;
+              const adjOffset = offsets[adjCi];
+              const adjBi = globalRow - adjOffset;
+              const adjCol = rr.columns[adjCi];
+              if (adjBi >= 0 && adjBi < adjCol.length) {
+                adjCol[adjBi].forEach((other, osi) => {
+                  if (other && other.class === s.class) {
+                    if (si === bench.length - 1 && osi === 0) {
+                      score += 10;
+                    }
+                  }
+                });
+              }
+            }
+          });
+        });
+      });
+    });
+    return score;
+  }
+
+  // Pre-collect all seat positions for selection target
+  const allSeatPositions = [];
+  DATA.rooms.forEach((rr, rIdx) => {
+    rr.columns.forEach((col, ci) => {
+      col.forEach((bench, bi) => {
+        bench.forEach((s, si) => {
+          allSeatPositions.push({rIdx, cIdx: ci, bIdx: bi, sIdx: si});
+        });
+      });
+    });
+  });
+
+  if (allSeatPositions.length < 2) {
+    showToast('Not enough seats to resolve conflicts.');
+    return;
+  }
+
+  let bestScore = getClashScore();
+  let clashingPositions = [];
+  
+  function refreshClashingPositions() {
+    clashingPositions = [];
+    const tempRes = detectClashes();
+    tempRes.clashesMap.forEach((warnings, posKey) => {
+      const parts = posKey.split('-').map(Number);
+      clashingPositions.push({rIdx: parts[0], cIdx: parts[1], bIdx: parts[2], sIdx: parts[3]});
+    });
+  }
+
+  refreshClashingPositions();
+
+  for(let i=0; i<iterations; i++){
+    if(bestScore === 0) break;
+    
+    // Refresh clashing positions list periodically to keep choices accurate
+    if (i % 50 === 0) {
+      refreshClashingPositions();
+      if (clashingPositions.length === 0) break;
+    }
+    
+    // Target a clashing seat preferentially for seat 1
+    let pos1;
+    if (clashingPositions.length > 0 && Math.random() < 0.85) {
+      pos1 = clashingPositions[Math.floor(Math.random() * clashingPositions.length)];
+    } else {
+      pos1 = allSeatPositions[Math.floor(Math.random() * allSeatPositions.length)];
+    }
+    
+    const s1 = getStudent(pos1);
+    if (!s1) continue;
+    
+    const swapWithUnassigned = (DATA.unassigned && DATA.unassigned.length > 0 && Math.random() < 0.2);
+    
+    if (swapWithUnassigned) {
+      const uIdx = Math.floor(Math.random() * DATA.unassigned.length);
+      const uStudent = DATA.unassigned[uIdx];
+      
+      if (checkGenderValid(pos1, uStudent)) {
+        DATA.rooms[pos1.rIdx].columns[pos1.cIdx][pos1.bIdx][pos1.sIdx] = uStudent;
+        DATA.unassigned[uIdx] = s1;
+        
+        const newScore = getClashScore();
+        if (newScore < bestScore) {
+          bestScore = newScore;
+          resolvedCount++;
+        } else {
+          DATA.rooms[pos1.rIdx].columns[pos1.cIdx][pos1.bIdx][pos1.sIdx] = s1;
+          DATA.unassigned[uIdx] = uStudent;
+        }
+      }
+    } else {
+      const pos2 = allSeatPositions[Math.floor(Math.random() * allSeatPositions.length)];
+      if (pos1.rIdx === pos2.rIdx && pos1.cIdx === pos2.cIdx && pos1.bIdx === pos2.bIdx && pos1.sIdx === pos2.sIdx) continue;
+      const s2 = getStudent(pos2);
+      
+      if (checkGenderValid(pos1, s2) && checkGenderValid(pos2, s1)) {
+        setStudent(pos1, s2);
+        setStudent(pos2, s1);
+        
+        const newScore = getClashScore();
+        if (newScore < bestScore) {
+          bestScore = newScore;
+          resolvedCount++;
+        } else {
+          setStudent(pos1, s1);
+          setStudent(pos2, s2);
+        }
+      }
+    }
+  }
+
+  saveToStorage(); render();
+  const finalResult = detectClashes();
+  
+  if (bestScore === 0) {
+    showToast(`Successfully resolved all conflicts! (Applied ${resolvedCount} swaps)`);
+  } else {
+    showToast(`Solver reduced conflict score. Remaining conflicts: ${finalResult.clashesMap.size}.`);
+  }
+}
+
+function detectClashes() {
+  const clashesMap = new Map(); // seatPosKey -> Array of { type, msg, category }
+  const roomWarnings = Array.from({length: DATA.rooms.length}, () => []);
+
+  DATA.rooms.forEach((rr, rIdx) => {
+    // Calculate global offsets for all columns in this room
+    const maxBenchesInRoom = Math.max(...rr.columns.map(col => col.length), 0);
+    const offsets = rr.room.columns.map((colCfg, ci) => {
+      const colData = rr.columns[ci] || [];
+      if (colCfg.align === 'bottom') {
+        return maxBenchesInRoom - colData.length;
+      } else if (colCfg.align === 'offset') {
+        return colCfg.alignOffset || 0;
+      }
+      return 0;
+    });
+
+    rr.columns.forEach((col, ci) => {
+      col.forEach((bench, bi) => {
+        bench.forEach((s, si) => {
+          if (!s) return;
+          const posKey = `${rIdx}-${ci}-${bi}-${si}`;
+          const seatWarnings = new Set();
+
+          // 1. Bench (Horizontal) Clash
+          bench.forEach((other, osi) => {
+            if (osi !== si && other && other.class === s.class) {
+              const dist = Math.abs(osi - si);
+              if (dist === 1) {
+                seatWarnings.add(JSON.stringify({
+                  type: 'critical',
+                  msg: `Direct bench conflict with ${other.name} (Class ${other.class})`,
+                  category: 'Horizontal'
+                }));
+              } else {
+                seatWarnings.add(JSON.stringify({
+                  type: 'warning',
+                  msg: `Indirect bench conflict with ${other.name} (Class ${other.class})`,
+                  category: 'Horizontal'
+                }));
+              }
+            }
+          });
+
+          // 2. Vertical Clash
+          if (bi > 0 && col[bi - 1][si] && col[bi - 1][si].class === s.class) {
+            seatWarnings.add(JSON.stringify({
+              type: 'critical',
+              msg: `Vertical conflict with ${col[bi - 1][si].name} (Class ${s.class}, row above)`,
+              category: 'Vertical'
+            }));
+          }
+          if (bi < col.length - 1 && col[bi + 1][si] && col[bi + 1][si].class === s.class) {
+            seatWarnings.add(JSON.stringify({
+              type: 'critical',
+              msg: `Vertical conflict with ${col[bi + 1][si].name} (Class ${s.class}, row below)`,
+              category: 'Vertical'
+            }));
+          }
+
+          // 3. Side-by-Side (Adjacent Column) Clash
+          const globalRow = offsets[ci] + bi;
+          
+          if (ci > 0) {
+            const adjCi = ci - 1;
+            const adjOffset = offsets[adjCi];
+            const adjBi = globalRow - adjOffset;
+            const adjCol = rr.columns[adjCi];
+            if (adjBi >= 0 && adjBi < adjCol.length) {
+              adjCol[adjBi].forEach((other, osi) => {
+                if (other && other.class === s.class) {
+                  if (si === 0 && osi === adjCol[adjBi].length - 1) {
+                    seatWarnings.add(JSON.stringify({
+                      type: 'critical',
+                      msg: `Aisle conflict with ${other.name} (Class ${s.class}, left column)`,
+                      category: 'Aisle'
+                    }));
+                  }
+                }
+              });
+            }
+          }
+
+          if (ci < rr.columns.length - 1) {
+            const adjCi = ci + 1;
+            const adjOffset = offsets[adjCi];
+            const adjBi = globalRow - adjOffset;
+            const adjCol = rr.columns[adjCi];
+            if (adjBi >= 0 && adjBi < adjCol.length) {
+              adjCol[adjBi].forEach((other, osi) => {
+                if (other && other.class === s.class) {
+                  if (si === bench.length - 1 && osi === 0) {
+                    seatWarnings.add(JSON.stringify({
+                      type: 'critical',
+                      msg: `Aisle conflict with ${other.name} (Class ${s.class}, right column)`,
+                      category: 'Aisle'
+                    }));
+                  }
+                }
+              });
+            }
+          }
+
+          if (seatWarnings.size > 0) {
+            const parsedWarnings = Array.from(seatWarnings).map(w => JSON.parse(w));
+            clashesMap.set(posKey, parsedWarnings);
+            parsedWarnings.forEach(w => {
+              const msg = `Col ${rr.room.columns[ci].label} B${bi+1} Seat ${si+1}: ${w.msg}`;
+              const exists = roomWarnings[rIdx].some(x => x.msg === msg);
+              if (!exists) roomWarnings[rIdx].push({ msg, type: w.type });
+            });
+          }
+        });
+      });
+    });
+  });
+
+  return { clashesMap, roomWarnings };
+}
+
+function getRoomSummaryHtml(rr){
+  const classData = new Map(); // class -> count
+  rr.columns.forEach(col => col.forEach(bench => bench.forEach(s => {
+    if (s && s.class) {
+      classData.set(s.class, (classData.get(s.class) || 0) + 1);
+    }
+  })));
+  if (classData.size === 0) return '<div class="room-summary-bar">(no seated students)</div>';
+  const keys = [...classData.keys()].sort(naturalCmp);
+  const parts = keys.map(c => `<b>Class ${esc(c)}:</b> ${classData.get(c)}`);
+  return `<div class="room-summary-bar">${parts.join(' &nbsp;·&nbsp; ')}</div>`;
+}
+
+function autoAssignUnassigned(){
+  if(!DATA || !DATA.unassigned || !DATA.unassigned.length) { showToast('No unassigned students.'); return; }
+  snapshot();
+  let assignedCount = 0;
+  
+  for (let uIdx = DATA.unassigned.length - 1; uIdx >= 0; uIdx--) {
+    const student = DATA.unassigned[uIdx];
+    
+    outer: for (let rIdx = 0; rIdx < DATA.rooms.length; rIdx++) {
+      const rr = DATA.rooms[rIdx];
+      if (rr.room.gender !== 'Mixed' && rr.room.gender !== student.gender) continue;
+      
+      for (let cIdx = 0; cIdx < rr.columns.length; cIdx++) {
+        for (let bIdx = 0; bIdx < rr.columns[cIdx].length; bIdx++) {
+          for (let sIdx = 0; sIdx < rr.columns[cIdx][bIdx].length; sIdx++) {
+            if (rr.columns[cIdx][bIdx][sIdx] === null) {
+              rr.columns[cIdx][bIdx][sIdx] = student;
+              DATA.unassigned.splice(uIdx, 1);
+              assignedCount++;
+              break outer;
+            }
+          }
+        }
+      }
+    }
+  }
+  
+  saveToStorage(); render();
+  if (assignedCount > 0) {
+    showToast(`Automatically seated ${assignedCount} student(s).`);
+  } else {
+    showToast('No empty seats matching gender restrictions were found.');
+  }
+}
+
+function autoSeatAllWithBenches(){
+  if(!DATA || !DATA.unassigned || !DATA.unassigned.length) { showToast('No unassigned students.'); return; }
+  snapshot();
+  let seatedCount = 0;
+  let benchesCreated = 0;
+
+  // 1. Try to seat in existing empty seats first
+  for (let uIdx = DATA.unassigned.length - 1; uIdx >= 0; uIdx--) {
+    const student = DATA.unassigned[uIdx];
+    
+    outer: for (let rIdx = 0; rIdx < DATA.rooms.length; rIdx++) {
+      const rr = DATA.rooms[rIdx];
+      if (rr.room.gender !== 'Mixed' && rr.room.gender !== student.gender) continue;
+      
+      for (let cIdx = 0; cIdx < rr.columns.length; cIdx++) {
+        for (let bIdx = 0; bIdx < rr.columns[cIdx].length; bIdx++) {
+          for (let sIdx = 0; sIdx < rr.columns[cIdx][bIdx].length; sIdx++) {
+            if (rr.columns[cIdx][bIdx][sIdx] === null) {
+              rr.columns[cIdx][bIdx][sIdx] = student;
+              DATA.unassigned.splice(uIdx, 1);
+              seatedCount++;
+              break outer;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // 2. If there are still unassigned students, create benches
+  while (DATA.unassigned.length > 0) {
+    const student = DATA.unassigned[DATA.unassigned.length - 1];
+    let seated = false;
+    
+    for (let rIdx = 0; rIdx < DATA.rooms.length; rIdx++) {
+      const rr = DATA.rooms[rIdx];
+      if (rr.room.gender !== 'Mixed' && rr.room.gender !== student.gender) continue;
+      
+      let bestCIdx = 0;
+      let minLen = Infinity;
+      for (let cIdx = 0; cIdx < rr.columns.length; cIdx++) {
+        if (rr.columns[cIdx].length < minLen) {
+          minLen = rr.columns[cIdx].length;
+          bestCIdx = cIdx;
+        }
+      }
+      
+      const seats = colSeats(rIdx, bestCIdx);
+      const newBench = new Array(seats).fill(null);
+      newBench[0] = student;
+      rr.columns[bestCIdx].push(newBench);
+      
+      DATA.unassigned.pop();
+      seatedCount++;
+      benchesCreated++;
+      seated = true;
+      break;
+    }
+    
+    if (!seated) break;
+  }
+
+  saveToStorage(); render();
+  showToast(`Seated ${seatedCount} student(s). Created ${benchesCreated} new bench(es).`);
+}
+
+function moveBenchToRoom(rIdx, cIdx, bIdx){
+  const bench = DATA.rooms[rIdx].columns[cIdx][bIdx];
+  const studentsCount = bench.filter(Boolean).length;
+  
+  const options = DATA.rooms
+    .map((rr,i)=>i!==rIdx?`<option value="${i}">${rr.room.number} (${rr.room.gender})</option>`:'')
+    .join('');
+  if(!options) { showToast('No other rooms available.'); return; }
+  
+  openModal(`Move Bench B${bIdx+1}`, `
+    <p style="font-size:12.5px;color:var(--muted);margin-bottom:10px;">Move this bench (${studentsCount} students seated) to another room.</p>
+    <label>Target Room <select id="mMoveTargetRoom" title="Target room">${options}</select></label>
+  `, ()=>{
+    const ti = parseInt(document.getElementById('mMoveTargetRoom').value);
+    const targetRoom = DATA.rooms[ti];
+    
+    const mismatch = bench.filter(Boolean).some(s => targetRoom.room.gender !== 'Mixed' && s.gender !== targetRoom.room.gender);
+    if(mismatch && !confirm(`Warning: Some students on this bench do not match Room ${targetRoom.room.number}'s gender restriction (${targetRoom.room.gender}). Move anyway?`)) return;
+    
+    snapshot();
+    
+    DATA.rooms[rIdx].columns[cIdx].splice(bIdx, 1);
+    
+    const targetCIdx = Math.min(cIdx, targetRoom.columns.length - 1);
+    targetRoom.columns[targetCIdx].push(bench);
+    
+    saveToStorage(); render();
+    showToast(`Moved bench with ${studentsCount} student(s) to Room ${targetRoom.room.number}.`);
+  });
+}
+
+function renderGlobalSummary(totalClashesCount){
+  const bar = document.getElementById('globalSummaryBar');
+  if(!bar) return;
+  
+  let totalSeated = 0;
+  let totalCap = 0;
+  DATA.rooms.forEach(rr=>{
+    totalSeated += rr.columns.flat(2).filter(Boolean).length;
+    totalCap += rr.columns.flat(2).length;
+  });
+  
+  const unassigned = DATA.unassigned ? DATA.unassigned.length : 0;
+  
+  bar.innerHTML = `
+    <div>
+      <span class="lbl">Total Seated</span>
+      <span class="val accent">${totalSeated}</span>
+    </div>
+    <div>
+      <span class="lbl">Total Capacity</span>
+      <span class="val">${totalCap}</span>
+    </div>
+    <div>
+      <span class="lbl">Unassigned</span>
+      <span class="val ${unassigned > 0 ? 'danger' : ''}">${unassigned}</span>
+    </div>
+    <div>
+      <span class="lbl">Conflicts (${WARN_FILTER})</span>
+      <span class="val ${totalClashesCount > 0 ? 'danger' : ''}">${totalClashesCount > 0 ? '⚠️ ' + totalClashesCount : '0'}</span>
+      <select id="warnFilterSelect" onchange="changeWarnFilter(this.value)" style="margin-top:4px;padding:2px;font-size:11px;width:95px;" title="Filter conflicts">
+        <option value="all" ${WARN_FILTER==='all'?'selected':''}>Show All</option>
+        <option value="critical" ${WARN_FILTER==='critical'?'selected':''}>Critical Only</option>
+        <option value="warning" ${WARN_FILTER==='warning'?'selected':''}>Warnings Only</option>
+      </select>
+    </div>
+  `;
+}
+
+/* -----------------------------------------------------------------------
+   RENDER
+----------------------------------------------------------------------- */
+function render(){
+  if(!DATA){ document.getElementById('roomsGrid').innerHTML=
+    '<p style="color:var(--muted);font-size:13px">No data. Click "Reload from Seat Plan" or generate a seat plan in Seat Plan.</p>'; return; }
+
+  CURRENT_CLASHES = detectClashes();
+
+  renderUnassigned();
+  renderRooms();
+  
+  // Calculate conflicts according to selected filter
+  let count = 0;
+  CURRENT_CLASHES.clashesMap.forEach(arr => {
+    let matches = arr;
+    if(WARN_FILTER === 'critical') matches = arr.filter(c => c.type === 'critical');
+    else if(WARN_FILTER === 'warning') matches = arr.filter(c => c.type === 'warning');
+    if(matches.length > 0) count++;
+  });
+  renderGlobalSummary(count);
+  autoFitEach('.rooms-grid .seat .s-name', 10, 6, 'px', 'normal');
+}
+
+function renderUnassigned(){
+  const list = document.getElementById('unassignedList');
+  const count = document.getElementById('unassignedCount');
+  const ua = DATA.unassigned || [];
+  count.textContent = ua.length;
+  list.innerHTML = '';
+  list.ondragover = onDragOver;
+  list.ondrop = onDropUnassigned;
+
+  if(!ua.length){
+    list.innerHTML='<p style="font-size:11.5px;color:var(--muted)">All students seated ✓</p>';
+    return;
+  }
+  const sorted = [...ua].map((s,i)=>({s,i})).sort((a,b)=>naturalCmp(a.s.class,b.s.class)||naturalCmp(a.s.roll,b.s.roll));
+  sorted.forEach(({s,i})=>{
+    const el = document.createElement('div');
+    el.className='u-card'+(SEL&&SEL.type==='u'&&SEL.uIdx===i?' selected':'');
+    el.draggable=true;
+    el.innerHTML=`<b>${s.name}</b>Cl.${s.class} Roll ${s.roll}`;
+    el.addEventListener('click', ()=>handleUnassignedClick(i));
+    el.addEventListener('dragstart', e=>onDragStartU(e,i));
+    list.appendChild(el);
+  });
+}
+
+function renderRooms(){
+  const grid = document.getElementById('roomsGrid');
+  grid.innerHTML='';
+  DATA.rooms.forEach((rr,rIdx)=>{
+    const seated=seatedCount(rIdx), cap=totalCapacity(rIdx);
+    const card = document.createElement('div');
+    card.className='room-card';
+    
+    let warningsList = CURRENT_CLASHES.roomWarnings[rIdx] || [];
+    if(WARN_FILTER === 'critical') {
+      warningsList = warningsList.filter(w => w.type === 'critical');
+    } else if(WARN_FILTER === 'warning') {
+      warningsList = warningsList.filter(w => w.type === 'warning');
+    }
+
+    const warningPillHtml = warningsList.length > 0 
+      ? `<span class="rgender" style="background:var(--danger);color:#fff;font-weight:700;margin-left:auto;">⚠️ ${warningsList.length} conflict${warningsList.length > 1 ? 's' : ''}</span>`
+      : '';
+
+    card.innerHTML=`
+      <div class="room-hdr">
+        <span class="rnum">Room ${esc(rr.room.number)}</span>
+        <span class="rgender">${rr.room.gender==='M'?'Male':rr.room.gender==='F'?'Female':'Mixed'}</span>
+        ${warningPillHtml}
+        <span class="room-stats">${seated}/${cap} seated</span>
+        <button type="button" class="rh-btn" onclick="addColumn(${rIdx})">+ Column</button>
+        <button type="button" class="rh-btn del" onclick="removeRoom(${rIdx})">✕</button>
+      </div>
+      ${getRoomSummaryHtml(rr)}
+      ${warningsList.length > 0 ? `<div class="room-warnings-list">${warningsList.map(w => `<div>⚠️ ${esc(w.msg)}</div>`).join('')}</div>` : ''}
+      <div class="room-body" id="rb-${rIdx}"></div>`;
+    const body = card.querySelector('.room-body');
+    rr.columns.forEach((colData, cIdx)=>{
+      body.appendChild(renderColumnEl(rr, rIdx, colData, cIdx));
+    });
+    grid.appendChild(card);
+  });
+}
+
+function renderColumnEl(rr, rIdx, colData, cIdx){
+  const cfg = rr.room.columns[cIdx] || {label:String.fromCharCode(65+cIdx),seats:2,align:'top',alignOffset:0};
+  const panel = document.createElement('div');
+  panel.className='col-panel';
+  panel.style.flex = cfg.seats;
+  const hdr = document.createElement('div');
+  hdr.className='col-hdr';
+  hdr.innerHTML=`
+    <span class="clabel">Column ${esc(cfg.label)}</span>
+    <span class="csub">${colSeats(rIdx,cIdx)} s/b</span>
+    <button type="button" class="ch-btn" title="Column Settings" onclick="openEditCapacityModal(${rIdx},${cIdx})">✏️</button>
+    <button type="button" class="ch-btn del" title="Remove column" onclick="removeColumn(${rIdx},${cIdx})">✕</button>`;
+  panel.appendChild(hdr);
+  const body = document.createElement('div');
+  body.className='col-body';
+
+  const stack = document.createElement('div');
+  if(cfg.align === 'bottom'){
+    stack.className = 'bench-stack align-bottom';
+  } else if(cfg.align === 'offset' && cfg.alignOffset > 0){
+    stack.className = `bench-stack align-offset-${cfg.alignOffset}`;
+  } else {
+    stack.className = 'bench-stack';
+  }
+
+  colData.forEach((bench, bIdx)=>{
+    stack.appendChild(renderBenchEl(rIdx, cIdx, bench, bIdx));
+  });
+  body.appendChild(stack);
+
+  const addBtn = document.createElement('button');
+  addBtn.type='button'; addBtn.className='add-bench-btn';
+  addBtn.textContent='+ Add Bench';
+  addBtn.onclick=()=>addBench(rIdx,cIdx);
+  body.appendChild(addBtn);
+  panel.appendChild(body);
+  return panel;
+}
+
+function renderBenchEl(rIdx, cIdx, bench, bIdx){
+  const row = document.createElement('div');
+  row.className='bench-row';
+  const lbl = document.createElement('span'); lbl.className='bench-lbl';
+  lbl.textContent='B'+(bIdx+1); row.appendChild(lbl);
+  const seats = document.createElement('div'); seats.className='bench-seats';
+  bench.forEach((student, sIdx)=>{
+    const pos={rIdx,cIdx,bIdx,sIdx};
+    const isSelected = SEL && !SEL.type && posEqual(SEL,pos);
+    const posKey = `${rIdx}-${cIdx}-${bIdx}-${sIdx}`;
+    
+    const seatClashes = CURRENT_CLASHES.clashesMap.get(posKey);
+    let displayClashes = seatClashes || [];
+    if(WARN_FILTER === 'critical'){
+      displayClashes = displayClashes.filter(c => c.type === 'critical');
+    } else if(WARN_FILTER === 'warning'){
+      displayClashes = displayClashes.filter(c => c.type === 'warning');
+    }
+    const hasClash = displayClashes.length > 0;
+    const clashType = hasClash ? (displayClashes.some(c => c.type === 'critical') ? 'critical' : 'warning') : '';
+
+    const seat = document.createElement('div');
+    seat.className='seat'+(student?'':' empty')+(isSelected?' selected':'')+(hasClash?' clash '+clashType:'');
+    seat.draggable=!!student;
+    if(student){
+      seat.innerHTML=`<span class="s-roll">${esc(student.roll)}</span>
+        <span class="s-cls">Class ${esc(student.class)}</span>
+        <span class="s-name">${esc(student.name)}</span>`;
+    }
+    if(hasClash){
+      seat.title = displayClashes.map(c => c.msg).join('\n');
+    }
+    seat.addEventListener('click', e=>{e.stopPropagation(); handleSeatClick(pos);});
+    seat.addEventListener('contextmenu', e=>{if(student) openCtxMenu(e,pos);});
+    seat.addEventListener('dragstart', e=>{ if(student) onDragStart(e,pos); });
+    seat.addEventListener('dragover', onDragOver);
+    seat.addEventListener('drop', e=>onDropSeat(e,pos));
+    seat.addEventListener('dragenter', ()=>seat.classList.add('drag-over'));
+    seat.addEventListener('dragleave', ()=>seat.classList.remove('drag-over'));
+    seat.addEventListener('drop', ()=>seat.classList.remove('drag-over'));
+    seats.appendChild(seat);
+  });
+  row.appendChild(seats);
+  
+  const moveBtn = document.createElement('button');
+  moveBtn.type='button'; moveBtn.className='bench-move-btn'; moveBtn.textContent='🚚';
+  moveBtn.title='Move bench to other room'; moveBtn.onclick=()=>moveBenchToRoom(rIdx,cIdx,bIdx);
+  row.appendChild(moveBtn);
+
+  const del = document.createElement('button');
+  del.type='button'; del.className='bench-del'; del.textContent='✕';
+  del.title='Remove bench'; del.onclick=()=>removeBench(rIdx,cIdx,bIdx);
+  row.appendChild(del);
+  return row;
+}
+
+function esc(str){ return String(str).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+/* -----------------------------------------------------------------------
+   HEADER INFO MODAL
+----------------------------------------------------------------------- */
+function openHeaderInfoModal(){
+  if(!DATA){ showToast('No data loaded. Load a seat plan first.'); return; }
+  const m = DATA.meta || {};
+  const school   = esc(m.school   || '');
+  const exam     = esc(m.exam     || '');
+  const logo     = esc(m.logo     || '');
+  const date     = esc(m.date     || '');
+  const instrLabel = esc(m.instructionsLabel || '');
+  const clsLabel   = esc(m.classLabel        || '');
+  const instrLines = (m.instructionLines || []).join('\n').replace(/"/g,'&quot;');
+  const sigs       = esc((m.signatures || []).join(', '));
+
+  openModal('Edit Header Info', `
+    <label>School / Institution Name
+      <input type="text" id="hiSchool" value="${school}" placeholder="e.g. Green Sign School" title="School name">
+    </label>
+    <label>Exam Name
+      <input type="text" id="hiExam" value="${exam}" placeholder="e.g. Half-Yearly Exam 2026" title="Exam name">
+    </label>
+    <label>Logo URL
+      <input type="text" id="hiLogo" value="${logo}" placeholder="https://…" title="Logo image URL">
+    </label>
+    <label>Exam Date
+      <input type="date" id="hiDate" value="${date}" title="Exam date">
+    </label>
+    <label>Instructions (one per line)
+      <textarea id="hiInstr" rows="3" style="width:100%;border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-size:13px;font-family:inherit;margin-bottom:12px;resize:vertical;">${instrLines}</textarea>
+    </label>
+    <label>Instructions Label
+      <input type="text" id="hiInstrLabel" value="${instrLabel}" placeholder="e.g. Instructions" title="Instructions label">
+    </label>
+    <label>Class Label
+      <input type="text" id="hiClsLabel" value="${clsLabel}" placeholder="e.g. Class, Grade" title="Class label prefix">
+    </label>
+    <label>Signature Lines (comma-separated)
+      <input type="text" id="hiSigs" value="${sigs}" placeholder="e.g. In-charge, Principal" title="Signature labels">
+    </label>
+  `, ()=>{
+    snapshot();
+    if(!DATA.meta) DATA.meta = {};
+    DATA.meta.school             = document.getElementById('hiSchool').value.trim();
+    DATA.meta.exam               = document.getElementById('hiExam').value.trim();
+    DATA.meta.logo               = document.getElementById('hiLogo').value.trim();
+    DATA.meta.date               = document.getElementById('hiDate').value;
+    DATA.meta.instructionLines   = document.getElementById('hiInstr').value.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
+    DATA.meta.instructionsLabel  = document.getElementById('hiInstrLabel').value.trim();
+    DATA.meta.classLabel         = document.getElementById('hiClsLabel').value.trim();
+    DATA.meta.signatures         = document.getElementById('hiSigs').value.split(',').map(s=>s.trim()).filter(Boolean);
+    saveToStorage();
+    showToast('Header info saved. Push to Seat Plan to apply.');
+  });
+}
+
+/* -----------------------------------------------------------------------
+   INIT
+----------------------------------------------------------------------- */
+loadFromStorage();
+</script>
+</body>
+</html>
